@@ -14,6 +14,7 @@ import string
 import threading
 import time
 from typing import Any
+import xml.etree.ElementTree as ET
 
 STX = b"\x02"
 ETX = b"\x03"
@@ -82,6 +83,25 @@ class NiceBidiStatus:
     def is_moving(self) -> bool:
         """Return true when the gate is moving."""
         return self.state in {STATE_OPENING, STATE_CLOSING}
+
+
+@dataclass(frozen=True)
+class NiceBidiDeviceInfo:
+    """Device metadata returned by the BiDi-WiFi INFO request."""
+
+    interface_hw_version: str | None
+    interface_fw_version: str | None
+    interface_manufacturer: str | None
+    interface_product: str | None
+    interface_serial: str | None
+    device_type: str | None
+    device_manufacturer: str | None
+    device_product: str | None
+    device_description: str | None
+    device_hw_version: str | None
+    device_fw_version: str | None
+    device_serial: str | None
+    device_product_detail: str | None
 
 
 def _sha256(*values: bytes) -> bytes:
@@ -228,6 +248,15 @@ def _frame(xml: str) -> bytes:
     return STX + xml.encode("utf-8") + ETX
 
 
+def _xml_payload(frame: bytes) -> str:
+    payload = frame
+    if payload.startswith(STX):
+        payload = payload[1:]
+    if payload.endswith(ETX):
+        payload = payload[:-1]
+    return payload.decode("utf-8", errors="replace")
+
+
 T4_RE = re.compile(r"<T4\b(?P<attrs>[^>]*)>(?P<body>.*?)</T4>", re.DOTALL)
 
 
@@ -255,6 +284,13 @@ class NiceBidiClient:
         self._session_key: bytes | None = None
         self._sequence = 1
         self._lock = threading.RLock()
+        self._reconnect_count = 0
+
+    @property
+    def reconnect_count(self) -> int:
+        """Return the number of internal reconnect attempts."""
+        with self._lock:
+            return self._reconnect_count
 
     def close(self) -> None:
         """Close the current session."""
@@ -264,6 +300,10 @@ class NiceBidiClient:
     def read_status(self) -> NiceBidiStatus:
         """Read status and position DMP registers."""
         return self._run_with_reconnect(self._read_status_locked)
+
+    def read_info(self) -> NiceBidiDeviceInfo:
+        """Read static BiDi-WiFi and control-unit metadata."""
+        return self._run_with_reconnect(self._read_info_locked)
 
     def send_action(self, action: str) -> None:
         """Send a high-level DoorAction command."""
@@ -286,6 +326,7 @@ class NiceBidiClient:
                     last_error = exc
                     self._close_locked()
                     if attempt == 0:
+                        self._reconnect_count += 1
                         time.sleep(1.0)
             assert last_error is not None
             raise NiceBidiConnectionError(str(last_error)) from last_error
@@ -481,6 +522,44 @@ class NiceBidiClient:
             closed_position=closed,
             open_position=opened,
             registers={key: str(value.get("value_hex", "")) for key, value in registers.items()},
+        )
+
+    def _read_info_locked(self) -> NiceBidiDeviceInfo:
+        response = self._signed_exchange_locked("INFO")
+        text = _printable(response)
+        if "<Error>" in text:
+            raise NiceBidiConnectionError(text)
+
+        try:
+            root = ET.fromstring(_xml_payload(response))
+        except ET.ParseError as err:
+            raise NiceBidiConnectionError(f"Invalid INFO XML: {err}") from err
+
+        interface = root.find("Interface")
+        device = root.find(f"./Devices/Device[@id='{self.device_id}']")
+        if device is None:
+            device = root.find("./Devices/Device")
+
+        def find_text(node: ET.Element | None, name: str) -> str | None:
+            if node is None:
+                return None
+            value = node.findtext(name)
+            return value.strip() if value and value.strip() else None
+
+        return NiceBidiDeviceInfo(
+            interface_hw_version=find_text(interface, "VersionHW"),
+            interface_fw_version=find_text(interface, "VersionFW"),
+            interface_manufacturer=find_text(interface, "Manuf"),
+            interface_product=find_text(interface, "Prod"),
+            interface_serial=find_text(interface, "SerialNr"),
+            device_type=find_text(device, "Type"),
+            device_manufacturer=find_text(device, "Manuf"),
+            device_product=find_text(device, "Prod"),
+            device_description=find_text(device, "Desc"),
+            device_hw_version=find_text(device, "VersionHW"),
+            device_fw_version=find_text(device, "VersionFW"),
+            device_serial=find_text(device, "SerialNr"),
+            device_product_detail=find_text(device, "ProdDTL"),
         )
 
     def _t4_request_locked(

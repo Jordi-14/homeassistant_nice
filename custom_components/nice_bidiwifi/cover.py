@@ -6,15 +6,14 @@ from typing import Any
 
 from homeassistant.components.cover import CoverDeviceClass, CoverEntity, CoverEntityFeature
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_STOPPED, NiceBidiStatus
-from .const import CONF_DEVICE_ID, CONF_TARGET_MAC, DEFAULT_DEVICE_ID, DOMAIN
+from .const import DOMAIN
 from .coordinator import NiceBidiDataUpdateCoordinator
+from .entity import bidi_device_info, bidi_unique_id
 
 
 async def async_setup_entry(
@@ -39,16 +38,12 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
         """Initialize the cover."""
         super().__init__(coordinator)
         self._entry = entry
-        target_mac = entry.data[CONF_TARGET_MAC]
-        device_id = entry.data.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID)
-        self._attr_unique_id = f"{target_mac.lower().replace(':', '')}_{device_id}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, target_mac)},
-            name=entry.data.get(CONF_NAME),
-            manufacturer="Nice",
-            model="BiDi-WiFi",
-            configuration_url=f"https://{entry.data[CONF_HOST]}",
-        )
+        self._attr_unique_id = bidi_unique_id(entry, "cover")
+
+    @property
+    def device_info(self):
+        """Return device info, enriched with INFO metadata when available."""
+        return bidi_device_info(self._entry, self.coordinator.device_info)
 
     @property
     def available(self) -> bool:

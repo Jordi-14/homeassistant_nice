@@ -4,7 +4,7 @@ Custom Home Assistant integration for local control of a Nice gate through a
 Nice BiDi-WiFi interface.
 
 This integration talks directly to the BiDi-WiFi local NHK/T4 service over
-TLS/TCP 443 and creates one `cover` entity.
+TLS/TCP 443 and creates one `cover` entity plus helper diagnostic entities.
 
 ## Current Scope
 
@@ -13,6 +13,9 @@ TLS/TCP 443 and creates one `cover` entity.
 - Real position from DMP registers `04/11`, `04/18`, and `04/19`.
 - Faster polling while the gate is moving, slower polling while idle.
 - Automatic reconnect after BiDi reboot, HA restart, and transient TLS EOFs.
+- Diagnostic sensors for connection state, last update/error, reconnect count,
+  command latency, encoder calibration values, and device firmware/serial data.
+- Diagnostic buttons to refresh status immediately or force a local reconnect.
 
 ## Requirements
 
@@ -106,6 +109,39 @@ State values:
 - `04/01 = 03 ff 00 00` -> closing
 - `04/01 = 04 ff 00 00` -> open
 - `04/01 = 05 ff 00 00` -> closed
+
+## Helper Entities
+
+Enabled by default:
+
+- `cover`: open, close, stop, current position.
+- `sensor`: connection state.
+- `button`: refresh status.
+- `button`: reconnect.
+
+Disabled by default, but available from the entity registry:
+
+- Last successful update.
+- Last error.
+- Reconnect count.
+- Last command.
+- Last command latency.
+- Current, closed, and open encoder positions.
+- BiDi-WiFi firmware, hardware, and serial.
+- Control-unit firmware, hardware, serial, and product detail.
+
+## Future Work
+
+The following controls appeared in MyNice Pro but need more investigation before
+they should be exposed as Home Assistant entities:
+
+- Partial open 1/2/3.
+- Step-step.
+- Courtesy light on/off.
+- Master/slave open/close, where applicable.
+
+They will be added only after their local command names or T4/DMP frames are
+confirmed and tested safely.
 
 ## Safety
 
