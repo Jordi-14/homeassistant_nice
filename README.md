@@ -236,10 +236,14 @@ precision.
 An optional disabled-by-default diagnostic button can run a position calibration
 sequence. It calibrates 20/40/60/80% targets from closed, then from open. For
 each target it returns to the known endpoint, tries the target, records the
-error, adjusts the stop threshold, and retries up to five times or until the
-final error is within 1%. It finishes by closing the gate. Later position
-requests use the calibrated table and interpolate between neighboring points
-when possible.
+error, adjusts the stop threshold, and always makes six attempts. The target is
+treated as successful when the final two attempts both finish within 2%.
+Successful calibration finishes by closing the gate; failed calibration leaves
+the gate where it stopped so external traffic is not surprised by an automatic
+close. Later position requests use the calibrated table and interpolate between
+neighboring points when possible.
+During calibration it polls every 0.5 seconds and waits an extra second after a
+stop or fully reached endpoint before sending the next movement command.
 
 Calibration writes detailed Home Assistant log lines with the prefix
 `Nice BiDi-WiFi calibration:`. It also exposes a disabled-by-default diagnostic

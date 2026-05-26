@@ -53,17 +53,19 @@ CONNECTION_STATE_FAILED = "failed"
 CONNECTION_STATE_RECONNECTING = "reconnecting"
 CONNECTION_STATE_UNKNOWN = "unknown"
 
-POSITION_TARGET_POLL_SECONDS = 0.75
+POSITION_TARGET_POLL_SECONDS = 0.5
 POSITION_TARGET_TOLERANCE = 1.0
 
 CALIBRATION_STORAGE_VERSION = 1
 CALIBRATION_TARGETS = (20, 40, 60, 80)
 CALIBRATION_SETTLE_SECONDS = 2.0
+CALIBRATION_COMMAND_PAUSE_SECONDS = 1.0
 CALIBRATION_SETTLE_TIMEOUT_SECONDS = 8.0
 CALIBRATION_MOVEMENT_TIMEOUT_SECONDS = 90.0
 CALIBRATION_ENDPOINT_TOLERANCE = 1.0
-CALIBRATION_MAX_ATTEMPTS = 5
-CALIBRATION_TARGET_TOLERANCE_PERCENT = 1.0
+CALIBRATION_MAX_ATTEMPTS = 6
+CALIBRATION_STABILITY_ATTEMPTS = 2
+CALIBRATION_TARGET_TOLERANCE_PERCENT = 2.0
 
 CALIBRATION_STATE_CALIBRATED = "calibrated"
 CALIBRATION_STATE_CANCELLED = "cancelled"
@@ -335,8 +337,10 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             "Position calibration requested",
             targets=list(CALIBRATION_TARGETS),
             max_attempts=CALIBRATION_MAX_ATTEMPTS,
+            stability_attempts=CALIBRATION_STABILITY_ATTEMPTS,
             tolerance_percent=CALIBRATION_TARGET_TOLERANCE_PERCENT,
             poll_seconds=POSITION_TARGET_POLL_SECONDS,
+            command_pause_seconds=CALIBRATION_COMMAND_PAUSE_SECONDS,
         )
         self.async_update_listeners()
         self._calibration_task = self.hass.async_create_task(
@@ -416,12 +420,14 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         updated_at = datetime.now(UTC)
 
         return {
-            "version": 2,
+            "version": 3,
             "created_at": started_at.isoformat(),
             "updated_at": updated_at.isoformat(),
             "poll_seconds": POSITION_TARGET_POLL_SECONDS,
             "settle_seconds": CALIBRATION_SETTLE_SECONDS,
+            "command_pause_seconds": CALIBRATION_COMMAND_PAUSE_SECONDS,
             "max_attempts": CALIBRATION_MAX_ATTEMPTS,
+            "stability_attempts": CALIBRATION_STABILITY_ATTEMPTS,
             "target_tolerance_percent": CALIBRATION_TARGET_TOLERANCE_PERCENT,
             "targets": list(CALIBRATION_TARGETS),
             "bounds": {
@@ -476,14 +482,16 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             sample = await self._async_calibrate_target(target, action, endpoint_action, attempt, stop_raw)
             attempts.append(sample)
             stop_raw = sample["corrected_stop_raw"]
-            successful = abs(sample["error_percent"]) <= CALIBRATION_TARGET_TOLERANCE_PERCENT
+            attempt_successful = abs(sample["error_percent"]) <= CALIBRATION_TARGET_TOLERANCE_PERCENT
             self._add_calibration_event(
                 "attempt",
                 f"{action} {target}% attempt {attempt}: settled with {sample['error_percent']}% error",
                 action=action,
                 target_percent=target,
                 attempt=attempt,
-                successful=successful,
+                successful=attempt_successful,
+                stable_success=self._calibration_attempts_stable(attempts),
+                successful_attempts=self._calibration_success_count(attempts),
                 final_percent=sample["final_percent"],
                 error_percent=sample["error_percent"],
                 requested_stop_percent=sample["requested_stop_percent"],
@@ -493,9 +501,8 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             )
 
             await self._async_move_to_end(endpoint_action)
-            if successful:
-                break
 
+        successful = self._calibration_attempts_stable(attempts)
         final_sample = attempts[-1]
         self._add_calibration_event(
             "target",
@@ -503,6 +510,8 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             action=action,
             target_percent=target,
             successful=successful,
+            successful_attempts=self._calibration_success_count(attempts),
+            stability_attempts=CALIBRATION_STABILITY_ATTEMPTS,
             attempts_used=len(attempts),
             final_error_percent=final_sample["error_percent"],
             corrected_stop_percent=final_sample["corrected_stop_percent"],
@@ -510,9 +519,30 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         return {
             **final_sample,
             "successful": successful,
+            "successful_attempts": self._calibration_success_count(attempts),
+            "stability_attempts": CALIBRATION_STABILITY_ATTEMPTS,
             "attempts_used": len(attempts),
             "attempts": attempts,
         }
+
+    @staticmethod
+    def _calibration_success_count(attempts: list[dict[str, Any]]) -> int:
+        """Return how many attempts finished inside the calibration tolerance."""
+        return sum(
+            1
+            for attempt in attempts
+            if abs(float(attempt.get("error_percent", 1000.0))) <= CALIBRATION_TARGET_TOLERANCE_PERCENT
+        )
+
+    @staticmethod
+    def _calibration_attempts_stable(attempts: list[dict[str, Any]]) -> bool:
+        """Return true when the final attempts show repeatable accuracy."""
+        if len(attempts) < CALIBRATION_STABILITY_ATTEMPTS:
+            return False
+        return (
+            NiceBidiDataUpdateCoordinator._calibration_success_count(attempts[-CALIBRATION_STABILITY_ATTEMPTS:])
+            == CALIBRATION_STABILITY_ATTEMPTS
+        )
 
     async def _async_calibrate_target(
         self,
@@ -681,6 +711,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                     state=status.state,
                     duration_ms=round((time.monotonic() - started) * 1000),
                 )
+                await self._async_pause_before_next_calibration_command()
                 return status
             if status.state == moving_state:
                 started_moving = True
@@ -697,7 +728,13 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         while status.is_moving and time.monotonic() - started < CALIBRATION_SETTLE_TIMEOUT_SECONDS:
             await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
             status = await self._async_read_motion_status()
+        await self._async_pause_before_next_calibration_command()
         return status
+
+    async def _async_pause_before_next_calibration_command(self) -> None:
+        """Give the gate controller a small quiet period before the next command."""
+        if CALIBRATION_COMMAND_PAUSE_SECONDS > 0:
+            await asyncio.sleep(CALIBRATION_COMMAND_PAUSE_SECONDS)
 
     async def _async_read_motion_status(self) -> NiceBidiStatus:
         """Read status during motion-sensitive operations."""
@@ -811,12 +848,18 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
     def _is_at_endpoint(status: NiceBidiStatus, action: str) -> bool:
         """Return true when status is at the requested endpoint."""
         if action == "open":
-            return status.state == STATE_OPEN or (
-                status.position is not None and status.position >= 100.0 - CALIBRATION_ENDPOINT_TOLERANCE
+            open_by_position = (
+                not status.is_moving
+                and status.position is not None
+                and status.position >= 100.0 - CALIBRATION_ENDPOINT_TOLERANCE
             )
-        return status.state == STATE_CLOSED or (
-            status.position is not None and status.position <= CALIBRATION_ENDPOINT_TOLERANCE
+            return status.state == STATE_OPEN or open_by_position
+        closed_by_position = (
+            not status.is_moving
+            and status.position is not None
+            and status.position <= CALIBRATION_ENDPOINT_TOLERANCE
         )
+        return status.state == STATE_CLOSED or closed_by_position
 
     @property
     def calibration_quality(self) -> str | None:
@@ -877,6 +920,12 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             "quality": self.calibration_state,
             "summary": summary,
             "updated_at": datetime.now(UTC).isoformat(),
+            "tolerance_percent": CALIBRATION_TARGET_TOLERANCE_PERCENT,
+            "poll_seconds": POSITION_TARGET_POLL_SECONDS,
+            "settle_seconds": CALIBRATION_SETTLE_SECONDS,
+            "command_pause_seconds": CALIBRATION_COMMAND_PAUSE_SECONDS,
+            "max_attempts": CALIBRATION_MAX_ATTEMPTS,
+            "stability_attempts": CALIBRATION_STABILITY_ATTEMPTS,
             "events": list(self._calibration_events),
         }
         report["copyable_report"] = self._format_calibration_report(report)
@@ -940,7 +989,9 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             "tolerance_percent": tolerance,
             "poll_seconds": profile.get("poll_seconds"),
             "settle_seconds": profile.get("settle_seconds"),
+            "command_pause_seconds": profile.get("command_pause_seconds"),
             "max_attempts": profile.get("max_attempts"),
+            "stability_attempts": profile.get("stability_attempts"),
             "point_count": total_points,
             "successful_points": success_count,
             "failed_points": failed_points,
@@ -995,6 +1046,8 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                         "direction": direction,
                         "target_percent": sample.get("target_percent"),
                         "successful": bool(sample.get("successful")),
+                        "successful_attempts": sample.get("successful_attempts"),
+                        "stability_attempts": sample.get("stability_attempts"),
                         "attempts_used": int(sample.get("attempts_used") or 0),
                         "final_percent": sample.get("final_percent"),
                         "final_error_percent": sample.get("error_percent"),
@@ -1028,6 +1081,8 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             f"Tolerance: {report.get('tolerance_percent')}%",
             f"Poll seconds: {report.get('poll_seconds')}",
             f"Settle seconds: {report.get('settle_seconds')}",
+            f"Command pause seconds: {report.get('command_pause_seconds')}",
+            f"Stability attempts: {report.get('stability_attempts')}",
         ]
 
         bounds = report.get("bounds")
@@ -1046,6 +1101,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                     "- "
                     f"{point.get('direction')} {point.get('target_percent')}% "
                     f"success={point.get('successful')} "
+                    f"successful_attempts={point.get('successful_attempts')} "
                     f"attempts={point.get('attempts_used')} "
                     f"final={point.get('final_percent')}% "
                     f"error={point.get('final_error_percent')}% "
