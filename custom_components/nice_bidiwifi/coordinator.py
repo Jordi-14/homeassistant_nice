@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from datetime import UTC, datetime
+import json
 import logging
 import time
 from typing import Any
@@ -91,6 +92,8 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.calibration_last_error: str | None = None
         self.calibration_updated_at: datetime | None = None
         self.calibration_profile: dict[str, Any] | None = None
+        self.calibration_report: dict[str, Any] | None = None
+        self._calibration_events: list[dict[str, Any]] = []
         self._calibration_store = Store[dict[str, Any]](
             hass,
             CALIBRATION_STORAGE_VERSION,
@@ -128,6 +131,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.calibration_profile = stored_profile
         self.calibration_state = CALIBRATION_STATE_CALIBRATED
         self.calibration_last_error = None
+        self.calibration_report = self._build_calibration_report(stored_profile)
         updated_at = self.calibration_profile.get("updated_at")
         if isinstance(updated_at, str):
             with suppress(ValueError):
@@ -322,8 +326,18 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             raise HomeAssistantError("Nice BiDi-WiFi position calibration is already running")
 
         await self._async_cancel_position_target()
+        self._calibration_events = []
         self.calibration_state = CALIBRATION_STATE_RUNNING
         self.calibration_last_error = None
+        self.calibration_report = self._build_live_calibration_report("Calibration started")
+        self._add_calibration_event(
+            "run",
+            "Position calibration requested",
+            targets=list(CALIBRATION_TARGETS),
+            max_attempts=CALIBRATION_MAX_ATTEMPTS,
+            tolerance_percent=CALIBRATION_TARGET_TOLERANCE_PERCENT,
+            poll_seconds=POSITION_TARGET_POLL_SECONDS,
+        )
         self.async_update_listeners()
         self._calibration_task = self.hass.async_create_task(
             self._async_run_position_calibration(),
@@ -335,9 +349,12 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         task = asyncio.current_task()
         try:
             profile = await self._async_build_position_calibration()
+            self._add_calibration_event("run", "Position calibration completed")
+            profile["events"] = list(self._calibration_events)
             self.calibration_profile = profile
             self.calibration_state = CALIBRATION_STATE_CALIBRATED
             self.calibration_last_error = None
+            self.calibration_report = self._build_calibration_report(profile)
             updated_at = profile.get("updated_at")
             if isinstance(updated_at, str):
                 self.calibration_updated_at = datetime.fromisoformat(updated_at)
@@ -345,10 +362,14 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         except asyncio.CancelledError:
             self.calibration_state = CALIBRATION_STATE_CANCELLED
             self.calibration_last_error = "cancelled"
+            self._add_calibration_event("run", "Position calibration cancelled")
+            self.calibration_report = self._build_live_calibration_report("Calibration cancelled")
             raise
         except (NiceBidiAuthError, NiceBidiConnectionError, OSError, HomeAssistantError) as err:
             self.calibration_state = CALIBRATION_STATE_FAILED
             self.calibration_last_error = str(err)
+            self._add_calibration_event("run", "Position calibration failed", error=str(err))
+            self.calibration_report = self._build_live_calibration_report("Calibration failed")
             _LOGGER.warning("Nice BiDi-WiFi position calibration failed: %s", err)
         finally:
             if self._calibration_task is task:
@@ -358,19 +379,40 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
     async def _async_build_position_calibration(self) -> dict[str, Any]:
         """Build a direction-specific calibration profile."""
         started_at = datetime.now(UTC)
+        self._add_calibration_event("run", "Reading initial status")
         start_status = await self._async_read_motion_status()
         self._validate_position_bounds(start_status)
+        self._add_calibration_event(
+            "run",
+            "Initial encoder bounds read",
+            current_raw=start_status.current_position,
+            current_percent=start_status.position,
+            closed_raw=start_status.closed_position,
+            open_raw=start_status.open_position,
+            state=start_status.state,
+        )
 
         opening_samples = []
         for target in CALIBRATION_TARGETS:
+            self._add_calibration_event("target", f"Opening-side calibration for {target}% started")
             opening_samples.append(await self._async_calibrate_target_from_endpoint(target, "open", "close"))
 
+        self._add_calibration_event("endpoint", "Moving fully open before closing-side calibration")
         open_status = await self._async_move_to_end("open")
         closing_samples = []
         for target in reversed(CALIBRATION_TARGETS):
+            self._add_calibration_event("target", f"Closing-side calibration for {target}% started")
             closing_samples.append(await self._async_calibrate_target_from_endpoint(target, "close", "open"))
 
+        self._add_calibration_event("endpoint", "Final close started")
         final_status = await self._async_move_to_end("close")
+        self._add_calibration_event(
+            "endpoint",
+            "Final close completed",
+            current_raw=final_status.current_position,
+            current_percent=final_status.position,
+            state=final_status.state,
+        )
         updated_at = datetime.now(UTC)
 
         return {
@@ -409,20 +451,62 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         successful = False
 
         for attempt in range(1, CALIBRATION_MAX_ATTEMPTS + 1):
+            self._add_calibration_event(
+                "attempt",
+                f"{action} {target}% attempt {attempt}: moving to known {endpoint_action} endpoint",
+                action=action,
+                target_percent=target,
+                attempt=attempt,
+                endpoint_action=endpoint_action,
+                requested_stop_raw=stop_raw,
+            )
             endpoint_status = await self._async_move_to_end(endpoint_action)
             if stop_raw is None:
                 stop_raw = self._raw_for_percent(endpoint_status, target)
+                self._add_calibration_event(
+                    "attempt",
+                    f"{action} {target}% attempt {attempt}: using nominal first stop threshold",
+                    action=action,
+                    target_percent=target,
+                    attempt=attempt,
+                    requested_stop_raw=stop_raw,
+                    requested_stop_percent=round(self._percent_for_raw(endpoint_status, stop_raw), 2),
+                )
 
             sample = await self._async_calibrate_target(target, action, endpoint_action, attempt, stop_raw)
             attempts.append(sample)
             stop_raw = sample["corrected_stop_raw"]
             successful = abs(sample["error_percent"]) <= CALIBRATION_TARGET_TOLERANCE_PERCENT
+            self._add_calibration_event(
+                "attempt",
+                f"{action} {target}% attempt {attempt}: settled with {sample['error_percent']}% error",
+                action=action,
+                target_percent=target,
+                attempt=attempt,
+                successful=successful,
+                final_percent=sample["final_percent"],
+                error_percent=sample["error_percent"],
+                requested_stop_percent=sample["requested_stop_percent"],
+                corrected_stop_percent=sample["corrected_stop_percent"],
+                stop_command_latency_ms=sample["stop_command_latency_ms"],
+                move_duration_ms=sample["move_duration_ms"],
+            )
 
             await self._async_move_to_end(endpoint_action)
             if successful:
                 break
 
         final_sample = attempts[-1]
+        self._add_calibration_event(
+            "target",
+            f"{action} {target}% calibration finished",
+            action=action,
+            target_percent=target,
+            successful=successful,
+            attempts_used=len(attempts),
+            final_error_percent=final_sample["error_percent"],
+            corrected_stop_percent=final_sample["corrected_stop_percent"],
+        )
         return {
             **final_sample,
             "successful": successful,
@@ -449,6 +533,18 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         if self._raw_reached(action, status, start_raw, target_raw):
             raise HomeAssistantError(f"Position calibration already crossed {target}% while preparing to {action}")
 
+        self._add_calibration_event(
+            "attempt",
+            f"{action} {target}% attempt {attempt}: movement command sent",
+            action=action,
+            target_percent=target,
+            attempt=attempt,
+            start_raw=start_raw,
+            start_percent=round(self._percent_for_raw(status, start_raw), 2),
+            target_raw=target_raw,
+            requested_stop_raw=requested_stop_raw,
+            requested_stop_percent=round(self._percent_for_raw(status, requested_stop_raw), 2),
+        )
         move_started = time.monotonic()
         await self._async_send_action(action, refresh=False)
         stop_command_raw: int | None = None
@@ -464,6 +560,18 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 continue
             if self._raw_reached(action, status, current_raw, requested_stop_raw):
                 stop_command_raw = current_raw
+                self._add_calibration_event(
+                    "attempt",
+                    f"{action} {target}% attempt {attempt}: stop threshold reached",
+                    action=action,
+                    target_percent=target,
+                    attempt=attempt,
+                    current_raw=current_raw,
+                    current_percent=round(self._percent_for_raw(status, current_raw), 2),
+                    requested_stop_raw=requested_stop_raw,
+                    requested_stop_percent=round(self._percent_for_raw(status, requested_stop_raw), 2),
+                    state=status.state,
+                )
                 await self._async_send_action("stop", refresh=False)
                 break
             if status.state == moving_state:
@@ -486,6 +594,28 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         move_duration_ms = round((time.monotonic() - move_started) * 1000)
         travel_raw = stop_command_raw - start_raw
         speed_raw_per_second = (travel_raw / move_duration_ms) * 1000 if move_duration_ms > 0 else None
+        final_percent = round(self._percent_for_raw(settled, final_raw), 2)
+        error_percent = round(final_percent - target, 2)
+        stop_command_percent = round(self._percent_for_raw(status, stop_command_raw), 2)
+        corrected_stop_percent = round(self._percent_for_raw(status, corrected_stop_raw), 2)
+        self._add_calibration_event(
+            "attempt",
+            f"{action} {target}% attempt {attempt}: settled position read",
+            action=action,
+            target_percent=target,
+            attempt=attempt,
+            final_raw=final_raw,
+            final_percent=final_percent,
+            error_raw=error_raw,
+            error_percent=error_percent,
+            stop_command_raw=stop_command_raw,
+            stop_command_percent=stop_command_percent,
+            corrected_stop_raw=corrected_stop_raw,
+            corrected_stop_percent=corrected_stop_percent,
+            move_duration_ms=move_duration_ms,
+            stop_command_latency_ms=self.last_command_latency_ms,
+            speed_raw_per_second=round(speed_raw_per_second, 2) if speed_raw_per_second is not None else None,
+        )
 
         return {
             "action": action,
@@ -498,13 +628,13 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             "requested_stop_raw": requested_stop_raw,
             "requested_stop_percent": round(self._percent_for_raw(status, requested_stop_raw), 2),
             "stop_command_raw": stop_command_raw,
-            "stop_command_percent": round(self._percent_for_raw(status, stop_command_raw), 2),
+            "stop_command_percent": stop_command_percent,
             "corrected_stop_raw": corrected_stop_raw,
-            "corrected_stop_percent": round(self._percent_for_raw(status, corrected_stop_raw), 2),
+            "corrected_stop_percent": corrected_stop_percent,
             "final_raw": final_raw,
-            "final_percent": round(self._percent_for_raw(settled, final_raw), 2),
+            "final_percent": final_percent,
             "error_raw": error_raw,
-            "error_percent": round(self._percent_for_raw(settled, final_raw) - target, 2),
+            "error_percent": error_percent,
             "move_duration_ms": move_duration_ms,
             "speed_raw_per_second": round(speed_raw_per_second, 2) if speed_raw_per_second is not None else None,
             "stop_command_latency_ms": self.last_command_latency_ms,
@@ -515,8 +645,24 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         status = await self._async_read_motion_status()
         self._validate_position_bounds(status)
         if self._is_at_endpoint(status, action):
+            self._add_calibration_event(
+                "endpoint",
+                f"Already at {action} endpoint",
+                action=action,
+                current_raw=status.current_position,
+                current_percent=status.position,
+                state=status.state,
+            )
             return status
 
+        self._add_calibration_event(
+            "endpoint",
+            f"Moving to {action} endpoint",
+            action=action,
+            current_raw=status.current_position,
+            current_percent=status.position,
+            state=status.state,
+        )
         await self._async_send_action(action, refresh=False)
         started = time.monotonic()
         moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
@@ -526,6 +672,15 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
             status = await self._async_read_motion_status()
             if self._is_at_endpoint(status, action):
+                self._add_calibration_event(
+                    "endpoint",
+                    f"Reached {action} endpoint",
+                    action=action,
+                    current_raw=status.current_position,
+                    current_percent=status.position,
+                    state=status.state,
+                    duration_ms=round((time.monotonic() - started) * 1000),
+                )
                 return status
             if status.state == moving_state:
                 started_moving = True
@@ -662,6 +817,274 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         return status.state == STATE_CLOSED or (
             status.position is not None and status.position <= CALIBRATION_ENDPOINT_TOLERANCE
         )
+
+    @property
+    def calibration_quality(self) -> str | None:
+        """Return the latest calibration quality grade."""
+        if self.calibration_report is None:
+            return None
+        quality = self.calibration_report.get("quality")
+        return str(quality) if quality is not None else None
+
+    @property
+    def calibration_report_summary(self) -> str | None:
+        """Return a compact calibration report summary."""
+        if self.calibration_report is None:
+            return None
+        summary = self.calibration_report.get("summary")
+        return str(summary)[:255] if summary is not None else None
+
+    @property
+    def calibration_report_attributes(self) -> dict[str, Any]:
+        """Return copyable calibration report attributes."""
+        if self.calibration_report is None:
+            return {}
+
+        report = dict(self.calibration_report)
+        copyable_report = report.pop("copyable_report", None)
+        report_json = json.dumps(report, indent=2, sort_keys=True)
+        return {
+            "quality": report.get("quality"),
+            "summary": report.get("summary"),
+            "copyable_report": copyable_report,
+            "report_json": report_json,
+            "report": report,
+        }
+
+    def _add_calibration_event(self, stage: str, message: str, **details: Any) -> None:
+        """Record one detailed calibration event and write it to HA logs."""
+        event = {
+            "index": len(self._calibration_events) + 1,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "stage": stage,
+            "message": message,
+            "details": details,
+        }
+        self._calibration_events.append(event)
+        if details:
+            _LOGGER.info("Nice BiDi-WiFi calibration: %s | %s", message, json.dumps(details, sort_keys=True))
+        else:
+            _LOGGER.info("Nice BiDi-WiFi calibration: %s", message)
+
+        if self.calibration_state == CALIBRATION_STATE_RUNNING:
+            self.calibration_report = self._build_live_calibration_report(message)
+            self.async_update_listeners()
+
+    def _build_live_calibration_report(self, summary: str) -> dict[str, Any]:
+        """Build a report while calibration is still running or failed."""
+        report = {
+            "state": self.calibration_state,
+            "quality": self.calibration_state,
+            "summary": summary,
+            "updated_at": datetime.now(UTC).isoformat(),
+            "events": list(self._calibration_events),
+        }
+        report["copyable_report"] = self._format_calibration_report(report)
+        return report
+
+    def _build_calibration_report(self, profile: dict[str, Any]) -> dict[str, Any]:
+        """Build quality metrics and a copyable report from a calibration profile."""
+        points = self._calibration_points(profile)
+        events = profile.get("events", [])
+        tolerance = float(profile.get("target_tolerance_percent") or CALIBRATION_TARGET_TOLERANCE_PERCENT)
+
+        if not points:
+            report = {
+                "state": self.calibration_state,
+                "quality": "unknown",
+                "summary": "No calibration points found in the stored profile",
+                "profile": profile,
+                "points": [],
+                "events": events if isinstance(events, list) else [],
+            }
+            report["copyable_report"] = self._format_calibration_report(report)
+            return report
+
+        abs_errors = [abs(float(point["final_error_percent"])) for point in points]
+        attempts_used = [int(point["attempts_used"]) for point in points]
+        success_count = sum(1 for point in points if point["successful"])
+        total_points = len(points)
+        max_abs_error = round(max(abs_errors), 2)
+        avg_abs_error = round(sum(abs_errors) / total_points, 2)
+        total_attempts = sum(attempts_used)
+        max_attempts_used = max(attempts_used)
+        failed_points = [
+            {
+                "direction": point["direction"],
+                "target_percent": point["target_percent"],
+                "final_error_percent": point["final_error_percent"],
+                "attempts_used": point["attempts_used"],
+            }
+            for point in points
+            if not point["successful"]
+        ]
+
+        quality = self._calibration_quality(
+            success_count,
+            total_points,
+            max_abs_error,
+            avg_abs_error,
+            max_attempts_used,
+        )
+        summary = (
+            f"{quality}: {success_count}/{total_points} targets within {tolerance:g}%"
+            f"; max error {max_abs_error:.2f}%; avg error {avg_abs_error:.2f}%"
+            f"; attempts {total_attempts}; events {len(events) if isinstance(events, list) else 0}"
+        )
+        report = {
+            "state": self.calibration_state,
+            "quality": quality,
+            "summary": summary,
+            "updated_at": profile.get("updated_at"),
+            "profile_version": profile.get("version"),
+            "tolerance_percent": tolerance,
+            "poll_seconds": profile.get("poll_seconds"),
+            "settle_seconds": profile.get("settle_seconds"),
+            "max_attempts": profile.get("max_attempts"),
+            "point_count": total_points,
+            "successful_points": success_count,
+            "failed_points": failed_points,
+            "total_attempts": total_attempts,
+            "max_attempts_used": max_attempts_used,
+            "max_abs_error_percent": max_abs_error,
+            "avg_abs_error_percent": avg_abs_error,
+            "bounds": profile.get("bounds", {}),
+            "points": points,
+            "events": events if isinstance(events, list) else [],
+        }
+        report["copyable_report"] = self._format_calibration_report(report)
+        return report
+
+    @staticmethod
+    def _calibration_quality(
+        success_count: int,
+        total_points: int,
+        max_abs_error: float,
+        avg_abs_error: float,
+        max_attempts_used: int,
+    ) -> str:
+        """Return a simple quality grade for a calibration result."""
+        if success_count < total_points:
+            return "needs_review"
+        if max_abs_error <= 0.5 and avg_abs_error <= 0.35 and max_attempts_used <= 2:
+            return "excellent"
+        if max_abs_error <= 1.0:
+            return "good"
+        if max_abs_error <= 2.0:
+            return "usable"
+        return "needs_review"
+
+    @staticmethod
+    def _calibration_points(profile: dict[str, Any]) -> list[dict[str, Any]]:
+        """Flatten stored calibration samples into report points."""
+        samples_by_direction = profile.get("samples")
+        if not isinstance(samples_by_direction, dict):
+            return []
+
+        points: list[dict[str, Any]] = []
+        for direction in ("open", "close"):
+            samples = samples_by_direction.get(direction, [])
+            if not isinstance(samples, list):
+                continue
+            for sample in samples:
+                if not isinstance(sample, dict):
+                    continue
+                attempts = sample.get("attempts", [])
+                points.append(
+                    {
+                        "direction": direction,
+                        "target_percent": sample.get("target_percent"),
+                        "successful": bool(sample.get("successful")),
+                        "attempts_used": int(sample.get("attempts_used") or 0),
+                        "final_percent": sample.get("final_percent"),
+                        "final_error_percent": sample.get("error_percent"),
+                        "final_error_raw": sample.get("error_raw"),
+                        "corrected_stop_percent": sample.get("corrected_stop_percent"),
+                        "corrected_stop_raw": sample.get("corrected_stop_raw"),
+                        "final_attempt": {
+                            "attempt": sample.get("attempt"),
+                            "requested_stop_percent": sample.get("requested_stop_percent"),
+                            "stop_command_percent": sample.get("stop_command_percent"),
+                            "final_percent": sample.get("final_percent"),
+                            "error_percent": sample.get("error_percent"),
+                            "move_duration_ms": sample.get("move_duration_ms"),
+                            "stop_command_latency_ms": sample.get("stop_command_latency_ms"),
+                            "speed_raw_per_second": sample.get("speed_raw_per_second"),
+                        },
+                        "attempts": attempts if isinstance(attempts, list) else [],
+                    }
+                )
+        return points
+
+    @staticmethod
+    def _format_calibration_report(report: dict[str, Any]) -> str:
+        """Format a calibration report as copyable plain text."""
+        lines = [
+            "Nice BiDi-WiFi position calibration report",
+            f"State: {report.get('state')}",
+            f"Quality: {report.get('quality')}",
+            f"Summary: {report.get('summary')}",
+            f"Updated at: {report.get('updated_at')}",
+            f"Tolerance: {report.get('tolerance_percent')}%",
+            f"Poll seconds: {report.get('poll_seconds')}",
+            f"Settle seconds: {report.get('settle_seconds')}",
+        ]
+
+        bounds = report.get("bounds")
+        if isinstance(bounds, dict) and bounds:
+            lines.append("")
+            lines.append("Bounds:")
+            for key, value in sorted(bounds.items()):
+                lines.append(f"- {key}: {value}")
+
+        points = report.get("points")
+        if isinstance(points, list) and points:
+            lines.append("")
+            lines.append("Calibration points:")
+            for point in points:
+                lines.append(
+                    "- "
+                    f"{point.get('direction')} {point.get('target_percent')}% "
+                    f"success={point.get('successful')} "
+                    f"attempts={point.get('attempts_used')} "
+                    f"final={point.get('final_percent')}% "
+                    f"error={point.get('final_error_percent')}% "
+                    f"corrected_stop={point.get('corrected_stop_percent')}%"
+                )
+                attempts = point.get("attempts")
+                if isinstance(attempts, list):
+                    for attempt in attempts:
+                        if not isinstance(attempt, dict):
+                            continue
+                        lines.append(
+                            "  "
+                            f"attempt {attempt.get('attempt')}: "
+                            f"requested_stop={attempt.get('requested_stop_percent')}% "
+                            f"stop_sent={attempt.get('stop_command_percent')}% "
+                            f"final={attempt.get('final_percent')}% "
+                            f"error={attempt.get('error_percent')}% "
+                            f"latency={attempt.get('stop_command_latency_ms')}ms "
+                            f"duration={attempt.get('move_duration_ms')}ms "
+                            f"speed_raw_per_second={attempt.get('speed_raw_per_second')}"
+                        )
+
+        events = report.get("events")
+        if isinstance(events, list) and events:
+            lines.append("")
+            lines.append("Event log:")
+            for event in events:
+                if not isinstance(event, dict):
+                    continue
+                details = event.get("details")
+                detail_text = ""
+                if isinstance(details, dict) and details:
+                    detail_text = f" {json.dumps(details, sort_keys=True)}"
+                lines.append(
+                    f"[{event.get('index')}] {event.get('timestamp')} "
+                    f"{event.get('stage')}: {event.get('message')}{detail_text}"
+                )
+
+        return "\n".join(lines)
 
     async def async_reconnect(self) -> None:
         """Force the current NHK/TLS session to be recreated."""

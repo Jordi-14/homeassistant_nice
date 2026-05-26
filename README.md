@@ -21,6 +21,8 @@ Latest release: `v0.3.0`
   stop once the target percentage is reached or crossed.
 - Optional position calibration that moves through 20/40/60/80% targets, learns
   direction-specific stop correction, and interpolates between calibrated points.
+- Detailed calibration quality report with per-target attempts, final errors,
+  corrected stop thresholds, command latency, movement timing, and event logs.
 - Real state from DMP register `04/01`.
 - Real position from DMP registers `04/11`, `04/18`, and `04/19`.
 - Faster polling while the gate is moving, slower polling while idle.
@@ -239,6 +241,13 @@ final error is within 1%. It finishes by closing the gate. Later position
 requests use the calibrated table and interpolate between neighboring points
 when possible.
 
+Calibration writes detailed Home Assistant log lines with the prefix
+`Nice BiDi-WiFi calibration:`. It also exposes a disabled-by-default diagnostic
+sensor named `Position calibration report`; enable it after calibration and copy
+the `copyable_report` or `report_json` attribute when sharing results for
+analysis. The report includes a quality grade, max/average error, failed points,
+all attempts per target, command latency, movement duration, and the event log.
+
 Position is calculated as:
 
 ```text
@@ -283,12 +292,14 @@ Enabled by default:
 - `cover`: open, close, stop, current position, and set-position slider with optional calibration.
 - `sensor`: connection state.
 - `sensor`: position calibration state.
+- `sensor`: position calibration quality.
 - `button`: refresh status.
 - `button`: reconnect.
 
 Disabled by default, but available from the entity registry:
 
 - Position calibration button.
+- Position calibration report.
 - Last position calibration.
 - Position calibration error.
 - Last successful update.
