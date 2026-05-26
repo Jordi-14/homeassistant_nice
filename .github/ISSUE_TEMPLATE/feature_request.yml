@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an improvement or new entity for the integration.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach app backups, SQLite files, pcaps, passwords, or extracted
+        credentials. Describe the requested behavior without private data.
+  - type: textarea
+    id: feature
+    attributes:
+      label: Feature
+      description: What should the integration do?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What hardware, command, or workflow does this relate to?
+    validations:
+      required: false

@@ -1,6 +1,4 @@
 {
   "name": "Nice BiDi-WiFi",
-  "domains": ["cover", "sensor", "button"],
-  "render_readme": true,
   "homeassistant": "2024.11.0"
 }

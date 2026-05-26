@@ -1,5 +1,8 @@
 # Nice BiDi-WiFi for Home Assistant
 
+[![HACS Validation](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hacs.yml/badge.svg)](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hacs.yml)
+[![Hassfest](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml/badge.svg)](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml)
+
 Custom Home Assistant integration for local control of a Nice gate through a
 Nice BiDi-WiFi interface.
 
@@ -47,6 +50,26 @@ IP address, MAC address, username, or password should be shared on github.
 
 ## Installation
 
+### HACS Custom Repository
+
+Until this integration is accepted into the HACS default repositories, add it as
+a custom HACS integration repository:
+
+```text
+https://github.com/Jordi-14/homeassistant_nice
+```
+
+Category:
+
+```text
+Integration
+```
+
+Download it through HACS, restart Home Assistant, then add **Nice BiDi-WiFi**
+from **Settings -> Devices & services**.
+
+### Manual
+
 Copy this folder into your Home Assistant config directory:
 
 ```text
@@ -54,8 +77,6 @@ custom_components/nice_bidiwifi
 ```
 
 Then restart Home Assistant.
-
-For HACS as a custom repository, add this repository as an integration repo.
 
 ## Extracting Credentials
 
@@ -166,3 +187,23 @@ This controls a physical gate. Test while the gate is visible and keep the
 original Nice remote/app available.
 
 Do not publish app-data backups, SQLite databases, pcaps, or extracted passwords.
+
+## HACS Default Repository Readiness
+
+This repository is structured as a HACS integration repository:
+
+- One integration under `custom_components/nice_bidiwifi`.
+- Root `hacs.json`.
+- Integration `manifest.json` with `domain`, `documentation`,
+  `issue_tracker`, `codeowners`, `name`, and `version`.
+- Official Nice brand assets in `custom_components/nice_bidiwifi/brand`.
+- HACS validation and Hassfest GitHub Actions.
+- `README.md`, `info.md`, license, contribution notes, and issue templates.
+
+Before requesting inclusion in HACS defaults, the GitHub repository also needs:
+
+- A public GitHub repository with a description, topics, and issues enabled.
+- Passing HACS validation and Hassfest actions.
+- A full GitHub release, not only a tag.
+- A PR to `hacs/default` adding the repository alphabetically under
+  `integration`.

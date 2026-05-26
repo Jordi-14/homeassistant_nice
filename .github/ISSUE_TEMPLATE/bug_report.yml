@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a problem with the Nice BiDi-WiFi integration.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Do not paste app backups, SQLite files,
+        pcaps, passwords, or full local credential dumps.
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.5.0"
+    validations:
+      required: true
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: firmware_version
+    attributes:
+      label: BiDi-WiFi firmware version
+      description: Known working firmware is 2.6.4.
+      placeholder: "2.6.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Installation method
+      options:
+        - HACS
+        - Manual copy
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe what happened and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact IP addresses, usernames, MAC addresses, and passwords before posting.
+      render: text
+    validations:
+      required: false
