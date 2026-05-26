@@ -12,6 +12,9 @@ TLS/TCP 443 and creates one `cover` entity plus helper diagnostic entities.
 ## Current Scope
 
 - Open, stop, and close using the local `DoorAction` service.
+- Cover position slider with live percentage while the gate moves.
+- Coarse set-position support by moving in the required direction and sending
+  stop once the target percentage is reached or crossed.
 - Real state from DMP register `04/01`.
 - Real position from DMP registers `04/11`, `04/18`, and `04/19`.
 - Faster polling while the gate is moving, slower polling while idle.
@@ -128,6 +131,12 @@ the session or MyNice temporarily occupies the connection, the integration close
 the socket, marks the cover unavailable, and retries later instead of hammering
 the device.
 
+The cover exposes Home Assistant's position support. For intermediate targets,
+the integration sends `open` or `close`, polls the real encoder-derived
+position, and sends `stop` after the position reaches or crosses the requested
+percentage. This is intentionally coarse and should not be treated as millimeter
+precision.
+
 Position is calculated as:
 
 ```text
@@ -152,7 +161,7 @@ State values:
 
 Enabled by default:
 
-- `cover`: open, close, stop, current position.
+- `cover`: open, close, stop, current position, and coarse set-position slider.
 - `sensor`: connection state.
 - `button`: refresh status.
 - `button`: reconnect.
