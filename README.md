@@ -19,6 +19,10 @@ Latest release: `v0.3.0`
 - Live position percentage while the gate moves.
 - Coarse set-position support by moving in the required direction and sending
   stop once the target percentage is reached or crossed.
+- Optional position calibration that moves through 20/40/60/80% targets, learns
+  direction-specific stop correction, and interpolates between calibrated points.
+- Detailed calibration quality report with per-target attempts, final errors,
+  corrected stop thresholds, command latency, movement timing, and event logs.
 - Real state from DMP register `04/01`.
 - Real position from DMP registers `04/11`, `04/18`, and `04/19`.
 - Faster polling while the gate is moving, slower polling while idle.
@@ -229,6 +233,32 @@ position, and sends `stop` after the position reaches or crosses the requested
 percentage. This is intentionally coarse and should not be treated as millimeter
 precision.
 
+An optional disabled-by-default diagnostic button can run a position calibration
+sequence. It calibrates 20/40/60/80% targets from closed, then from open. For
+each target it returns to the known endpoint, tries the target, records the
+error, adjusts the stop threshold, and always makes five attempts. The target is
+treated as successful when any two consecutive attempts both finish within 2%.
+The stored stop threshold comes from that stable window when available, or from
+the best non-outlier attempt when the point is not repeatable.
+If the gate is still moving after the settle timeout, calibration sends another
+stop command and records that try as invalid instead of learning from the moving
+position.
+Successful calibration finishes by closing the gate; failed calibration leaves
+the gate where it stopped so external traffic is not surprised by an automatic
+close. Later position requests use the calibrated table and interpolate between
+neighboring points when possible.
+During calibration it polls every 0.5 seconds and waits 0.5 seconds after a
+stop or fully reached endpoint before sending the next movement command.
+
+Calibration writes detailed Home Assistant log lines with the prefix
+`Nice BiDi-WiFi calibration:`. It also exposes a disabled-by-default diagnostic
+sensor named `Position calibration report` with recorder-safe summary
+attributes. When calibration finishes or fails, the full detailed report is
+written to Home Assistant logs in chunks with the prefix
+`Nice BiDi-WiFi calibration report`. The full report includes a quality grade,
+max/average error, failed points, all attempts per target, command latency,
+movement duration, and the event log.
+
 Position is calculated as:
 
 ```text
@@ -270,13 +300,19 @@ by the Home Assistant frontend, not by this integration.
 
 Enabled by default:
 
-- `cover`: open, close, stop, current position, and coarse set-position slider.
+- `cover`: open, close, stop, current position, and set-position slider with optional calibration.
 - `sensor`: connection state.
+- `sensor`: position calibration state.
+- `sensor`: position calibration quality.
 - `button`: refresh status.
 - `button`: reconnect.
 
 Disabled by default, but available from the entity registry:
 
+- Position calibration button.
+- Position calibration report.
+- Last position calibration.
+- Position calibration error.
 - Last successful update.
 - Last error.
 - Reconnect count.

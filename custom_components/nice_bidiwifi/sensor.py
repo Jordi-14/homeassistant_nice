@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -24,6 +25,7 @@ class NiceBidiSensorEntityDescription(SensorEntityDescription):
     """Description for a Nice BiDi-WiFi sensor."""
 
     value_fn: Callable[[NiceBidiDataUpdateCoordinator], datetime | int | str | None]
+    extra_attributes_fn: Callable[[NiceBidiDataUpdateCoordinator], dict[str, Any]] | None = None
 
 
 def _status(coordinator: NiceBidiDataUpdateCoordinator) -> NiceBidiStatus | None:
@@ -80,6 +82,45 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         native_unit_of_measurement="ms",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda coordinator: coordinator.last_command_latency_ms,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="position_calibration_state",
+        name="Position calibration state",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:map-marker-check",
+        value_fn=lambda coordinator: coordinator.calibration_state,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="last_position_calibration",
+        name="Last position calibration",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda coordinator: coordinator.calibration_updated_at,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="position_calibration_error",
+        name="Position calibration error",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:alert-circle-outline",
+        value_fn=lambda coordinator: coordinator.calibration_last_error or "none",
+    ),
+    NiceBidiSensorEntityDescription(
+        key="position_calibration_quality",
+        name="Position calibration quality",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:chart-timeline-variant",
+        value_fn=lambda coordinator: coordinator.calibration_quality,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="position_calibration_report",
+        name="Position calibration report",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:file-chart-outline",
+        value_fn=lambda coordinator: coordinator.calibration_report_summary,
+        extra_attributes_fn=lambda coordinator: coordinator.calibration_report_attributes,
     ),
     NiceBidiSensorEntityDescription(
         key="current_encoder_position",
@@ -211,3 +252,10 @@ class NiceBidiSensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SensorEnt
     def native_value(self) -> datetime | int | str | None:
         """Return the sensor value."""
         return self.entity_description.value_fn(self.coordinator)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return extra diagnostic attributes."""
+        if self.entity_description.extra_attributes_fn is None:
+            return None
+        return self.entity_description.extra_attributes_fn(self.coordinator)
