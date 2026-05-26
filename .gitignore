@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Never commit local app backups, packet captures, or extracted secrets.
+*.imazingapp
+*.ipa
+*.pcap
+*.pcapng
+*.sqlite
+*.db
+imazingapp_extract/
+myniceapp_extract/
+ipa_extract/

@@ -1,0 +1,523 @@
+"""Local NHK/T4 client for Nice BiDi-WiFi."""
+
+from __future__ import annotations
+
+import base64
+from collections.abc import Callable
+from dataclasses import dataclass
+import hashlib
+import random
+import re
+import socket
+import ssl
+import string
+import threading
+import time
+from typing import Any
+
+STX = b"\x02"
+ETX = b"\x03"
+
+STATE_STOPPED = "stopped"
+STATE_OPENING = "opening"
+STATE_CLOSING = "closing"
+STATE_OPEN = "open"
+STATE_CLOSED = "closed"
+
+STATUS_BY_BYTE = {
+    0x01: STATE_STOPPED,
+    0x02: STATE_OPENING,
+    0x03: STATE_CLOSING,
+    0x04: STATE_OPEN,
+    0x05: STATE_CLOSED,
+}
+
+
+class NiceBidiError(Exception):
+    """Base error for Nice BiDi-WiFi communication."""
+
+
+class NiceBidiAuthError(NiceBidiError):
+    """Authentication failed."""
+
+
+class NiceBidiConnectionError(NiceBidiError):
+    """Connection failed or device did not respond."""
+
+
+@dataclass(frozen=True)
+class NiceBidiCredentials:
+    """Credentials needed for NHK local authentication."""
+
+    username: str
+    password_hex: str
+    target_mac: str
+    source_id: str | None = None
+
+    @property
+    def source(self) -> str:
+        """Return the NHK source identifier."""
+        return self.source_id or self.username
+
+    @property
+    def password(self) -> bytes:
+        """Return the pairing password as raw bytes."""
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", self.password_hex):
+            raise NiceBidiAuthError("Password must be a 64-character hexadecimal value")
+        return bytes.fromhex(self.password_hex)
+
+
+@dataclass(frozen=True)
+class NiceBidiStatus:
+    """Current gate state read from DMP registers."""
+
+    state: str | None
+    position: float | None
+    current_position: int | None
+    closed_position: int | None
+    open_position: int | None
+    registers: dict[str, str]
+
+    @property
+    def is_moving(self) -> bool:
+        """Return true when the gate is moving."""
+        return self.state in {STATE_OPENING, STATE_CLOSING}
+
+
+def _sha256(*values: bytes) -> bytes:
+    digest = hashlib.sha256()
+    for value in values:
+        digest.update(value)
+    return digest.digest()
+
+
+def _reverse_hex(value: str) -> bytes:
+    return bytes.fromhex(value)[::-1]
+
+
+def _printable(data: bytes) -> str:
+    return data.decode("utf-8", errors="replace").replace("\x02", "<STX>").replace("\x03", "<ETX>")
+
+
+def _attr(text: str, name: str) -> str | None:
+    match = re.search(rf'\b{name}="([^"]*)"', text)
+    return match.group(1) if match else None
+
+
+def _xml_escape(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def _xor_sha256(data: bytes, key: bytes) -> bytes:
+    digest = hashlib.sha256(key).digest()
+    return bytes(byte ^ digest[index % len(digest)] for index, byte in enumerate(data))
+
+
+def _random_t4_key(length: int = 31) -> bytes:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(random.choice(alphabet) for _ in range(length)).encode("ascii")
+
+
+def _dmp_checksum(*values: int) -> int:
+    checksum = 0
+    for value in values:
+        checksum ^= value
+    return checksum & 0xFF
+
+
+def build_dmp_read_frame(
+    daddr: int,
+    dendpoint: int,
+    group: int,
+    parameter: int,
+    index: int | None = None,
+) -> bytes:
+    """Build a DMP register read frame."""
+    args = [group, parameter, 0x99, 0x00]
+    if index is None:
+        args.append(0x00)
+    else:
+        args.extend([0x01, index])
+    sublen = len(args) + 1
+    marker = 0xC9 ^ sublen ^ daddr ^ dendpoint
+    body = [
+        daddr,
+        dendpoint,
+        0x50,
+        0x91,
+        0x08,
+        sublen,
+        marker,
+        *args,
+        _dmp_checksum(*args),
+    ]
+    length = len(body)
+    return bytes([0x55, length, *body, length])
+
+
+def parse_dmp_response(plain: bytes) -> dict[str, Any]:
+    """Parse a decrypted DMP response."""
+    result: dict[str, Any] = {"plain_hex": plain.hex(" ")}
+    if len(plain) < 15 or plain[0] != 0x55:
+        return result
+    result.update(
+        {
+            "group": f"{plain[9]:02X}",
+            "parameter": f"{plain[10]:02X}",
+            "operation": f"{plain[11]:02X}",
+        }
+    )
+    if plain[11] == 0x19 and len(plain) >= 15:
+        value_len = plain[12]
+        value_type = plain[13]
+        value = plain[14 : 14 + value_len]
+        if len(value) == value_len:
+            result.update(
+                {
+                    "value_type": f"{value_type:02X}",
+                    "value_hex": value.hex(" "),
+                    "value_uint_be": int.from_bytes(value, "big") if value else 0,
+                }
+            )
+    return result
+
+
+def _dmp_uint(register: dict[str, Any] | None) -> int | None:
+    if not register:
+        return None
+    value_hex = register.get("value_hex")
+    if not value_hex:
+        return None
+    try:
+        value = bytes.fromhex(value_hex)
+    except ValueError:
+        return None
+    if not value or all(byte == 0xFF for byte in value):
+        return None
+    return int.from_bytes(value, "big")
+
+
+def _status_from_register(register: dict[str, Any] | None) -> str | None:
+    if not register:
+        return None
+    value_hex = register.get("value_hex")
+    if not value_hex:
+        return None
+    try:
+        first_byte = int(value_hex.split()[0], 16)
+    except (IndexError, ValueError):
+        return None
+    return STATUS_BY_BYTE.get(first_byte)
+
+
+def _make_context() -> ssl.SSLContext:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.maximum_version = ssl.TLSVersion.TLSv1_2
+    return context
+
+
+def _frame(xml: str) -> bytes:
+    return STX + xml.encode("utf-8") + ETX
+
+
+T4_RE = re.compile(r"<T4\b(?P<attrs>[^>]*)>(?P<body>.*?)</T4>", re.DOTALL)
+
+
+class NiceBidiClient:
+    """Persistent local NHK client for a Nice BiDi-WiFi."""
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        credentials: NiceBidiCredentials,
+        *,
+        device_id: int = 1,
+        timeout: float = 10.0,
+        t4_timeout_ms: int = 200,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.credentials = credentials
+        self.device_id = device_id
+        self.timeout = timeout
+        self.t4_timeout_ms = t4_timeout_ms
+        self._socket: ssl.SSLSocket | None = None
+        self._session_id = 0
+        self._session_key: bytes | None = None
+        self._sequence = 1
+        self._lock = threading.RLock()
+
+    def close(self) -> None:
+        """Close the current session."""
+        with self._lock:
+            self._close_locked()
+
+    def read_status(self) -> NiceBidiStatus:
+        """Read status and position DMP registers."""
+        return self._run_with_reconnect(self._read_status_locked)
+
+    def send_action(self, action: str) -> None:
+        """Send a high-level DoorAction command."""
+        if action not in {"open", "stop", "close"}:
+            raise ValueError("action must be open, stop, or close")
+        self._run_with_reconnect(lambda: self._send_action_locked(action))
+
+    def test_connection(self) -> NiceBidiStatus:
+        """Authenticate and read status once."""
+        return self.read_status()
+
+    def _run_with_reconnect(self, operation: Callable[[], Any]) -> Any:
+        last_error: Exception | None = None
+        with self._lock:
+            for attempt in range(2):
+                try:
+                    self._ensure_connected_locked()
+                    return operation()
+                except (OSError, ssl.SSLError, NiceBidiConnectionError) as exc:
+                    last_error = exc
+                    self._close_locked()
+                    if attempt == 0:
+                        time.sleep(1.0)
+            assert last_error is not None
+            raise NiceBidiConnectionError(str(last_error)) from last_error
+
+    def _open_locked(self) -> None:
+        last_error: Exception | None = None
+        for attempt in range(3):
+            raw: socket.socket | None = None
+            tls_sock: ssl.SSLSocket | None = None
+            try:
+                raw = socket.create_connection((self.host, self.port), timeout=self.timeout)
+                raw.settimeout(self.timeout)
+                tls_sock = _make_context().wrap_socket(
+                    raw,
+                    server_hostname=None,
+                    do_handshake_on_connect=False,
+                )
+                tls_sock.do_handshake()
+                self._socket = tls_sock
+                return
+            except (OSError, ssl.SSLError) as exc:
+                last_error = exc
+                if tls_sock:
+                    tls_sock.close()
+                elif raw:
+                    raw.close()
+                if attempt < 2:
+                    time.sleep(0.75 * (attempt + 1))
+        assert last_error is not None
+        raise NiceBidiConnectionError(str(last_error)) from last_error
+
+    def _connect_locked(self) -> None:
+        client_challenge = f"{random.getrandbits(32):08X}"
+        xml = (
+            self._start_request(0, "CONNECT")
+            + f'<Authentication cc="{client_challenge}" username="{_xml_escape(self.credentials.username)}"/>\r\n'
+            + "</Request>\r\n"
+        )
+        response = self._send_locked(xml, expected_type="CONNECT", expected_id=0)
+        text = _printable(response)
+        server_challenge = _attr(text, "sc")
+        auth_match = re.search(r"<Authentication\b([^>]*)>", text)
+        session_id = _attr(auth_match.group(1), "id") if auth_match else None
+        if "<Error>" in text:
+            raise NiceBidiAuthError(text)
+        if not server_challenge or session_id is None:
+            raise NiceBidiConnectionError("CONNECT response was empty or missing session data")
+
+        self._session_id = int(session_id)
+        self._sequence = 1
+        self._session_key = _sha256(
+            self.credentials.password,
+            _reverse_hex(server_challenge),
+            _reverse_hex(client_challenge),
+        )
+
+    def _ensure_connected_locked(self) -> None:
+        if self._socket and self._session_key is not None:
+            return
+        self._close_locked()
+        self._open_locked()
+        self._connect_locked()
+
+    def _close_locked(self) -> None:
+        if self._socket:
+            try:
+                self._socket.close()
+            finally:
+                self._socket = None
+        self._session_key = None
+        self._session_id = 0
+        self._sequence = 1
+
+    def _start_request(self, request_id: int, request_type: str) -> str:
+        return (
+            f'<Request gw="gwID" id="{request_id}" protocolType="NHK" '
+            f'protocolVersion="1.0" source="{_xml_escape(self.credentials.source)}" '
+            f'target="{_xml_escape(self.credentials.target_mac)}" type="{request_type}">\r\n'
+        )
+
+    def _next_request_id(self) -> int:
+        request_id = (self._sequence << 8) | (self._session_id & 0xFF)
+        self._sequence += 1
+        return request_id
+
+    def _sign(self, xml_command: str) -> str:
+        if self._session_key is None:
+            raise NiceBidiConnectionError("not authenticated")
+        return base64.b64encode(_sha256(_sha256(xml_command.encode("utf-8")), self._session_key)).decode("ascii")
+
+    def _signed_request_with_id(self, request_type: str, body: str = "") -> tuple[str, int]:
+        request_id = self._next_request_id()
+        xml_command = self._start_request(request_id, request_type) + body
+        return xml_command + f"<Sign>{self._sign(xml_command)}</Sign>\r\n</Request>\r\n", request_id
+
+    def _signed_exchange_locked(self, request_type: str, body: str = "") -> bytes:
+        xml, request_id = self._signed_request_with_id(request_type, body)
+        return self._send_locked(xml, expected_type=request_type, expected_id=request_id)
+
+    def _send_locked(self, xml: str, expected_type: str | None, expected_id: int | None) -> bytes:
+        if not self._socket:
+            raise NiceBidiConnectionError("socket is not open")
+        self._socket.settimeout(self.timeout)
+        self._socket.sendall(_frame(xml))
+        last_response = b""
+        deadline = time.time() + self.timeout
+        while time.time() < deadline:
+            response = self._recv_frame_locked(max(0.1, deadline - time.time()))
+            if not response:
+                break
+            last_response = response
+            if self._matches_response(response, expected_type, expected_id):
+                return response
+        if last_response:
+            return last_response
+        raise NiceBidiConnectionError("device did not respond")
+
+    def _recv_frame_locked(self, timeout: float) -> bytes:
+        if not self._socket:
+            return b""
+        self._socket.settimeout(timeout)
+        chunks: list[bytes] = []
+        while True:
+            try:
+                chunk = self._socket.recv(65535)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            chunks.append(chunk)
+            if ETX in chunk:
+                break
+        return b"".join(chunks)
+
+    def _matches_response(self, response: bytes, expected_type: str | None, expected_id: int | None) -> bool:
+        text = _printable(response)
+        if "<Response " not in text:
+            return False
+        if expected_type and _attr(text, "type") != expected_type:
+            return False
+        if expected_id is not None and _attr(text, "id") != str(expected_id):
+            return False
+        return True
+
+    def _send_action_locked(self, action: str) -> None:
+        body = (
+            "<Devices>\r\n"
+            f'<Device id="{self.device_id}">\r\n'
+            "<Services>\r\n"
+            f"<DoorAction>{action}</DoorAction>\r\n"
+            "</Services>\r\n"
+            "</Device>\r\n"
+            "</Devices>\r\n"
+        )
+        response = self._signed_exchange_locked("CHANGE", body)
+        if "<Error>" in _printable(response):
+            raise NiceBidiConnectionError(_printable(response))
+
+    def _read_status_locked(self) -> NiceBidiStatus:
+        registers: dict[str, dict[str, Any]] = {}
+        for group, parameter in ((0x04, 0x01), (0x04, 0x11), (0x04, 0x18), (0x04, 0x19)):
+            response, plains = self._t4_request_locked(
+                "DMP",
+                build_dmp_read_frame(0x00, 0x03, group, parameter),
+                0x00,
+                0x03,
+                self.t4_timeout_ms,
+            )
+            if "<Error>" in _printable(response):
+                raise NiceBidiConnectionError(_printable(response))
+            for plain in plains:
+                parsed = parse_dmp_response(plain)
+                key = f"{parsed.get('group')}/{parsed.get('parameter')}"
+                registers[key] = parsed
+
+        state_register = registers.get("04/01")
+        state = _status_from_register(state_register)
+        current = _dmp_uint(registers.get("04/11"))
+        opened = _dmp_uint(registers.get("04/18"))
+        closed = _dmp_uint(registers.get("04/19"))
+        position: float | None = None
+        if current is not None and opened is not None and closed is not None and opened != closed:
+            position = max(0.0, min(100.0, ((current - closed) / (opened - closed)) * 100))
+        elif state == STATE_CLOSED:
+            position = 0.0
+        elif state == STATE_OPEN:
+            position = 100.0
+
+        return NiceBidiStatus(
+            state=state,
+            position=round(position, 1) if position is not None else None,
+            current_position=current,
+            closed_position=closed,
+            open_position=opened,
+            registers={key: str(value.get("value_hex", "")) for key, value in registers.items()},
+        )
+
+    def _t4_request_locked(
+        self,
+        protocol: str,
+        plain_payload: bytes,
+        daddr: int,
+        dendpoint: int,
+        tout_ms: int,
+    ) -> tuple[bytes, list[bytes]]:
+        key = _random_t4_key()
+        encrypted = _xor_sha256(plain_payload, key)
+        encrypted_b64 = base64.b64encode(encrypted).decode("ascii")
+        key_b64 = base64.b64encode(key).decode("ascii")
+        body = (
+            '<Interface id="1">\r\n'
+            f'<Protocol tout="{tout_ms}">{protocol}</Protocol>\r\n'
+            f"<DAddress>{daddr:02X}</DAddress>\r\n"
+            f"<DEndpoint>{dendpoint:02X}</DEndpoint>\r\n"
+            f'<T4 id="1" len="{len(encrypted_b64)}" key="{key_b64}" '
+            f'DAddress="{daddr}" DEndpoint="{dendpoint}">{encrypted_b64}</T4>\r\n'
+            "</Interface>\r\n"
+        )
+        response = self._signed_exchange_locked("T4_REQUEST", body)
+        return response, self._decrypt_t4_payloads(response)
+
+    def _decrypt_t4_payloads(self, response: bytes) -> list[bytes]:
+        text = _printable(response)
+        payloads: list[bytes] = []
+        for match in T4_RE.finditer(text):
+            key_value = _attr(match.group("attrs"), "key")
+            if not key_value:
+                continue
+            try:
+                key = base64.b64decode(key_value)
+                encrypted = base64.b64decode(match.group("body").strip())
+            except ValueError:
+                continue
+            payloads.append(_xor_sha256(encrypted, key))
+        return payloads

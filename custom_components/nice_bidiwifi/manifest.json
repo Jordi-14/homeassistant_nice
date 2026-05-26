@@ -1,0 +1,11 @@
+{
+  "domain": "nice_bidiwifi",
+  "name": "Nice BiDi-WiFi",
+  "codeowners": ["@Jordi-14"],
+  "config_flow": true,
+  "documentation": "https://github.com/Jordi-14/homeassistant_nice",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Jordi-14/homeassistant_nice/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
