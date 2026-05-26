@@ -23,8 +23,7 @@ TLS/TCP 443 and creates one `cover` entity.
 
 If Home Assistant and the BiDi-WiFi are on different VLANs, the firewall must
 allow Home Assistant to initiate TCP 443 connections to the BiDi-WiFi. No local
-IP address, MAC address, username, or password should be committed to this
-repository.
+IP address, MAC address, username, or password should be shared on github.
 
 ## Installation
 
