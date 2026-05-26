@@ -55,6 +55,7 @@ CONNECTION_STATE_UNKNOWN = "unknown"
 
 POSITION_TARGET_POLL_SECONDS = 0.5
 POSITION_TARGET_TOLERANCE = 1.0
+POST_COMMAND_REFRESH_DELAY_SECONDS = 2.0
 
 CALIBRATION_STORAGE_VERSION = 1
 CALIBRATION_TARGETS = (20, 40, 60, 80)
@@ -91,6 +92,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.last_error: str | None = None
         self.last_successful_update: datetime | None = None
         self._position_target_task: asyncio.Task[None] | None = None
+        self._post_command_refresh_task: asyncio.Task[None] | None = None
         self._calibration_task: asyncio.Task[None] | None = None
         self.calibration_state = CALIBRATION_STATE_NOT_CALIBRATED
         self.calibration_last_error: str | None = None
@@ -191,6 +193,18 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         with suppress(asyncio.CancelledError):
             await task
 
+    async def _async_cancel_post_command_refresh(self) -> None:
+        """Cancel a pending delayed post-command refresh."""
+        task = self._post_command_refresh_task
+        if task is None:
+            return
+        self._post_command_refresh_task = None
+        if task.done() or task is asyncio.current_task():
+            return
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
     async def _async_cancel_calibration(self, *, stop: bool = True) -> None:
         """Cancel a running calibration task."""
         task = self._calibration_task
@@ -237,11 +251,35 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.last_error = None
         self.update_interval = MOVING_UPDATE_INTERVAL if action in {"open", "close"} else IDLE_UPDATE_INTERVAL
         if refresh:
+            self._schedule_post_command_refresh()
             await self.async_request_refresh()
+
+    def _schedule_post_command_refresh(self) -> None:
+        """Schedule a delayed refresh so motor state is not missed after commands."""
+        task = self._post_command_refresh_task
+        if task is not None and not task.done():
+            task.cancel()
+        self._post_command_refresh_task = self.hass.async_create_task(
+            self._async_post_command_refresh(),
+            name=f"{DOMAIN} post-command refresh",
+        )
+
+    async def _async_post_command_refresh(self) -> None:
+        """Refresh after the gate controller has had time to enter its new state."""
+        task = asyncio.current_task()
+        try:
+            await asyncio.sleep(POST_COMMAND_REFRESH_DELAY_SECONDS)
+            await self.async_request_refresh()
+        except asyncio.CancelledError:
+            raise
+        finally:
+            if self._post_command_refresh_task is task:
+                self._post_command_refresh_task = None
 
     async def async_set_position(self, target_position: int) -> None:
         """Move toward a target percentage and stop after the target is reached."""
         await self._async_cancel_calibration()
+        await self._async_cancel_post_command_refresh()
         target = max(0, min(100, target_position))
         status = self.data
         if status is None or status.position is None:
@@ -330,6 +368,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             raise HomeAssistantError("Nice BiDi-WiFi position calibration is already running")
 
         await self._async_cancel_position_target()
+        await self._async_cancel_post_command_refresh()
         self._calibration_events = []
         self.calibration_state = CALIBRATION_STATE_RUNNING
         self.calibration_last_error = None
@@ -1252,7 +1291,9 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
     async def async_reconnect(self) -> None:
         """Force the current NHK/TLS session to be recreated."""
         await self._async_cancel_position_target()
+        await self._async_cancel_post_command_refresh()
         await self._async_cancel_calibration()
+        await self._async_cancel_post_command_refresh()
         self.connection_state = CONNECTION_STATE_RECONNECTING
         await self.hass.async_add_executor_job(self.client.close)
         await self.async_request_refresh()
@@ -1260,5 +1301,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
         await self._async_cancel_position_target()
+        await self._async_cancel_post_command_refresh()
         await self._async_cancel_calibration()
+        await self._async_cancel_post_command_refresh()
         await self.hass.async_add_executor_job(self.client.close)
