@@ -305,25 +305,3 @@ This controls a physical gate. Test while the gate is visible and keep the
 original Nice remote/app available.
 
 Do not publish app-data backups, SQLite databases, pcaps, or extracted passwords.
-
-## HACS Default Repository Status
-
-This repository is structured as a HACS integration repository:
-
-- One integration under `custom_components/nice_bidiwifi`.
-- Root `hacs.json`.
-- Integration `manifest.json` with `domain`, `documentation`,
-  `issue_tracker`, `codeowners`, `name`, and `version`.
-- Official Nice brand assets in `custom_components/nice_bidiwifi/brand`.
-- HACS validation and Hassfest GitHub Actions.
-- `README.md`, `info.md`, license, contribution notes, and issue templates.
-- Full GitHub release: `v0.3.0`.
-
-Current status:
-
-- A public GitHub repository with a description, topics, and issues enabled.
-- Passing HACS validation and Hassfest actions.
-- A full GitHub release, not only a tag.
-- A branch in the `hacs/default` fork adding this repository alphabetically
-  under `integration`.
-- Manual HACS/default PR submission and review still pending.
