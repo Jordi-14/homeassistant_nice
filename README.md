@@ -2,6 +2,7 @@
 
 [![HACS Validation](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hacs.yml/badge.svg)](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hacs.yml)
 [![Hassfest](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml/badge.svg)](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/Jordi-14/homeassistant_nice)](https://github.com/Jordi-14/homeassistant_nice/releases/latest)
 
 Custom Home Assistant integration for local control of a Nice gate through a
 Nice BiDi-WiFi interface.
@@ -9,10 +10,13 @@ Nice BiDi-WiFi interface.
 This integration talks directly to the BiDi-WiFi local NHK/T4 service over
 TLS/TCP 443 and creates one `cover` entity plus helper diagnostic entities.
 
-## Current Scope
+Latest release: `v0.3.0`
+
+## Features
 
 - Open, stop, and close using the local `DoorAction` service.
-- Cover position slider with live percentage while the gate moves.
+- Native Home Assistant cover position support.
+- Live position percentage while the gate moves.
 - Coarse set-position support by moving in the required direction and sending
   stop once the target percentage is reached or crossed.
 - Real state from DMP register `04/01`.
@@ -43,7 +47,7 @@ or local TCP 443 behavior and break the integration.
 ## Requirements
 
 - The BiDi-WiFi must be reachable from Home Assistant on TCP 443.
-- The BiDi-WiFi should keep normal WAN/cloud access enabled.
+- The BiDi-WiFi should keep its normal network/cloud configuration.
 - MyNice/MyNice Pro should be closed while Home Assistant is using local control.
 - Network ACLs must allow Home Assistant to reach the BiDi IP on TCP 443.
 
@@ -70,6 +74,9 @@ Integration
 
 Download it through HACS, restart Home Assistant, then add **Nice BiDi-WiFi**
 from **Settings -> Devices & services**.
+
+This repository is being prepared for inclusion in the HACS default
+repositories. Until that is merged, use the custom repository flow above.
 
 ### Manual
 
@@ -157,6 +164,23 @@ State values:
 - `04/01 = 04 ff 00 00` -> open
 - `04/01 = 05 ff 00 00` -> closed
 
+## Dashboard Slider
+
+The integration exposes Home Assistant's native cover position feature. To show
+a horizontal slider in a dashboard, use a Tile card with the cover position
+feature:
+
+```yaml
+type: tile
+entity: cover.your_gate_entity
+features:
+  - type: cover-position
+  - type: cover-open-close
+```
+
+The exact layout of Home Assistant's built-in cover detail dialog is controlled
+by the Home Assistant frontend, not by this integration.
+
 ## Helper Entities
 
 Enabled by default:
@@ -197,7 +221,7 @@ original Nice remote/app available.
 
 Do not publish app-data backups, SQLite databases, pcaps, or extracted passwords.
 
-## HACS Default Repository Readiness
+## HACS Default Repository Status
 
 This repository is structured as a HACS integration repository:
 
@@ -208,11 +232,13 @@ This repository is structured as a HACS integration repository:
 - Official Nice brand assets in `custom_components/nice_bidiwifi/brand`.
 - HACS validation and Hassfest GitHub Actions.
 - `README.md`, `info.md`, license, contribution notes, and issue templates.
+- Full GitHub release: `v0.3.0`.
 
-Before requesting inclusion in HACS defaults, the GitHub repository also needs:
+Current status:
 
 - A public GitHub repository with a description, topics, and issues enabled.
 - Passing HACS validation and Hassfest actions.
 - A full GitHub release, not only a tag.
-- A PR to `hacs/default` adding the repository alphabetically under
-  `integration`.
+- A branch in the `hacs/default` fork adding this repository alphabetically
+  under `integration`.
+- Manual HACS/default PR submission and review still pending.
