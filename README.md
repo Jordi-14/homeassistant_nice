@@ -10,7 +10,7 @@ Nice BiDi-WiFi interface.
 This integration talks directly to the BiDi-WiFi local NHK/T4 service over
 TLS/TCP 443 and creates one `cover` entity plus helper diagnostic entities.
 
-Latest release: `v0.3.0`
+Latest release: `v0.4.1`
 
 ## Features
 
@@ -140,6 +140,8 @@ BiDi-WiFi can be sensitive to concurrent local sessions.
 
 The integration needs the local credential stored by the normal MyNice app.
 
+### iPhone
+
 1. Connect the iPhone to your Mac over USB and trust the Mac if prompted.
 2. Use iMazing, or another iOS app-data backup tool, to make a backup of the
    **MyNice** app data.
@@ -191,6 +193,53 @@ entered in Home Assistant.
 
 Treat the password as a gate-control secret.
 
+### Android
+
+The Android extraction flow has not been tested yet. It is documented here so
+Android users know what data is needed and can report whether the same database
+layout is present.
+
+The current MyNice Android package name is:
+
+```text
+com.niceforyou.welcome
+```
+
+1. Install **MyNice** from Google Play and configure the BiDi-WiFi normally.
+2. Confirm the Android app can control the gate.
+3. Export the MyNice app data using a method that can read private app data,
+   such as a rooted device, a full-device backup tool, or another Android app
+   data extraction workflow. Modern non-rooted Android devices may block this;
+   `adb backup` often does not work for current apps.
+4. Search the extracted app data for:
+
+   ```text
+   CachedData.sqlite
+   ```
+
+   On a rooted device, it may be under the app-private data tree for
+   `com.niceforyou.welcome`.
+5. Run the same extractor against that SQLite file:
+
+   ```bash
+   python3 scripts/extract_mynice_credentials.py \
+     "path/to/CachedData.sqlite"
+   ```
+
+6. If there is more than one BiDi-WiFi stored in MyNice, pass the BiDi MAC
+   address:
+
+   ```bash
+   python3 scripts/extract_mynice_credentials.py \
+     "path/to/CachedData.sqlite" \
+     --mac "AA:BB:CC:DD:EE:FF"
+   ```
+
+If the extractor says `No credential row found in ZACCESSORYCREDENTIALENTITY`,
+the Android app may store the credentials differently. In that case, do not
+publish the database; open an issue describing the extraction method, Android
+version, MyNice version, and whether a `CachedData.sqlite` file was present.
+
 ## Setup
 
 In Home Assistant:
@@ -233,20 +282,44 @@ position, and sends `stop` after the position reaches or crosses the requested
 percentage. This is intentionally coarse and should not be treated as millimeter
 precision.
 
-An optional disabled-by-default diagnostic button can run a position calibration
-sequence. It calibrates 20/40/60/80% targets from closed, then from open. For
-each target it returns to the known endpoint, tries the target, records the
-error, adjusts the stop threshold, and always makes five attempts. The target is
-treated as successful when any two consecutive attempts both finish within 2%.
-The stored stop threshold comes from that stable window when available, or from
-the best non-outlier attempt when the point is not repeatable.
-If the gate is still moving after the settle timeout, calibration sends another
-stop command and records that try as invalid instead of learning from the moving
-position.
-Successful calibration finishes by closing the gate; failed calibration leaves
-the gate where it stopped so external traffic is not surprised by an automatic
-close. Later position requests use the calibrated table and interpolate between
-neighboring points when possible.
+Calibration is not required. If you only want to open, stop, and close the gate,
+do not calibrate; normal open/close control works without it. Calibration only
+helps if you want Home Assistant's position slider or set-position service to
+land closer to intermediate positions such as 20%, 40%, 60%, or 80%.
+
+The calibration button is a disabled-by-default diagnostic button. Enable it
+only when the gate is visible, the path is clear, and you are ready for the gate
+to move repeatedly for several minutes.
+
+When you press the calibration button, the integration:
+
+1. Moves fully closed first so the first opening test starts from a known
+   physical position.
+2. From closed, calibrates opening targets at 20%, 40%, 60%, and 80%.
+3. For each target, returns to the known endpoint, moves toward the target,
+   sends `stop` near the learned stop threshold, waits for the gate to settle,
+   records the raw encoder value, final percentage, error, command latency, and
+   movement timing, then repeats until it has made five attempts.
+4. Moves fully open so closing tests also start from a known physical position.
+5. From open, repeats the same five-attempt process for closing targets at 80%,
+   60%, 40%, and 20%.
+6. If the full calibration sequence completes, finishes by closing the gate. If
+   calibration fails, it leaves the gate where it stopped so it does not
+   surprise someone by closing after an external interruption.
+
+The reason for this sequence is that gates do not stop instantly. The final
+position depends on direction, speed, controller latency, inertia, and the raw
+encoder value at the moment `stop` is sent. Calibration learns a
+direction-specific stop table from real motion instead of assuming that sending
+`stop` exactly at 40% will settle at 40%.
+
+For each target, the stored stop threshold comes from the best stable evidence:
+two consecutive attempts within 2% when available, otherwise the best
+non-outlier attempt. If the gate is still moving after the settle timeout,
+calibration sends another `stop` command and records that try as invalid instead
+of learning from a moving position. Later intermediate position requests use the
+calibrated table and interpolate between neighboring points when possible.
+
 During calibration it polls every 0.5 seconds and waits 0.5 seconds after a
 stop or fully reached endpoint before sending the next movement command.
 

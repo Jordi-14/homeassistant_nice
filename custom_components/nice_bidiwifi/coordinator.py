@@ -130,9 +130,23 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
 
     async def async_load_calibration(self) -> None:
         """Load stored position calibration data."""
-        stored_profile = await self._calibration_store.async_load()
-        if not isinstance(stored_profile, dict):
+        try:
+            stored_profile = await self._calibration_store.async_load()
+        except Exception as err:
+            self.calibration_profile = None
+            self.calibration_report = None
+            self.calibration_updated_at = None
             self.calibration_state = CALIBRATION_STATE_NOT_CALIBRATED
+            self.calibration_last_error = f"Stored calibration could not be loaded: {err}"
+            _LOGGER.warning("Nice BiDi-WiFi stored calibration could not be loaded: %s", err)
+            return
+
+        if not isinstance(stored_profile, dict):
+            self.calibration_profile = None
+            self.calibration_report = None
+            self.calibration_updated_at = None
+            self.calibration_state = CALIBRATION_STATE_NOT_CALIBRATED
+            self.calibration_last_error = None
             return
 
         self.calibration_profile = stored_profile
@@ -777,9 +791,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
             status = await self._async_read_motion_status()
             current_raw = status.current_position
-            if current_raw is None:
-                continue
-            if self._raw_reached(action, status, current_raw, requested_stop_raw):
+            if current_raw is not None and self._raw_reached(action, status, current_raw, requested_stop_raw):
                 stop_command_raw = current_raw
                 self._add_calibration_event(
                     "attempt",
