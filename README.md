@@ -247,10 +247,12 @@ stop or fully reached endpoint before sending the next movement command.
 
 Calibration writes detailed Home Assistant log lines with the prefix
 `Nice BiDi-WiFi calibration:`. It also exposes a disabled-by-default diagnostic
-sensor named `Position calibration report`; enable it after calibration and copy
-the `copyable_report` or `report_json` attribute when sharing results for
-analysis. The report includes a quality grade, max/average error, failed points,
-all attempts per target, command latency, movement duration, and the event log.
+sensor named `Position calibration report` with recorder-safe summary
+attributes. When calibration finishes or fails, the full detailed report is
+written to Home Assistant logs in chunks with the prefix
+`Nice BiDi-WiFi calibration report`. The full report includes a quality grade,
+max/average error, failed points, all attempts per target, command latency,
+movement duration, and the event log.
 
 Position is calculated as:
 

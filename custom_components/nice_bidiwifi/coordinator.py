@@ -66,6 +66,8 @@ CALIBRATION_ENDPOINT_TOLERANCE = 1.0
 CALIBRATION_MAX_ATTEMPTS = 6
 CALIBRATION_STABILITY_ATTEMPTS = 2
 CALIBRATION_TARGET_TOLERANCE_PERCENT = 2.0
+CALIBRATION_REPORT_ATTRIBUTE_EVENT_LIMIT = 5
+CALIBRATION_REPORT_LOG_CHUNK_SIZE = 6000
 
 CALIBRATION_STATE_CALIBRATED = "calibrated"
 CALIBRATION_STATE_CANCELLED = "cancelled"
@@ -363,6 +365,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             if isinstance(updated_at, str):
                 self.calibration_updated_at = datetime.fromisoformat(updated_at)
             await self._calibration_store.async_save(profile)
+            self._log_calibration_report(self.calibration_report, "completed")
         except asyncio.CancelledError:
             self.calibration_state = CALIBRATION_STATE_CANCELLED
             self.calibration_last_error = "cancelled"
@@ -374,6 +377,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             self.calibration_last_error = str(err)
             self._add_calibration_event("run", "Position calibration failed", error=str(err))
             self.calibration_report = self._build_live_calibration_report("Calibration failed")
+            self._log_calibration_report(self.calibration_report, "failed")
             _LOGGER.warning("Nice BiDi-WiFi position calibration failed: %s", err)
         finally:
             if self._calibration_task is task:
@@ -879,19 +883,40 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
 
     @property
     def calibration_report_attributes(self) -> dict[str, Any]:
-        """Return copyable calibration report attributes."""
+        """Return recorder-safe calibration report attributes."""
         if self.calibration_report is None:
             return {}
 
-        report = dict(self.calibration_report)
-        copyable_report = report.pop("copyable_report", None)
-        report_json = json.dumps(report, indent=2, sort_keys=True)
+        report = self.calibration_report
+        events = report.get("events")
+        points = report.get("points")
         return {
+            "state": report.get("state"),
             "quality": report.get("quality"),
             "summary": report.get("summary"),
-            "copyable_report": copyable_report,
-            "report_json": report_json,
-            "report": report,
+            "updated_at": report.get("updated_at"),
+            "profile_version": report.get("profile_version"),
+            "tolerance_percent": report.get("tolerance_percent"),
+            "poll_seconds": report.get("poll_seconds"),
+            "settle_seconds": report.get("settle_seconds"),
+            "command_pause_seconds": report.get("command_pause_seconds"),
+            "max_attempts": report.get("max_attempts"),
+            "stability_attempts": report.get("stability_attempts"),
+            "point_count": report.get("point_count"),
+            "successful_points": report.get("successful_points"),
+            "failed_points": self._compact_calibration_failed_points(report.get("failed_points")),
+            "total_attempts": report.get("total_attempts"),
+            "max_attempts_used": report.get("max_attempts_used"),
+            "max_abs_error_percent": report.get("max_abs_error_percent"),
+            "avg_abs_error_percent": report.get("avg_abs_error_percent"),
+            "bounds": report.get("bounds"),
+            "points": self._compact_calibration_points(points),
+            "event_count": len(events) if isinstance(events, list) else None,
+            "last_events": self._compact_calibration_events(events),
+            "full_report_log_prefix": "Nice BiDi-WiFi calibration report",
+            "full_report_note": (
+                "Full report is written to Home Assistant logs in chunks when calibration finishes or fails."
+            ),
         }
 
     def _add_calibration_event(self, stage: str, message: str, **details: Any) -> None:
@@ -913,6 +938,91 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             self.calibration_report = self._build_live_calibration_report(message)
             self.async_update_listeners()
 
+    @staticmethod
+    def _compact_calibration_failed_points(failed_points: Any) -> list[dict[str, Any]]:
+        """Return a small failed-point list suitable for state attributes."""
+        if not isinstance(failed_points, list):
+            return []
+        compact_points = []
+        for point in failed_points:
+            if not isinstance(point, dict):
+                continue
+            compact_points.append(
+                {
+                    "direction": point.get("direction"),
+                    "target_percent": point.get("target_percent"),
+                    "final_error_percent": point.get("final_error_percent"),
+                    "attempts_used": point.get("attempts_used"),
+                }
+            )
+        return compact_points
+
+    @staticmethod
+    def _compact_calibration_points(points: Any) -> list[dict[str, Any]]:
+        """Return point summaries without per-attempt details."""
+        if not isinstance(points, list):
+            return []
+        compact_points = []
+        for point in points:
+            if not isinstance(point, dict):
+                continue
+            compact_points.append(
+                {
+                    "direction": point.get("direction"),
+                    "target_percent": point.get("target_percent"),
+                    "successful": point.get("successful"),
+                    "successful_attempts": point.get("successful_attempts"),
+                    "attempts_used": point.get("attempts_used"),
+                    "final_percent": point.get("final_percent"),
+                    "final_error_percent": point.get("final_error_percent"),
+                    "corrected_stop_percent": point.get("corrected_stop_percent"),
+                }
+            )
+        return compact_points
+
+    @staticmethod
+    def _compact_calibration_events(events: Any) -> list[dict[str, Any]]:
+        """Return the last calibration events without bulky details."""
+        if not isinstance(events, list):
+            return []
+        compact_events = []
+        for event in events[-CALIBRATION_REPORT_ATTRIBUTE_EVENT_LIMIT:]:
+            if not isinstance(event, dict):
+                continue
+            compact_events.append(
+                {
+                    "index": event.get("index"),
+                    "timestamp": event.get("timestamp"),
+                    "stage": event.get("stage"),
+                    "message": event.get("message"),
+                }
+            )
+        return compact_events
+
+    def _log_calibration_report(self, report: dict[str, Any], reason: str) -> None:
+        """Write the full calibration report to HA logs in bounded chunks."""
+        report_text = self._format_calibration_report(report)
+        total_chunks = max(
+            1,
+            (len(report_text) + CALIBRATION_REPORT_LOG_CHUNK_SIZE - 1) // CALIBRATION_REPORT_LOG_CHUNK_SIZE,
+        )
+        _LOGGER.warning(
+            "Nice BiDi-WiFi calibration report %s: writing %s bytes in %s chunks",
+            reason,
+            len(report_text),
+            total_chunks,
+        )
+        for chunk_index in range(total_chunks):
+            start = chunk_index * CALIBRATION_REPORT_LOG_CHUNK_SIZE
+            chunk = report_text[start : start + CALIBRATION_REPORT_LOG_CHUNK_SIZE]
+            _LOGGER.warning(
+                "Nice BiDi-WiFi calibration report %s chunk %s/%s:\n%s",
+                reason,
+                chunk_index + 1,
+                total_chunks,
+                chunk,
+            )
+
     def _build_live_calibration_report(self, summary: str) -> dict[str, Any]:
         """Build a report while calibration is still running or failed."""
         report = {
@@ -928,7 +1038,6 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             "stability_attempts": CALIBRATION_STABILITY_ATTEMPTS,
             "events": list(self._calibration_events),
         }
-        report["copyable_report"] = self._format_calibration_report(report)
         return report
 
     def _build_calibration_report(self, profile: dict[str, Any]) -> dict[str, Any]:
@@ -946,7 +1055,6 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 "points": [],
                 "events": events if isinstance(events, list) else [],
             }
-            report["copyable_report"] = self._format_calibration_report(report)
             return report
 
         abs_errors = [abs(float(point["final_error_percent"])) for point in points]
@@ -1003,7 +1111,6 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             "points": points,
             "events": events if isinstance(events, list) else [],
         }
-        report["copyable_report"] = self._format_calibration_report(report)
         return report
 
     @staticmethod
