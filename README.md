@@ -88,28 +88,102 @@ custom_components/nice_bidiwifi
 
 Then restart Home Assistant.
 
-## Extracting Credentials
+## Configure the BiDi-WiFi
+
+This integration expects the BiDi-WiFi to be configured with the normal
+**MyNice** app and connected to the same network that Home Assistant can reach.
+The installer-focused **MyNice Pro** app can be useful for diagnostics, but the
+credential extraction flow below uses the normal MyNice app data.
+
+1. Install and power the BiDi-WiFi normally.
+2. Reset or provision the BiDi-WiFi if it is not already joined to your home
+   network.
+3. Connect the iPhone to the Wi-Fi network you want the BiDi-WiFi to join.
+   MyNice provisions the BiDi-WiFi onto the network the iPhone is currently
+   using; it does not ask you to pick a different target network later.
+4. Open **MyNice** on the iPhone.
+5. Add/configure the BiDi-WiFi interface in MyNice.
+6. When MyNice asks, connect the iPhone to the temporary BiDi access point. It
+   is usually named like:
+
+   ```text
+   NiceBIDIWIFIxxxxxx_AP
+   ```
+
+7. Follow the MyNice provisioning flow. The BiDi-WiFi should join the Wi-Fi
+   network that the iPhone was using before connecting to the temporary access
+   point.
+8. Put the iPhone back on that normal Wi-Fi and confirm that MyNice can still
+   control the gate.
+9. Find the BiDi-WiFi IP address in your router, DHCP server, or network
+   controller.
+10. Reserve that IP address in DHCP so Home Assistant keeps using the same
+    address.
+11. From a machine on the same network as Home Assistant, confirm TCP 443 is
+    reachable:
+
+    ```bash
+    nc -vz <bidi_ip> 443
+    ```
+
+12. If Home Assistant and the BiDi-WiFi are on different VLANs, allow Home
+    Assistant to initiate TCP 443 connections to the BiDi-WiFi.
+
+Close MyNice/MyNice Pro before adding the integration to Home Assistant. The
+BiDi-WiFi can be sensitive to concurrent local sessions.
+
+## Extract Credentials
 
 The integration needs the local credential stored by the normal MyNice app.
-Use iMazing to make a MyNice app-data backup, extract it, then locate:
+
+1. Connect the iPhone to your Mac over USB and trust the Mac if prompted.
+2. Use iMazing, or another iOS app-data backup tool, to make a backup of the
+   **MyNice** app data.
+3. Export or extract the MyNice app-data backup to a folder.
+4. Locate this SQLite file inside the extracted app container:
 
 ```text
 Container/Library/Application Support/CachedData.sqlite
 ```
 
-Run:
+5. Run the extractor from this repository:
 
 ```bash
 python3 scripts/extract_mynice_credentials.py \
   "path/to/Container/Library/Application Support/CachedData.sqlite"
 ```
 
-It prints:
+If you have more than one BiDi-WiFi stored in MyNice, pass the BiDi MAC address
+to select the right one:
 
-- `target_mac`
-- `username`
-- `password`
-- `source_id`
+```bash
+python3 scripts/extract_mynice_credentials.py \
+  "path/to/Container/Library/Application Support/CachedData.sqlite" \
+  --mac "AA:BB:CC:DD:EE:FF"
+```
+
+The extractor prints JSON similar to this:
+
+```json
+{
+  "maintenance_state": 0,
+  "password": "64_HEX_CHARACTERS",
+  "permission": 1,
+  "source_id": "ios_app_example",
+  "target_mac": "AA:BB:CC:DD:EE:FF",
+  "username": "example_user"
+}
+```
+
+Use these values in Home Assistant:
+
+- `target_mac` -> **BiDi MAC address**
+- `username` -> **NHK username**
+- `password` -> **NHK password hex**
+- `source_id` -> **Source/controller ID**
+
+The `permission` and `maintenance_state` fields are informational and are not
+entered in Home Assistant.
 
 Treat the password as a gate-control secret.
 
@@ -121,15 +195,26 @@ In Home Assistant:
 2. Add **Nice BiDi-WiFi**.
 3. Enter:
    - BiDi IP address
-   - BiDi MAC address
-   - NHK username
-   - NHK password hex
-   - Source/controller ID
+   - BiDi MAC address from `target_mac`
+   - NHK username from `username`
+   - NHK password hex from `password`
+   - Source/controller ID from `source_id`
 4. Close MyNice/MyNice Pro before pressing submit.
 
 The integration stores these values in Home Assistant's normal config entry
 storage. They are entered by the user during setup and are not hard-coded in the
 integration.
+
+## Setup Troubleshooting
+
+- `cannot_connect`: Home Assistant cannot reach the BiDi-WiFi local service.
+  Check the IP address, VLAN/firewall rules, and TCP 443 reachability.
+- `invalid_auth`: One of the extracted credential fields does not match the
+  BiDi-WiFi. Re-run the extractor and use `--mac` if multiple devices are
+  stored in MyNice.
+- TLS EOF or temporary connection errors: close MyNice/MyNice Pro, wait a few
+  seconds, then retry. The integration reconnects automatically after transient
+  drops once configured.
 
 ## Behavior
 
