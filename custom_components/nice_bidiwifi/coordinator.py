@@ -60,13 +60,14 @@ POST_COMMAND_REFRESH_DELAY_SECONDS = 2.0
 CALIBRATION_STORAGE_VERSION = 1
 CALIBRATION_TARGETS = (20, 40, 60, 80)
 CALIBRATION_SETTLE_SECONDS = 2.0
-CALIBRATION_COMMAND_PAUSE_SECONDS = 1.0
+CALIBRATION_COMMAND_PAUSE_SECONDS = 0.5
 CALIBRATION_SETTLE_TIMEOUT_SECONDS = 8.0
 CALIBRATION_MOVEMENT_TIMEOUT_SECONDS = 90.0
 CALIBRATION_ENDPOINT_TOLERANCE = 1.0
-CALIBRATION_MAX_ATTEMPTS = 6
+CALIBRATION_MAX_ATTEMPTS = 5
 CALIBRATION_STABILITY_ATTEMPTS = 2
 CALIBRATION_TARGET_TOLERANCE_PERCENT = 2.0
+CALIBRATION_OUTLIER_ERROR_PERCENT = 15.0
 CALIBRATION_REPORT_ATTRIBUTE_EVENT_LIMIT = 5
 CALIBRATION_REPORT_LOG_CHUNK_SIZE = 6000
 
@@ -463,7 +464,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         updated_at = datetime.now(UTC)
 
         return {
-            "version": 3,
+            "version": 4,
             "created_at": started_at.isoformat(),
             "updated_at": updated_at.isoformat(),
             "poll_seconds": POSITION_TARGET_POLL_SECONDS,
@@ -497,7 +498,6 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         """Calibrate one target by retrying from a known endpoint."""
         attempts = []
         stop_raw: int | None = None
-        successful = False
 
         for attempt in range(1, CALIBRATION_MAX_ATTEMPTS + 1):
             self._add_calibration_event(
@@ -524,8 +524,9 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
 
             sample = await self._async_calibrate_target(target, action, endpoint_action, attempt, stop_raw)
             attempts.append(sample)
-            stop_raw = sample["corrected_stop_raw"]
-            attempt_successful = abs(sample["error_percent"]) <= CALIBRATION_TARGET_TOLERANCE_PERCENT
+            selection_so_far = self._select_calibration_sample(attempts)
+            stop_raw = selection_so_far["sample"]["corrected_stop_raw"]
+            attempt_successful = self._calibration_attempt_successful(sample)
             self._add_calibration_event(
                 "attempt",
                 f"{action} {target}% attempt {attempt}: settled with {sample['error_percent']}% error",
@@ -545,8 +546,9 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
 
             await self._async_move_to_end(endpoint_action)
 
-        successful = self._calibration_attempts_stable(attempts)
-        final_sample = attempts[-1]
+        selection = self._select_calibration_sample(attempts)
+        selected_sample = selection["sample"]
+        successful = selection["strategy"] == "stable_window"
         self._add_calibration_event(
             "target",
             f"{action} {target}% calibration finished",
@@ -556,17 +558,46 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             successful_attempts=self._calibration_success_count(attempts),
             stability_attempts=CALIBRATION_STABILITY_ATTEMPTS,
             attempts_used=len(attempts),
-            final_error_percent=final_sample["error_percent"],
-            corrected_stop_percent=final_sample["corrected_stop_percent"],
+            selection_strategy=selection["strategy"],
+            selected_attempt=selection["selected_attempt"],
+            selected_attempts=selection["selected_attempts"],
+            selected_abs_error_percent=selection["selected_abs_error_percent"],
+            ignored_outlier_attempts=selection["ignored_outlier_attempts"],
+            final_error_percent=selected_sample["error_percent"],
+            corrected_stop_percent=selected_sample["corrected_stop_percent"],
         )
         return {
-            **final_sample,
+            **selected_sample,
             "successful": successful,
             "successful_attempts": self._calibration_success_count(attempts),
             "stability_attempts": CALIBRATION_STABILITY_ATTEMPTS,
             "attempts_used": len(attempts),
+            "selection_strategy": selection["strategy"],
+            "selected_attempt": selection["selected_attempt"],
+            "selected_attempts": selection["selected_attempts"],
+            "selected_window_avg_abs_error_percent": selection["selected_window_avg_abs_error_percent"],
+            "selected_abs_error_percent": selection["selected_abs_error_percent"],
+            "ignored_outlier_attempts": selection["ignored_outlier_attempts"],
+            "outlier_error_percent": CALIBRATION_OUTLIER_ERROR_PERCENT,
+            "last_attempt": attempts[-1],
             "attempts": attempts,
         }
+
+    @staticmethod
+    def _calibration_attempt_abs_error(attempt: dict[str, Any]) -> float:
+        """Return an attempt's absolute percentage error."""
+        try:
+            return abs(float(attempt.get("error_percent", 1000.0)))
+        except (TypeError, ValueError):
+            return 1000.0
+
+    @staticmethod
+    def _calibration_attempt_successful(attempt: dict[str, Any]) -> bool:
+        """Return true if an attempt finished inside the target tolerance."""
+        return (
+            NiceBidiDataUpdateCoordinator._calibration_attempt_abs_error(attempt)
+            <= CALIBRATION_TARGET_TOLERANCE_PERCENT
+        )
 
     @staticmethod
     def _calibration_success_count(attempts: list[dict[str, Any]]) -> int:
@@ -574,18 +605,93 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         return sum(
             1
             for attempt in attempts
-            if abs(float(attempt.get("error_percent", 1000.0))) <= CALIBRATION_TARGET_TOLERANCE_PERCENT
+            if NiceBidiDataUpdateCoordinator._calibration_attempt_successful(attempt)
         )
 
     @staticmethod
     def _calibration_attempts_stable(attempts: list[dict[str, Any]]) -> bool:
-        """Return true when the final attempts show repeatable accuracy."""
+        """Return true when any consecutive attempts show repeatable accuracy."""
         if len(attempts) < CALIBRATION_STABILITY_ATTEMPTS:
             return False
-        return (
-            NiceBidiDataUpdateCoordinator._calibration_success_count(attempts[-CALIBRATION_STABILITY_ATTEMPTS:])
-            == CALIBRATION_STABILITY_ATTEMPTS
+        for start in range(0, len(attempts) - CALIBRATION_STABILITY_ATTEMPTS + 1):
+            window = attempts[start : start + CALIBRATION_STABILITY_ATTEMPTS]
+            if (
+                NiceBidiDataUpdateCoordinator._calibration_success_count(window)
+                == CALIBRATION_STABILITY_ATTEMPTS
+            ):
+                return True
+        return False
+
+    @staticmethod
+    def _select_calibration_sample(attempts: list[dict[str, Any]]) -> dict[str, Any]:
+        """Choose the calibration result that should be stored for one target."""
+        if not attempts:
+            raise HomeAssistantError("Position calibration produced no attempts")
+
+        ignored_outliers = [
+            int(attempt["attempt"])
+            for attempt in attempts
+            if NiceBidiDataUpdateCoordinator._calibration_attempt_abs_error(attempt)
+            > CALIBRATION_OUTLIER_ERROR_PERCENT
+            and isinstance(attempt.get("attempt"), int)
+        ]
+        stable_windows: list[tuple[float, int, list[dict[str, Any]]]] = []
+        for start in range(0, len(attempts) - CALIBRATION_STABILITY_ATTEMPTS + 1):
+            window = attempts[start : start + CALIBRATION_STABILITY_ATTEMPTS]
+            if (
+                NiceBidiDataUpdateCoordinator._calibration_success_count(window)
+                != CALIBRATION_STABILITY_ATTEMPTS
+            ):
+                continue
+            avg_abs_error = sum(
+                NiceBidiDataUpdateCoordinator._calibration_attempt_abs_error(attempt)
+                for attempt in window
+            ) / len(window)
+            stable_windows.append((avg_abs_error, start, window))
+
+        if stable_windows:
+            avg_abs_error, _, selected_window = min(
+                stable_windows,
+                key=lambda item: (item[0], -item[1]),
+            )
+            selected_sample = min(
+                selected_window,
+                key=NiceBidiDataUpdateCoordinator._calibration_attempt_abs_error,
+            )
+            return {
+                "sample": selected_sample,
+                "strategy": "stable_window",
+                "selected_attempt": selected_sample.get("attempt"),
+                "selected_attempts": [attempt.get("attempt") for attempt in selected_window],
+                "selected_window_avg_abs_error_percent": round(avg_abs_error, 2),
+                "selected_abs_error_percent": round(
+                    NiceBidiDataUpdateCoordinator._calibration_attempt_abs_error(selected_sample), 2
+                ),
+                "ignored_outlier_attempts": ignored_outliers,
+            }
+
+        non_outlier_attempts = [
+            attempt
+            for attempt in attempts
+            if NiceBidiDataUpdateCoordinator._calibration_attempt_abs_error(attempt)
+            <= CALIBRATION_OUTLIER_ERROR_PERCENT
+        ]
+        candidates = non_outlier_attempts or attempts
+        selected_sample = min(
+            candidates,
+            key=NiceBidiDataUpdateCoordinator._calibration_attempt_abs_error,
         )
+        return {
+            "sample": selected_sample,
+            "strategy": "best_non_outlier_attempt" if non_outlier_attempts else "best_attempt",
+            "selected_attempt": selected_sample.get("attempt"),
+            "selected_attempts": [selected_sample.get("attempt")],
+            "selected_window_avg_abs_error_percent": None,
+            "selected_abs_error_percent": round(
+                NiceBidiDataUpdateCoordinator._calibration_attempt_abs_error(selected_sample), 2
+            ),
+            "ignored_outlier_attempts": ignored_outliers,
+        }
 
     async def _async_calibrate_target(
         self,
@@ -818,7 +924,19 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 continue
             target_percent = sample.get("target_percent")
             corrected_stop_percent = sample.get("corrected_stop_percent")
-            if isinstance(target_percent, (int, float)) and isinstance(corrected_stop_percent, (int, float)):
+            selected_abs_error = sample.get(
+                "selected_abs_error_percent",
+                sample.get("error_percent"),
+            )
+            if (
+                isinstance(selected_abs_error, (int, float))
+                and abs(float(selected_abs_error)) > CALIBRATION_OUTLIER_ERROR_PERCENT
+            ):
+                continue
+            if isinstance(target_percent, (int, float)) and isinstance(
+                corrected_stop_percent,
+                (int, float),
+            ):
                 points.append((float(target_percent), float(corrected_stop_percent)))
         if len(points) <= 2:
             return None
@@ -992,6 +1110,9 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                     "target_percent": point.get("target_percent"),
                     "final_error_percent": point.get("final_error_percent"),
                     "attempts_used": point.get("attempts_used"),
+                    "selection_strategy": point.get("selection_strategy"),
+                    "selected_attempt": point.get("selected_attempt"),
+                    "selected_abs_error_percent": point.get("selected_abs_error_percent"),
                 }
             )
         return compact_points
@@ -1012,6 +1133,12 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                     "successful": point.get("successful"),
                     "successful_attempts": point.get("successful_attempts"),
                     "attempts_used": point.get("attempts_used"),
+                    "selection_strategy": point.get("selection_strategy"),
+                    "selected_attempt": point.get("selected_attempt"),
+                    "selected_attempts": point.get("selected_attempts"),
+                    "selected_abs_error_percent": point.get("selected_abs_error_percent"),
+                    "selected_window_avg_abs_error_percent": point.get("selected_window_avg_abs_error_percent"),
+                    "ignored_outlier_attempts": point.get("ignored_outlier_attempts"),
                     "final_percent": point.get("final_percent"),
                     "final_error_percent": point.get("final_error_percent"),
                     "corrected_stop_percent": point.get("corrected_stop_percent"),
@@ -1110,6 +1237,8 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 "target_percent": point["target_percent"],
                 "final_error_percent": point["final_error_percent"],
                 "attempts_used": point["attempts_used"],
+                "selection_strategy": point.get("selection_strategy"),
+                "selected_attempt": point.get("selected_attempt"),
             }
             for point in points
             if not point["successful"]
@@ -1123,7 +1252,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             max_attempts_used,
         )
         summary = (
-            f"{quality}: {success_count}/{total_points} targets within {tolerance:g}%"
+            f"{quality}: {success_count}/{total_points} repeatable targets within {tolerance:g}%"
             f"; max error {max_abs_error:.2f}%; avg error {avg_abs_error:.2f}%"
             f"; attempts {total_attempts}; events {len(events) if isinstance(events, list) else 0}"
         )
@@ -1195,6 +1324,15 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                         "successful_attempts": sample.get("successful_attempts"),
                         "stability_attempts": sample.get("stability_attempts"),
                         "attempts_used": int(sample.get("attempts_used") or 0),
+                        "selection_strategy": sample.get("selection_strategy"),
+                        "selected_attempt": sample.get("selected_attempt"),
+                        "selected_attempts": sample.get("selected_attempts"),
+                        "selected_window_avg_abs_error_percent": sample.get(
+                            "selected_window_avg_abs_error_percent"
+                        ),
+                        "selected_abs_error_percent": sample.get("selected_abs_error_percent"),
+                        "ignored_outlier_attempts": sample.get("ignored_outlier_attempts"),
+                        "outlier_error_percent": sample.get("outlier_error_percent"),
                         "final_percent": sample.get("final_percent"),
                         "final_error_percent": sample.get("error_percent"),
                         "final_error_raw": sample.get("error_raw"),
@@ -1210,6 +1348,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                             "stop_command_latency_ms": sample.get("stop_command_latency_ms"),
                             "speed_raw_per_second": sample.get("speed_raw_per_second"),
                         },
+                        "last_attempt": sample.get("last_attempt"),
                         "attempts": attempts if isinstance(attempts, list) else [],
                     }
                 )
@@ -1247,20 +1386,38 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                     "- "
                     f"{point.get('direction')} {point.get('target_percent')}% "
                     f"success={point.get('successful')} "
+                    f"selection={point.get('selection_strategy')} "
+                    f"selected_attempt={point.get('selected_attempt')} "
+                    f"selected_attempts={point.get('selected_attempts')} "
+                    f"selected_abs_error={point.get('selected_abs_error_percent')}% "
+                    f"selected_window_avg_abs_error={point.get('selected_window_avg_abs_error_percent')}% "
+                    f"outliers={point.get('ignored_outlier_attempts')} "
                     f"successful_attempts={point.get('successful_attempts')} "
                     f"attempts={point.get('attempts_used')} "
-                    f"final={point.get('final_percent')}% "
-                    f"error={point.get('final_error_percent')}% "
+                    f"selected_final={point.get('final_percent')}% "
+                    f"selected_error={point.get('final_error_percent')}% "
                     f"corrected_stop={point.get('corrected_stop_percent')}%"
                 )
                 attempts = point.get("attempts")
                 if isinstance(attempts, list):
+                    selected_attempts = point.get("selected_attempts")
+                    if not isinstance(selected_attempts, list):
+                        selected_attempts = []
+                    ignored_outliers = point.get("ignored_outlier_attempts")
+                    if not isinstance(ignored_outliers, list):
+                        ignored_outliers = []
                     for attempt in attempts:
                         if not isinstance(attempt, dict):
                             continue
+                        markers = []
+                        if attempt.get("attempt") in selected_attempts:
+                            markers.append("selected")
+                        if attempt.get("attempt") in ignored_outliers:
+                            markers.append("outlier")
                         lines.append(
                             "  "
                             f"attempt {attempt.get('attempt')}: "
+                            f"markers={markers} "
                             f"requested_stop={attempt.get('requested_stop_percent')}% "
                             f"stop_sent={attempt.get('stop_command_percent')}% "
                             f"final={attempt.get('final_percent')}% "
