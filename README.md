@@ -240,6 +240,9 @@ error, adjusts the stop threshold, and always makes five attempts. The target is
 treated as successful when any two consecutive attempts both finish within 2%.
 The stored stop threshold comes from that stable window when available, or from
 the best non-outlier attempt when the point is not repeatable.
+If the gate is still moving after the settle timeout, calibration sends another
+stop command and records that try as invalid instead of learning from the moving
+position.
 Successful calibration finishes by closing the gate; failed calibration leaves
 the gate where it stopped so external traffic is not surprised by an automatic
 close. Later position requests use the calibrated table and interpolate between
