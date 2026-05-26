@@ -19,6 +19,8 @@ Latest release: `v0.3.0`
 - Live position percentage while the gate moves.
 - Coarse set-position support by moving in the required direction and sending
   stop once the target percentage is reached or crossed.
+- Optional position calibration that moves through 20/40/60/80% targets, learns
+  direction-specific stop correction, and interpolates between calibrated points.
 - Real state from DMP register `04/01`.
 - Real position from DMP registers `04/11`, `04/18`, and `04/19`.
 - Faster polling while the gate is moving, slower polling while idle.
@@ -229,6 +231,14 @@ position, and sends `stop` after the position reaches or crosses the requested
 percentage. This is intentionally coarse and should not be treated as millimeter
 precision.
 
+An optional disabled-by-default diagnostic button can run a position calibration
+sequence. It calibrates 20/40/60/80% targets from closed, then from open. For
+each target it returns to the known endpoint, tries the target, records the
+error, adjusts the stop threshold, and retries up to five times or until the
+final error is within 1%. It finishes by closing the gate. Later position
+requests use the calibrated table and interpolate between neighboring points
+when possible.
+
 Position is calculated as:
 
 ```text
@@ -270,13 +280,17 @@ by the Home Assistant frontend, not by this integration.
 
 Enabled by default:
 
-- `cover`: open, close, stop, current position, and coarse set-position slider.
+- `cover`: open, close, stop, current position, and set-position slider with optional calibration.
 - `sensor`: connection state.
+- `sensor`: position calibration state.
 - `button`: refresh status.
 - `button`: reconnect.
 
 Disabled by default, but available from the entity registry:
 
+- Position calibration button.
+- Last position calibration.
+- Position calibration error.
 - Last successful update.
 - Last error.
 - Reconnect count.

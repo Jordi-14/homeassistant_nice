@@ -15,6 +15,7 @@ PLATFORMS: list[Platform] = [Platform.COVER, Platform.SENSOR, Platform.BUTTON]
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Nice BiDi-WiFi from a config entry."""
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
+    await coordinator.async_load_calibration()
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator

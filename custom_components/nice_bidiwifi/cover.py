@@ -103,6 +103,8 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
             "current_position_raw": status.current_position,
             "closed_position_raw": status.closed_position,
             "open_position_raw": status.open_position,
+            "position_calibration_state": self.coordinator.calibration_state,
+            "position_calibration_updated_at": self.coordinator.calibration_updated_at,
             "dmp_registers": status.registers,
         }
 
