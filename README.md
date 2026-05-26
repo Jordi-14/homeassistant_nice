@@ -17,6 +17,23 @@ TLS/TCP 443 and creates one `cover` entity plus helper diagnostic entities.
   command latency, encoder calibration values, and device firmware/serial data.
 - Diagnostic buttons to refresh status immediately or force a local reconnect.
 
+## Compatibility
+
+Known working setup:
+
+- BiDi-WiFi firmware: `2.6.4`
+- BiDi-WiFi hardware: `SB725A1-R0-R01`
+- Tested control unit family: Nice Robus sliding gate controller family
+- Tested control unit firmware: `FG01h`
+- Home Assistant: `2024.11.0` or newer
+
+This integration depends on the BiDi-WiFi local NHK/T4/DMP protocol, which is
+not publicly documented by Nice. If you rely on this integration, we recommend
+not updating the BiDi-WiFi firmware beyond `2.6.4` unless you are prepared to
+retest local control and recover using the official Nice app or remote. A
+firmware update could change authentication, command framing, register layout,
+or local TCP 443 behavior and break the integration.
+
 ## Requirements
 
 - The BiDi-WiFi must be reachable from Home Assistant on TCP 443.
