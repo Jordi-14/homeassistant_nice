@@ -15,9 +15,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import NiceBidiStatus
-from .const import DOMAIN
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entity import bidi_device_info, bidi_unique_id
+from .runtime import get_coordinator
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -214,7 +214,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensors from a config entry."""
-    coordinator: NiceBidiDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = get_coordinator(entry)
     async_add_entities(NiceBidiSensor(coordinator, entry, description) for description in SENSORS)
 
 

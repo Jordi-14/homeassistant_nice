@@ -17,6 +17,15 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .calibration_report import (
+    build_calibration_report,
+    build_live_calibration_report,
+    calibration_quality as report_calibration_quality,
+    calibration_report_attributes as report_calibration_report_attributes,
+    calibration_report_summary as report_calibration_report_summary,
+    format_calibration_report,
+)
+from .calibration_types import CalibrationEvent, CalibrationProfile, CalibrationReport
 from .client import (
     NiceBidiAuthError,
     NiceBidiClient,
@@ -68,7 +77,6 @@ CALIBRATION_MAX_ATTEMPTS = 5
 CALIBRATION_STABILITY_ATTEMPTS = 2
 CALIBRATION_TARGET_TOLERANCE_PERCENT = 2.0
 CALIBRATION_OUTLIER_ERROR_PERCENT = 15.0
-CALIBRATION_REPORT_ATTRIBUTE_EVENT_LIMIT = 5
 CALIBRATION_REPORT_LOG_CHUNK_SIZE = 6000
 
 CALIBRATION_STATE_CALIBRATED = "calibrated"
@@ -98,10 +106,10 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.calibration_state = CALIBRATION_STATE_NOT_CALIBRATED
         self.calibration_last_error: str | None = None
         self.calibration_updated_at: datetime | None = None
-        self.calibration_profile: dict[str, Any] | None = None
-        self.calibration_report: dict[str, Any] | None = None
-        self._calibration_events: list[dict[str, Any]] = []
-        self._calibration_store = Store[dict[str, Any]](
+        self.calibration_profile: CalibrationProfile | None = None
+        self.calibration_report: CalibrationReport | None = None
+        self._calibration_events: list[CalibrationEvent] = []
+        self._calibration_store = Store[CalibrationProfile](
             hass,
             CALIBRATION_STORAGE_VERSION,
             f"{DOMAIN}.calibration.{entry.entry_id}",
@@ -237,6 +245,12 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         if stop:
             with suppress(HomeAssistantError):
                 await self._async_send_action("stop")
+
+    async def _async_cancel_background_tasks(self, *, stop_calibration: bool = True) -> None:
+        """Cancel background tasks owned by this coordinator."""
+        await self._async_cancel_position_target()
+        await self._async_cancel_post_command_refresh()
+        await self._async_cancel_calibration(stop=stop_calibration)
 
     async def async_send_action(self, action: str) -> None:
         """Send an open, close, or stop command."""
@@ -438,7 +452,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 self._calibration_task = None
             self.async_update_listeners()
 
-    async def _async_build_position_calibration(self) -> dict[str, Any]:
+    async def _async_build_position_calibration(self) -> CalibrationProfile:
         """Build a direction-specific calibration profile."""
         started_at = datetime.now(UTC)
         self._add_calibration_event("run", "Reading initial status")
@@ -1193,57 +1207,17 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
     @property
     def calibration_quality(self) -> str | None:
         """Return the latest calibration quality grade."""
-        if self.calibration_report is None:
-            return None
-        quality = self.calibration_report.get("quality")
-        return str(quality) if quality is not None else None
+        return report_calibration_quality(self.calibration_report)
 
     @property
     def calibration_report_summary(self) -> str | None:
         """Return a compact calibration report summary."""
-        if self.calibration_report is None:
-            return None
-        summary = self.calibration_report.get("summary")
-        return str(summary)[:255] if summary is not None else None
+        return report_calibration_report_summary(self.calibration_report)
 
     @property
     def calibration_report_attributes(self) -> dict[str, Any]:
         """Return recorder-safe calibration report attributes."""
-        if self.calibration_report is None:
-            return {}
-
-        report = self.calibration_report
-        events = report.get("events")
-        points = report.get("points")
-        return {
-            "state": report.get("state"),
-            "quality": report.get("quality"),
-            "summary": report.get("summary"),
-            "updated_at": report.get("updated_at"),
-            "profile_version": report.get("profile_version"),
-            "tolerance_percent": report.get("tolerance_percent"),
-            "poll_seconds": report.get("poll_seconds"),
-            "settle_seconds": report.get("settle_seconds"),
-            "command_pause_seconds": report.get("command_pause_seconds"),
-            "max_attempts": report.get("max_attempts"),
-            "stability_attempts": report.get("stability_attempts"),
-            "point_count": report.get("point_count"),
-            "successful_points": report.get("successful_points"),
-            "invalid_points": report.get("invalid_points"),
-            "failed_points": self._compact_calibration_failed_points(report.get("failed_points")),
-            "total_attempts": report.get("total_attempts"),
-            "max_attempts_used": report.get("max_attempts_used"),
-            "max_abs_error_percent": report.get("max_abs_error_percent"),
-            "avg_abs_error_percent": report.get("avg_abs_error_percent"),
-            "bounds": report.get("bounds"),
-            "points": self._compact_calibration_points(points),
-            "event_count": len(events) if isinstance(events, list) else None,
-            "last_events": self._compact_calibration_events(events),
-            "full_report_log_prefix": "Nice BiDi-WiFi calibration report",
-            "full_report_note": (
-                "Full report is written to Home Assistant logs in chunks when calibration finishes or fails."
-            ),
-        }
+        return report_calibration_report_attributes(self.calibration_report)
 
     def _add_calibration_event(self, stage: str, message: str, **details: Any) -> None:
         """Record one detailed calibration event and write it to HA logs."""
@@ -1264,83 +1238,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             self.calibration_report = self._build_live_calibration_report(message)
             self.async_update_listeners()
 
-    @staticmethod
-    def _compact_calibration_failed_points(failed_points: Any) -> list[dict[str, Any]]:
-        """Return a small failed-point list suitable for state attributes."""
-        if not isinstance(failed_points, list):
-            return []
-        compact_points = []
-        for point in failed_points:
-            if not isinstance(point, dict):
-                continue
-            compact_points.append(
-                {
-                    "direction": point.get("direction"),
-                    "target_percent": point.get("target_percent"),
-                    "final_error_percent": point.get("final_error_percent"),
-                    "attempts_used": point.get("attempts_used"),
-                    "selection_strategy": point.get("selection_strategy"),
-                    "selected_attempt": point.get("selected_attempt"),
-                    "selected_abs_error_percent": point.get("selected_abs_error_percent"),
-                    "ignored_invalid_attempts": point.get("ignored_invalid_attempts"),
-                    "valid": point.get("valid"),
-                    "failure_reason": point.get("failure_reason"),
-                }
-            )
-        return compact_points
-
-    @staticmethod
-    def _compact_calibration_points(points: Any) -> list[dict[str, Any]]:
-        """Return point summaries without per-attempt details."""
-        if not isinstance(points, list):
-            return []
-        compact_points = []
-        for point in points:
-            if not isinstance(point, dict):
-                continue
-            compact_points.append(
-                {
-                    "direction": point.get("direction"),
-                    "valid": point.get("valid"),
-                    "failure_reason": point.get("failure_reason"),
-                    "target_percent": point.get("target_percent"),
-                    "successful": point.get("successful"),
-                    "successful_attempts": point.get("successful_attempts"),
-                    "attempts_used": point.get("attempts_used"),
-                    "selection_strategy": point.get("selection_strategy"),
-                    "selected_attempt": point.get("selected_attempt"),
-                    "selected_attempts": point.get("selected_attempts"),
-                    "selected_abs_error_percent": point.get("selected_abs_error_percent"),
-                    "selected_window_avg_abs_error_percent": point.get("selected_window_avg_abs_error_percent"),
-                    "ignored_outlier_attempts": point.get("ignored_outlier_attempts"),
-                    "ignored_invalid_attempts": point.get("ignored_invalid_attempts"),
-                    "final_percent": point.get("final_percent"),
-                    "final_error_percent": point.get("final_error_percent"),
-                    "corrected_stop_percent": point.get("corrected_stop_percent"),
-                }
-            )
-        return compact_points
-
-    @staticmethod
-    def _compact_calibration_events(events: Any) -> list[dict[str, Any]]:
-        """Return the last calibration events without bulky details."""
-        if not isinstance(events, list):
-            return []
-        compact_events = []
-        for event in events[-CALIBRATION_REPORT_ATTRIBUTE_EVENT_LIMIT:]:
-            if not isinstance(event, dict):
-                continue
-            compact_events.append(
-                {
-                    "index": event.get("index"),
-                    "timestamp": event.get("timestamp"),
-                    "stage": event.get("stage"),
-                    "message": event.get("message"),
-                }
-            )
-        return compact_events
-
-    def _log_calibration_report(self, report: dict[str, Any], reason: str) -> None:
+    def _log_calibration_report(self, report: CalibrationReport, reason: str) -> None:
         """Write the full calibration report to HA logs in bounded chunks."""
         report_text = self._format_calibration_report(report)
         total_chunks = max(
@@ -1364,301 +1262,37 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 chunk,
             )
 
-    def _build_live_calibration_report(self, summary: str) -> dict[str, Any]:
+    def _build_live_calibration_report(self, summary: str) -> CalibrationReport:
         """Build a report while calibration is still running or failed."""
-        report = {
-            "state": self.calibration_state,
-            "quality": self.calibration_state,
-            "summary": summary,
-            "updated_at": datetime.now(UTC).isoformat(),
-            "tolerance_percent": CALIBRATION_TARGET_TOLERANCE_PERCENT,
-            "poll_seconds": POSITION_TARGET_POLL_SECONDS,
-            "settle_seconds": CALIBRATION_SETTLE_SECONDS,
-            "command_pause_seconds": CALIBRATION_COMMAND_PAUSE_SECONDS,
-            "max_attempts": CALIBRATION_MAX_ATTEMPTS,
-            "stability_attempts": CALIBRATION_STABILITY_ATTEMPTS,
-            "events": list(self._calibration_events),
-        }
-        return report
+        return build_live_calibration_report(
+            state=self.calibration_state,
+            summary=summary,
+            events=self._calibration_events,
+            tolerance_percent=CALIBRATION_TARGET_TOLERANCE_PERCENT,
+            poll_seconds=POSITION_TARGET_POLL_SECONDS,
+            settle_seconds=CALIBRATION_SETTLE_SECONDS,
+            command_pause_seconds=CALIBRATION_COMMAND_PAUSE_SECONDS,
+            max_attempts=CALIBRATION_MAX_ATTEMPTS,
+            stability_attempts=CALIBRATION_STABILITY_ATTEMPTS,
+        )
 
-    def _build_calibration_report(self, profile: dict[str, Any]) -> dict[str, Any]:
+    def _build_calibration_report(self, profile: CalibrationProfile) -> CalibrationReport:
         """Build quality metrics and a copyable report from a calibration profile."""
-        points = self._calibration_points(profile)
-        events = profile.get("events", [])
-        tolerance = float(profile.get("target_tolerance_percent") or CALIBRATION_TARGET_TOLERANCE_PERCENT)
-
-        if not points:
-            report = {
-                "state": self.calibration_state,
-                "quality": "unknown",
-                "summary": "No calibration points found in the stored profile",
-                "profile": profile,
-                "points": [],
-                "events": events if isinstance(events, list) else [],
-            }
-            return report
-
-        abs_errors = [
-            abs(float(error))
-            for point in points
-            if isinstance((error := point.get("final_error_percent")), (int, float))
-        ]
-        invalid_points = sum(1 for point in points if point.get("valid", True) is False)
-        attempts_used = [int(point["attempts_used"]) for point in points]
-        success_count = sum(1 for point in points if point["successful"])
-        total_points = len(points)
-        max_abs_error = round(max(abs_errors), 2) if abs_errors else None
-        avg_abs_error = round(sum(abs_errors) / len(abs_errors), 2) if abs_errors else None
-        total_attempts = sum(attempts_used)
-        max_attempts_used = max(attempts_used)
-        failed_points = [
-            {
-                "direction": point["direction"],
-                "target_percent": point["target_percent"],
-                "final_error_percent": point["final_error_percent"],
-                "attempts_used": point["attempts_used"],
-                "selection_strategy": point.get("selection_strategy"),
-                "selected_attempt": point.get("selected_attempt"),
-                "selected_abs_error_percent": point.get("selected_abs_error_percent"),
-                "ignored_invalid_attempts": point.get("ignored_invalid_attempts"),
-                "valid": point.get("valid"),
-                "failure_reason": point.get("failure_reason"),
-            }
-            for point in points
-            if not point["successful"]
-        ]
-
-        quality = self._calibration_quality(
-            success_count,
-            total_points,
-            max_abs_error if max_abs_error is not None else 1000.0,
-            avg_abs_error if avg_abs_error is not None else 1000.0,
-            max_attempts_used,
-        )
-        max_error_text = f"{max_abs_error:.2f}%" if max_abs_error is not None else "unknown"
-        avg_error_text = f"{avg_abs_error:.2f}%" if avg_abs_error is not None else "unknown"
-        summary = (
-            f"{quality}: {success_count}/{total_points} repeatable targets within {tolerance:g}%"
-            f"; max error {max_error_text}; avg error {avg_error_text}"
-            f"; attempts {total_attempts}; events {len(events) if isinstance(events, list) else 0}"
-        )
-        if invalid_points:
-            summary = f"{summary}; invalid points {invalid_points}"
-        report = {
-            "state": self.calibration_state,
-            "quality": quality,
-            "summary": summary,
-            "updated_at": profile.get("updated_at"),
-            "profile_version": profile.get("version"),
-            "tolerance_percent": tolerance,
-            "poll_seconds": profile.get("poll_seconds"),
-            "settle_seconds": profile.get("settle_seconds"),
-            "command_pause_seconds": profile.get("command_pause_seconds"),
-            "max_attempts": profile.get("max_attempts"),
-            "stability_attempts": profile.get("stability_attempts"),
-            "point_count": total_points,
-            "successful_points": success_count,
-            "invalid_points": invalid_points,
-            "failed_points": failed_points,
-            "total_attempts": total_attempts,
-            "max_attempts_used": max_attempts_used,
-            "max_abs_error_percent": max_abs_error,
-            "avg_abs_error_percent": avg_abs_error,
-            "bounds": profile.get("bounds", {}),
-            "points": points,
-            "events": events if isinstance(events, list) else [],
-        }
-        return report
+        return build_calibration_report(profile, self.calibration_state)
 
     @staticmethod
-    def _calibration_quality(
-        success_count: int,
-        total_points: int,
-        max_abs_error: float,
-        avg_abs_error: float,
-        max_attempts_used: int,
-    ) -> str:
-        """Return a simple quality grade for a calibration result."""
-        if success_count < total_points:
-            return "needs_review"
-        if max_abs_error <= 0.5 and avg_abs_error <= 0.35 and max_attempts_used <= 2:
-            return "excellent"
-        if max_abs_error <= 1.0:
-            return "good"
-        if max_abs_error <= 2.0:
-            return "usable"
-        return "needs_review"
-
-    @staticmethod
-    def _calibration_points(profile: dict[str, Any]) -> list[dict[str, Any]]:
-        """Flatten stored calibration samples into report points."""
-        samples_by_direction = profile.get("samples")
-        if not isinstance(samples_by_direction, dict):
-            return []
-
-        points: list[dict[str, Any]] = []
-        for direction in ("open", "close"):
-            samples = samples_by_direction.get(direction, [])
-            if not isinstance(samples, list):
-                continue
-            for sample in samples:
-                if not isinstance(sample, dict):
-                    continue
-                attempts = sample.get("attempts", [])
-                points.append(
-                    {
-                        "direction": direction,
-                        "valid": sample.get("valid", True),
-                        "failure_reason": sample.get("failure_reason"),
-                        "target_percent": sample.get("target_percent"),
-                        "successful": bool(sample.get("successful")),
-                        "successful_attempts": sample.get("successful_attempts"),
-                        "stability_attempts": sample.get("stability_attempts"),
-                        "attempts_used": int(sample.get("attempts_used") or 0),
-                        "selection_strategy": sample.get("selection_strategy"),
-                        "selected_attempt": sample.get("selected_attempt"),
-                        "selected_attempts": sample.get("selected_attempts"),
-                        "selected_window_avg_abs_error_percent": sample.get(
-                            "selected_window_avg_abs_error_percent"
-                        ),
-                        "selected_abs_error_percent": sample.get("selected_abs_error_percent"),
-                        "ignored_outlier_attempts": sample.get("ignored_outlier_attempts"),
-                        "ignored_invalid_attempts": sample.get("ignored_invalid_attempts"),
-                        "outlier_error_percent": sample.get("outlier_error_percent"),
-                        "final_percent": sample.get("final_percent"),
-                        "final_error_percent": sample.get("error_percent"),
-                        "final_error_raw": sample.get("error_raw"),
-                        "corrected_stop_percent": sample.get("corrected_stop_percent"),
-                        "corrected_stop_raw": sample.get("corrected_stop_raw"),
-                        "final_attempt": {
-                            "valid": sample.get("valid", True),
-                            "failure_reason": sample.get("failure_reason"),
-                            "attempt": sample.get("attempt"),
-                            "requested_stop_percent": sample.get("requested_stop_percent"),
-                            "stop_command_percent": sample.get("stop_command_percent"),
-                            "final_percent": sample.get("final_percent"),
-                            "error_percent": sample.get("error_percent"),
-                            "move_duration_ms": sample.get("move_duration_ms"),
-                            "stop_command_latency_ms": sample.get("stop_command_latency_ms"),
-                            "speed_raw_per_second": sample.get("speed_raw_per_second"),
-                        },
-                        "last_attempt": sample.get("last_attempt"),
-                        "attempts": attempts if isinstance(attempts, list) else [],
-                    }
-                )
-        return points
-
-    @staticmethod
-    def _format_calibration_report(report: dict[str, Any]) -> str:
+    def _format_calibration_report(report: CalibrationReport) -> str:
         """Format a calibration report as copyable plain text."""
-        lines = [
-            "Nice BiDi-WiFi position calibration report",
-            f"State: {report.get('state')}",
-            f"Quality: {report.get('quality')}",
-            f"Summary: {report.get('summary')}",
-            f"Updated at: {report.get('updated_at')}",
-            f"Tolerance: {report.get('tolerance_percent')}%",
-            f"Poll seconds: {report.get('poll_seconds')}",
-            f"Settle seconds: {report.get('settle_seconds')}",
-            f"Command pause seconds: {report.get('command_pause_seconds')}",
-            f"Stability attempts: {report.get('stability_attempts')}",
-        ]
-
-        bounds = report.get("bounds")
-        if isinstance(bounds, dict) and bounds:
-            lines.append("")
-            lines.append("Bounds:")
-            for key, value in sorted(bounds.items()):
-                lines.append(f"- {key}: {value}")
-
-        points = report.get("points")
-        if isinstance(points, list) and points:
-            lines.append("")
-            lines.append("Calibration points:")
-            for point in points:
-                lines.append(
-                    "- "
-                    f"{point.get('direction')} {point.get('target_percent')}% "
-                    f"valid={point.get('valid')} "
-                    f"failure={point.get('failure_reason')} "
-                    f"success={point.get('successful')} "
-                    f"selection={point.get('selection_strategy')} "
-                    f"selected_attempt={point.get('selected_attempt')} "
-                    f"selected_attempts={point.get('selected_attempts')} "
-                    f"selected_abs_error={point.get('selected_abs_error_percent')}% "
-                    f"selected_window_avg_abs_error={point.get('selected_window_avg_abs_error_percent')}% "
-                    f"outliers={point.get('ignored_outlier_attempts')} "
-                    f"invalid_attempts={point.get('ignored_invalid_attempts')} "
-                    f"successful_attempts={point.get('successful_attempts')} "
-                    f"attempts={point.get('attempts_used')} "
-                    f"selected_final={point.get('final_percent')}% "
-                    f"selected_error={point.get('final_error_percent')}% "
-                    f"corrected_stop={point.get('corrected_stop_percent')}%"
-                )
-                attempts = point.get("attempts")
-                if isinstance(attempts, list):
-                    selected_attempts = point.get("selected_attempts")
-                    if not isinstance(selected_attempts, list):
-                        selected_attempts = []
-                    ignored_outliers = point.get("ignored_outlier_attempts")
-                    if not isinstance(ignored_outliers, list):
-                        ignored_outliers = []
-                    for attempt in attempts:
-                        if not isinstance(attempt, dict):
-                            continue
-                        markers = []
-                        if attempt.get("attempt") in selected_attempts:
-                            markers.append("selected")
-                        if attempt.get("attempt") in ignored_outliers:
-                            markers.append("outlier")
-                        if attempt.get("valid", True) is False:
-                            markers.append("invalid")
-                        lines.append(
-                            "  "
-                            f"attempt {attempt.get('attempt')}: "
-                            f"markers={markers} "
-                            f"failure={attempt.get('failure_reason')} "
-                            f"requested_stop={attempt.get('requested_stop_percent')}% "
-                            f"stop_sent={attempt.get('stop_command_percent')}% "
-                            f"final={attempt.get('final_percent')}% "
-                            f"error={attempt.get('error_percent')}% "
-                            f"latency={attempt.get('stop_command_latency_ms')}ms "
-                            f"duration={attempt.get('move_duration_ms')}ms "
-                            f"speed_raw_per_second={attempt.get('speed_raw_per_second')}"
-                        )
-
-        events = report.get("events")
-        if isinstance(events, list) and events:
-            lines.append("")
-            lines.append("Event log:")
-            for event in events:
-                if not isinstance(event, dict):
-                    continue
-                details = event.get("details")
-                detail_text = ""
-                if isinstance(details, dict) and details:
-                    detail_text = f" {json.dumps(details, sort_keys=True)}"
-                lines.append(
-                    f"[{event.get('index')}] {event.get('timestamp')} "
-                    f"{event.get('stage')}: {event.get('message')}{detail_text}"
-                )
-
-        return "\n".join(lines)
+        return format_calibration_report(report)
 
     async def async_reconnect(self) -> None:
         """Force the current NHK/TLS session to be recreated."""
-        await self._async_cancel_position_target()
-        await self._async_cancel_post_command_refresh()
-        await self._async_cancel_calibration()
-        await self._async_cancel_post_command_refresh()
+        await self._async_cancel_background_tasks()
         self.connection_state = CONNECTION_STATE_RECONNECTING
         await self.hass.async_add_executor_job(self.client.close)
         await self.async_request_refresh()
 
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
-        await self._async_cancel_position_target()
-        await self._async_cancel_post_command_refresh()
-        await self._async_cancel_calibration()
-        await self._async_cancel_post_command_refresh()
+        await self._async_cancel_background_tasks()
         await self.hass.async_add_executor_job(self.client.close)

@@ -22,7 +22,23 @@ Use fake values in examples and redact logs before opening issues.
 Before opening a pull request, run:
 
 ```bash
-python3 -m compileall -q custom_components scripts
+python3 -m json.tool custom_components/nice_bidiwifi/manifest.json > /dev/null
+python3 -m json.tool custom_components/nice_bidiwifi/strings.json > /dev/null
+python3 -m json.tool custom_components/nice_bidiwifi/translations/en.json > /dev/null
+python3 -m json.tool custom_components/nice_bidiwifi/translations/ca.json > /dev/null
+python3 -m pytest tests -q
+python3 -m ruff check custom_components tests
+python3 -m compileall -q custom_components tests scripts
 ```
 
-GitHub Actions run HACS validation and Hassfest for repository-level checks.
+Install test dependencies with:
+
+```bash
+python3 -m pip install -r requirements_test.txt
+```
+
+When changing UI text, update `strings.json` and all translation files. Logs,
+diagnostics internals, and developer-only messages can stay in English.
+
+GitHub Actions run tests, linting, HACS validation, and Hassfest for
+repository-level checks.

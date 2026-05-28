@@ -11,9 +11,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_STOPPED, NiceBidiStatus
-from .const import DOMAIN
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entity import bidi_device_info, bidi_unique_id
+from .runtime import get_coordinator
+
+PARALLEL_UPDATES = 1
 
 
 async def async_setup_entry(
@@ -22,7 +24,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up cover from a config entry."""
-    coordinator: NiceBidiDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = get_coordinator(entry)
     async_add_entities([NiceBidiCover(coordinator, entry)])
 
 

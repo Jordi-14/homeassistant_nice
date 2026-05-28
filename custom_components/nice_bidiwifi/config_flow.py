@@ -6,10 +6,11 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlow
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import selector
 
 from .client import NiceBidiAuthError, NiceBidiClient, NiceBidiConnectionError, NiceBidiCredentials
 from .const import (
@@ -26,19 +27,46 @@ from .const import (
 )
 
 
+_TEXT_SELECTOR = selector.TextSelector(selector.TextSelectorConfig())
+_PASSWORD_SELECTOR = selector.TextSelector(
+    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+)
+_PORT_SELECTOR = selector.NumberSelector(
+    selector.NumberSelectorConfig(
+        min=1,
+        max=65535,
+        mode=selector.NumberSelectorMode.BOX,
+    )
+)
+_DEVICE_ID_SELECTOR = selector.NumberSelector(
+    selector.NumberSelectorConfig(
+        min=1,
+        mode=selector.NumberSelectorMode.BOX,
+    )
+)
+_TIMEOUT_SELECTOR = selector.NumberSelector(
+    selector.NumberSelectorConfig(
+        min=50,
+        max=10000,
+        mode=selector.NumberSelectorMode.BOX,
+        unit_of_measurement="ms",
+    )
+)
+
+
 def _schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     user_input = user_input or {}
     return vol.Schema(
         {
-            vol.Required(CONF_NAME, default=user_input.get(CONF_NAME, DEFAULT_NAME)): str,
-            vol.Required(CONF_HOST, default=user_input.get(CONF_HOST, "")): str,
-            vol.Required(CONF_PORT, default=user_input.get(CONF_PORT, DEFAULT_PORT)): int,
-            vol.Required(CONF_TARGET_MAC, default=user_input.get(CONF_TARGET_MAC, "")): str,
-            vol.Required(CONF_USERNAME, default=user_input.get(CONF_USERNAME, "")): str,
-            vol.Required(CONF_PASSWORD, default=user_input.get(CONF_PASSWORD, "")): str,
-            vol.Optional(CONF_SOURCE_ID, default=user_input.get(CONF_SOURCE_ID, "")): str,
-            vol.Optional(CONF_DEVICE_ID, default=user_input.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID)): int,
-            vol.Optional(CONF_T4_TIMEOUT_MS, default=user_input.get(CONF_T4_TIMEOUT_MS, DEFAULT_T4_TIMEOUT_MS)): int,
+            vol.Required(CONF_NAME, default=user_input.get(CONF_NAME, DEFAULT_NAME)): _TEXT_SELECTOR,
+            vol.Required(CONF_HOST, default=user_input.get(CONF_HOST, "")): _TEXT_SELECTOR,
+            vol.Required(CONF_PORT, default=user_input.get(CONF_PORT, DEFAULT_PORT)): _PORT_SELECTOR,
+            vol.Required(CONF_TARGET_MAC, default=user_input.get(CONF_TARGET_MAC, "")): _TEXT_SELECTOR,
+            vol.Required(CONF_USERNAME, default=user_input.get(CONF_USERNAME, "")): _TEXT_SELECTOR,
+            vol.Required(CONF_PASSWORD, default=user_input.get(CONF_PASSWORD, "")): _PASSWORD_SELECTOR,
+            vol.Optional(CONF_SOURCE_ID, default=user_input.get(CONF_SOURCE_ID, "")): _TEXT_SELECTOR,
+            vol.Optional(CONF_DEVICE_ID, default=user_input.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID)): _DEVICE_ID_SELECTOR,
+            vol.Optional(CONF_T4_TIMEOUT_MS, default=user_input.get(CONF_T4_TIMEOUT_MS, DEFAULT_T4_TIMEOUT_MS)): _TIMEOUT_SELECTOR,
         }
     )
 
@@ -50,7 +78,16 @@ def _normalize_input(user_input: dict[str, Any]) -> dict[str, Any]:
             data[key] = data[key].strip()
     data[CONF_TARGET_MAC] = data[CONF_TARGET_MAC].upper()
     data[CONF_PASSWORD] = data[CONF_PASSWORD].upper()
+    for key in (CONF_PORT, CONF_DEVICE_ID, CONF_T4_TIMEOUT_MS):
+        if key in data:
+            data[key] = int(data[key])
     return data
+
+
+def _merge_entry_data(entry: ConfigEntry, user_input: dict[str, Any]) -> dict[str, Any]:
+    data = dict(entry.data)
+    data.update(user_input)
+    return _normalize_input(data)
 
 
 def _test_connection(data: dict[str, Any]) -> None:
@@ -78,10 +115,20 @@ async def _async_validate_input(hass: HomeAssistant, data: dict[str, Any]) -> No
     await hass.async_add_executor_job(_test_connection, data)
 
 
+def _error_from_exception(err: Exception) -> str:
+    if isinstance(err, NiceBidiAuthError):
+        return "invalid_auth"
+    if isinstance(err, NiceBidiConnectionError | OSError):
+        return "cannot_connect"
+    return "unknown"
+
+
 class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a Nice BiDi-WiFi config flow."""
 
     VERSION = 1
+    _reauth_entry: ConfigEntry | None = None
+    _reconfigure_entry: ConfigEntry | None = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step."""
@@ -91,12 +138,8 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
             data = _normalize_input(user_input)
             try:
                 await _async_validate_input(self.hass, data)
-            except NiceBidiAuthError:
-                errors["base"] = "invalid_auth"
-            except (NiceBidiConnectionError, OSError):
-                errors["base"] = "cannot_connect"
-            except Exception:
-                errors["base"] = "unknown"
+            except Exception as err:
+                errors["base"] = _error_from_exception(err)
             else:
                 await self.async_set_unique_id(data[CONF_TARGET_MAC])
                 self._abort_if_unique_id_configured()
@@ -109,3 +152,83 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=_schema(user_input),
             errors=errors,
         )
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
+        """Handle a reauthentication request."""
+        entry = self._entry_from_context()
+        if entry is None:
+            return self.async_abort(reason="unknown")
+        self._reauth_entry = entry
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Confirm reauthentication credentials."""
+        entry = self._reauth_entry or self._entry_from_context()
+        if entry is None:
+            return self.async_abort(reason="unknown")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data = _merge_entry_data(entry, user_input)
+            if data[CONF_TARGET_MAC] != entry.unique_id:
+                errors["base"] = "wrong_device"
+            else:
+                try:
+                    await _async_validate_input(self.hass, data)
+                except Exception as err:
+                    errors["base"] = _error_from_exception(err)
+                else:
+                    self.hass.config_entries.async_update_entry(
+                        entry,
+                        title=data[CONF_NAME],
+                        data=data,
+                    )
+                    await self.hass.config_entries.async_reload(entry.entry_id)
+                    return self.async_abort(reason="reauth_successful")
+            user_input = data
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=_schema(user_input or dict(entry.data)),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle reconfiguration."""
+        entry = self._reconfigure_entry or self._entry_from_context()
+        if entry is None:
+            return self.async_abort(reason="unknown")
+        self._reconfigure_entry = entry
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data = _merge_entry_data(entry, user_input)
+            if data[CONF_TARGET_MAC] != entry.unique_id:
+                errors["base"] = "wrong_device"
+            else:
+                try:
+                    await _async_validate_input(self.hass, data)
+                except Exception as err:
+                    errors["base"] = _error_from_exception(err)
+                else:
+                    self.hass.config_entries.async_update_entry(
+                        entry,
+                        title=data[CONF_NAME],
+                        data=data,
+                    )
+                    await self.hass.config_entries.async_reload(entry.entry_id)
+                    return self.async_abort(reason="reconfigure_successful")
+            user_input = data
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_schema(user_input or dict(entry.data)),
+            errors=errors,
+        )
+
+    def _entry_from_context(self) -> ConfigEntry | None:
+        """Return the config entry for the current flow context."""
+        entry_id = self.context.get("entry_id")
+        if not isinstance(entry_id, str):
+            return None
+        return self.hass.config_entries.async_get_entry(entry_id)

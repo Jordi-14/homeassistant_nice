@@ -12,9 +12,11 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entity import bidi_device_info, bidi_unique_id
+from .runtime import get_coordinator
+
+PARALLEL_UPDATES = 1
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -22,6 +24,7 @@ class NiceBidiButtonEntityDescription(ButtonEntityDescription):
     """Description for a Nice BiDi-WiFi button."""
 
     press_fn: Callable[[NiceBidiDataUpdateCoordinator], Awaitable[None]]
+    available_when_offline: bool = False
 
 
 BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
@@ -31,6 +34,7 @@ BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         icon="mdi:refresh",
         press_fn=lambda coordinator: coordinator.async_request_refresh(),
+        available_when_offline=True,
     ),
     NiceBidiButtonEntityDescription(
         key="reconnect",
@@ -38,6 +42,7 @@ BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         icon="mdi:connection",
         press_fn=lambda coordinator: coordinator.async_reconnect(),
+        available_when_offline=True,
     ),
     NiceBidiButtonEntityDescription(
         key="calibrate_positions",
@@ -56,7 +61,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up buttons from a config entry."""
-    coordinator: NiceBidiDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = get_coordinator(entry)
     async_add_entities(NiceBidiButton(coordinator, entry, description) for description in BUTTONS)
 
 
@@ -84,6 +89,13 @@ class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEnt
     def device_info(self):
         """Return device info, enriched with INFO metadata when available."""
         return bidi_device_info(self._entry, self.coordinator.device_info)
+
+    @property
+    def available(self) -> bool:
+        """Return if the diagnostic button can currently be pressed."""
+        if self.entity_description.available_when_offline:
+            return True
+        return super().available
 
     async def async_press(self) -> None:
         """Handle the button press."""

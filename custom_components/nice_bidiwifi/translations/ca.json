@@ -1,0 +1,95 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nice BiDi-WiFi",
+        "description": "Configura el control local per a un Nice BiDi-WiFi. Tanca MyNice/MyNice Pro abans de validar la connexió.",
+        "data": {
+          "name": "Nom",
+          "host": "Adreça IP del BiDi",
+          "port": "Port",
+          "target_mac": "Adreça MAC del BiDi",
+          "username": "Nom d'usuari NHK",
+          "password": "Contrasenya NHK en hexadecimal",
+          "source_id": "ID d'origen/controlador",
+          "device_id": "ID del dispositiu",
+          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons"
+        },
+        "data_description": {
+          "name": "Nom visible d'aquesta porta a Home Assistant.",
+          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar al BiDi-WiFi a la xarxa local.",
+          "port": "Port TLS local del BiDi-WiFi. El valor per defecte és 443.",
+          "target_mac": "Adreça MAC del BiDi-WiFi extreta de les credencials de MyNice.",
+          "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
+          "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
+          "source_id": "ID d'origen/controlador extret de les credencials de MyNice. Deixa'l buit per utilitzar el nom d'usuari.",
+          "device_id": "ID de dispositiu NHK que es vol controlar. Mantén 1 excepte si estàs diagnosticant un altre dispositiu.",
+          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Torna a autenticar Nice BiDi-WiFi",
+        "description": "Actualitza les credencials locals d'aquest BiDi-WiFi. L'adreça MAC ha de coincidir amb el dispositiu existent.",
+        "data": {
+          "name": "Nom",
+          "host": "Adreça IP del BiDi",
+          "port": "Port",
+          "target_mac": "Adreça MAC del BiDi",
+          "username": "Nom d'usuari NHK",
+          "password": "Contrasenya NHK en hexadecimal",
+          "source_id": "ID d'origen/controlador",
+          "device_id": "ID del dispositiu",
+          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons"
+        },
+        "data_description": {
+          "name": "Nom visible d'aquesta porta a Home Assistant.",
+          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar al BiDi-WiFi a la xarxa local.",
+          "port": "Port TLS local del BiDi-WiFi. El valor per defecte és 443.",
+          "target_mac": "Adreça MAC del BiDi-WiFi extreta de les credencials de MyNice.",
+          "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
+          "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
+          "source_id": "ID d'origen/controlador extret de les credencials de MyNice. Deixa'l buit per utilitzar el nom d'usuari.",
+          "device_id": "ID de dispositiu NHK que es vol controlar. Mantén 1 excepte si estàs diagnosticant un altre dispositiu.",
+          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigura Nice BiDi-WiFi",
+        "description": "Actualitza la configuració de connexió local d'aquest BiDi-WiFi. L'adreça MAC ha de coincidir amb el dispositiu existent.",
+        "data": {
+          "name": "Nom",
+          "host": "Adreça IP del BiDi",
+          "port": "Port",
+          "target_mac": "Adreça MAC del BiDi",
+          "username": "Nom d'usuari NHK",
+          "password": "Contrasenya NHK en hexadecimal",
+          "source_id": "ID d'origen/controlador",
+          "device_id": "ID del dispositiu",
+          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons"
+        },
+        "data_description": {
+          "name": "Nom visible d'aquesta porta a Home Assistant.",
+          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar al BiDi-WiFi a la xarxa local.",
+          "port": "Port TLS local del BiDi-WiFi. El valor per defecte és 443.",
+          "target_mac": "Adreça MAC del BiDi-WiFi extreta de les credencials de MyNice.",
+          "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
+          "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
+          "source_id": "ID d'origen/controlador extret de les credencials de MyNice. Deixa'l buit per utilitzar el nom d'usuari.",
+          "device_id": "ID de dispositiu NHK que es vol controlar. Mantén 1 excepte si estàs diagnosticant un altre dispositiu.",
+          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "No s'ha pogut connectar. Comprova l'accés LAN al port TCP 443, tanca MyNice/MyNice Pro i torna-ho a provar.",
+      "invalid_auth": "L'autenticació ha fallat. Comprova el nom d'usuari extret, l'ID d'origen, la MAC de destinació i la contrasenya.",
+      "unknown": "Error inesperat",
+      "wrong_device": "L'adreça MAC no coincideix amb aquest BiDi-WiFi configurat."
+    },
+    "abort": {
+      "already_configured": "Aquest BiDi-WiFi ja està configurat",
+      "reauth_successful": "Reautenticació correcta",
+      "reconfigure_successful": "Reconfiguració correcta"
+    }
+  }
+}

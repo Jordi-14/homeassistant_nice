@@ -1,9 +1,13 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+.coverage
+htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.venv/
+venv/
 
 # Never commit local app backups, packet captures, or extracted secrets.
 *.imazingapp

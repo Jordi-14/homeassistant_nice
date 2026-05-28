@@ -6,8 +6,8 @@ import base64
 from collections.abc import Callable
 from dataclasses import dataclass
 import hashlib
-import random
 import re
+import secrets
 import socket
 import ssl
 import string
@@ -140,7 +140,7 @@ def _xor_sha256(data: bytes, key: bytes) -> bytes:
 
 def _random_t4_key(length: int = 31) -> bytes:
     alphabet = string.ascii_letters + string.digits
-    return "".join(random.choice(alphabet) for _ in range(length)).encode("ascii")
+    return "".join(secrets.choice(alphabet) for _ in range(length)).encode("ascii")
 
 
 def _dmp_checksum(*values: int) -> int:
@@ -237,6 +237,8 @@ def _status_from_register(register: dict[str, Any] | None) -> str | None:
 
 def _make_context() -> ssl.SSLContext:
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    # BiDi-WiFi exposes a local TLS endpoint with a device certificate that
+    # cannot be validated against Home Assistant's trust store.
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     context.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -359,7 +361,7 @@ class NiceBidiClient:
         raise NiceBidiConnectionError(str(last_error)) from last_error
 
     def _connect_locked(self) -> None:
-        client_challenge = f"{random.getrandbits(32):08X}"
+        client_challenge = f"{secrets.randbits(32):08X}"
         xml = (
             self._start_request(0, "CONNECT")
             + f'<Authentication cc="{client_challenge}" username="{_xml_escape(self.credentials.username)}"/>\r\n'
@@ -452,7 +454,7 @@ class NiceBidiClient:
         while True:
             try:
                 chunk = self._socket.recv(65535)
-            except socket.timeout:
+            except TimeoutError:
                 break
             if not chunk:
                 break

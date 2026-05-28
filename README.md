@@ -10,7 +10,12 @@ Nice BiDi-WiFi interface.
 This integration talks directly to the BiDi-WiFi local NHK/T4 service over
 TLS/TCP 443 and creates one `cover` entity plus helper diagnostic entities.
 
-Latest release: `v0.4.1`
+The local TLS endpoint on tested BiDi-WiFi firmware uses a device certificate
+that cannot be validated against Home Assistant's normal trust store. The
+integration therefore keeps certificate verification disabled for this local
+socket and relies on LAN isolation plus the NHK credentials for access control.
+
+Latest release: `v0.4.2`
 
 ## Features
 
@@ -192,6 +197,10 @@ The `permission` and `maintenance_state` fields are informational and are not
 entered in Home Assistant.
 
 Treat the password as a gate-control secret.
+
+Home Assistant diagnostics redact the configured host, MAC address, username,
+password, source/controller ID, serial numbers, and raw register details before
+export.
 
 ### Android
 

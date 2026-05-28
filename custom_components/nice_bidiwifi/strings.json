@@ -14,16 +14,82 @@
           "source_id": "Source/controller ID",
           "device_id": "Device ID",
           "t4_timeout_ms": "T4 timeout in milliseconds"
+        },
+        "data_description": {
+          "name": "Display name for this gate in Home Assistant.",
+          "host": "IP address or hostname that Home Assistant uses to reach the BiDi-WiFi on the local network.",
+          "port": "Local BiDi-WiFi TLS port. The default is 443.",
+          "target_mac": "BiDi-WiFi MAC address from the extracted MyNice credentials.",
+          "username": "NHK username from the extracted MyNice credentials.",
+          "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
+          "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
+          "device_id": "NHK device ID to control. Leave at 1 unless troubleshooting a different device.",
+          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Nice BiDi-WiFi",
+        "description": "Update the local credentials for this BiDi-WiFi. The MAC address must match the existing device.",
+        "data": {
+          "name": "Name",
+          "host": "BiDi IP address",
+          "port": "Port",
+          "target_mac": "BiDi MAC address",
+          "username": "NHK username",
+          "password": "NHK password hex",
+          "source_id": "Source/controller ID",
+          "device_id": "Device ID",
+          "t4_timeout_ms": "T4 timeout in milliseconds"
+        },
+        "data_description": {
+          "name": "Display name for this gate in Home Assistant.",
+          "host": "IP address or hostname that Home Assistant uses to reach the BiDi-WiFi on the local network.",
+          "port": "Local BiDi-WiFi TLS port. The default is 443.",
+          "target_mac": "BiDi-WiFi MAC address from the extracted MyNice credentials.",
+          "username": "NHK username from the extracted MyNice credentials.",
+          "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
+          "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
+          "device_id": "NHK device ID to control. Leave at 1 unless troubleshooting a different device.",
+          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Nice BiDi-WiFi",
+        "description": "Update the local connection settings for this BiDi-WiFi. The MAC address must match the existing device.",
+        "data": {
+          "name": "Name",
+          "host": "BiDi IP address",
+          "port": "Port",
+          "target_mac": "BiDi MAC address",
+          "username": "NHK username",
+          "password": "NHK password hex",
+          "source_id": "Source/controller ID",
+          "device_id": "Device ID",
+          "t4_timeout_ms": "T4 timeout in milliseconds"
+        },
+        "data_description": {
+          "name": "Display name for this gate in Home Assistant.",
+          "host": "IP address or hostname that Home Assistant uses to reach the BiDi-WiFi on the local network.",
+          "port": "Local BiDi-WiFi TLS port. The default is 443.",
+          "target_mac": "BiDi-WiFi MAC address from the extracted MyNice credentials.",
+          "username": "NHK username from the extracted MyNice credentials.",
+          "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
+          "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
+          "device_id": "NHK device ID to control. Leave at 1 unless troubleshooting a different device.",
+          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
         }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect. Check LAN access to TCP 443, close MyNice/MyNice Pro, then try again.",
       "invalid_auth": "Authentication failed. Check the extracted username, source ID, target MAC, and password.",
-      "unknown": "Unexpected error"
+      "unknown": "Unexpected error",
+      "wrong_device": "The MAC address does not match this configured BiDi-WiFi."
     },
     "abort": {
-      "already_configured": "This BiDi-WiFi is already configured"
+      "already_configured": "This BiDi-WiFi is already configured",
+      "reauth_successful": "Reauthentication successful",
+      "reconfigure_successful": "Reconfiguration successful"
     }
   }
 }
