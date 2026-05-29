@@ -9,6 +9,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -24,7 +25,7 @@ from .runtime import get_coordinator
 class NiceBidiSensorEntityDescription(SensorEntityDescription):
     """Description for a Nice BiDi-WiFi sensor."""
 
-    value_fn: Callable[[NiceBidiDataUpdateCoordinator], datetime | int | str | None]
+    value_fn: Callable[[NiceBidiDataUpdateCoordinator], datetime | float | int | str | None]
     extra_attributes_fn: Callable[[NiceBidiDataUpdateCoordinator], dict[str, Any]] | None = None
 
 
@@ -121,6 +122,15 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         icon="mdi:file-chart-outline",
         value_fn=lambda coordinator: coordinator.calibration_report_summary,
         extra_attributes_fn=lambda coordinator: coordinator.calibration_report_attributes,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="gate_position",
+        name="Gate position",
+        entity_registry_enabled_default=False,
+        icon="mdi:gate",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda coordinator: _status(coordinator).position if _status(coordinator) else None,
     ),
     NiceBidiSensorEntityDescription(
         key="current_encoder_position",
@@ -249,7 +259,7 @@ class NiceBidiSensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SensorEnt
         return bidi_device_info(self._entry, self.coordinator.device_info)
 
     @property
-    def native_value(self) -> datetime | int | str | None:
+    def native_value(self) -> datetime | float | int | str | None:
         """Return the sensor value."""
         return self.entity_description.value_fn(self.coordinator)
 

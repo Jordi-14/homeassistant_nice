@@ -435,6 +435,7 @@ Disabled by default, but available from the entity registry:
 - Reconnect count.
 - Last command.
 - Last command latency.
+- Gate position percentage from the latest real BiDi-WiFi status update.
 - Current, closed, and open encoder positions.
 - BiDi-WiFi firmware, hardware, and serial.
 - Control-unit firmware, hardware, serial, and product detail.

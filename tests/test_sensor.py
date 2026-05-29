@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from homeassistant.const import PERCENTAGE
+
 from custom_components.nice_bidiwifi.sensor import (
     SENSORS,
     NiceBidiSensor,
     async_setup_entry,
 )
-from tests.conftest import FakeCoordinator, config_entry
+from tests.conftest import FakeCoordinator, config_entry, make_status
 
 
 def _description(key: str):
@@ -21,6 +23,7 @@ class TestNiceBidiSensorProperties:
         keys = [description.key for description in SENSORS]
         assert len(keys) == len(set(keys))
         assert "connection_state" in keys
+        assert "gate_position" in keys
         assert "position_calibration_report" in keys
         assert "control_unit_serial" in keys
 
@@ -47,6 +50,27 @@ class TestNiceBidiSensorProperties:
         coordinator = FakeCoordinator()
         entity = NiceBidiSensor(coordinator, config_entry(), _description("current_encoder_position"))
         assert entity.native_value == 424
+
+    def test_gate_position_sensor_reads_real_status_position(self) -> None:
+        coordinator = FakeCoordinator()
+        coordinator.data = make_status(position=42.4)
+
+        class SimulatedCoordinator(FakeCoordinator):
+            @property
+            def display_position(self) -> float | None:
+                return 75.9
+
+            @property
+            def display_position_estimated(self) -> bool:
+                return True
+
+        simulated_coordinator = SimulatedCoordinator()
+        simulated_coordinator.data = coordinator.data
+        entity = NiceBidiSensor(simulated_coordinator, config_entry(), _description("gate_position"))
+
+        assert entity.native_value == 42.4
+        assert entity.native_unit_of_measurement == PERCENTAGE
+        assert entity.entity_description.entity_registry_enabled_default is False
 
     def test_device_info_sensor_reads_info_metadata(self) -> None:
         coordinator = FakeCoordinator()
