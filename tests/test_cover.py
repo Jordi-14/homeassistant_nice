@@ -68,6 +68,9 @@ class TestNiceBidiCoverProperties:
         attrs = entity.extra_state_attributes
         assert attrs["bidi_state"] == "opening"
         assert attrs["current_position_raw"] == 424
+        assert attrs["real_position"] == 42.4
+        assert attrs["display_position"] == 42.4
+        assert attrs["display_position_estimated"] is False
         assert attrs["position_calibration_state"] == "calibrated"
         assert attrs["position_calibration_quality"] == "good"
 

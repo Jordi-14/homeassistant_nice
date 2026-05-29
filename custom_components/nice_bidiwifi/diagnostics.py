@@ -54,6 +54,12 @@ async def async_get_config_entry_diagnostics(
         "status": {
             "state": status.state if status else None,
             "position": status.position if status else None,
+            "display_position": coordinator.display_position,
+            "display_position_estimated": coordinator.display_position_estimated,
+            "position_simulation_action": coordinator.position_simulation_action,
+            "position_simulation_speed_percent_per_second": (
+                coordinator.position_simulation_speed_percent_per_second
+            ),
             "is_moving": status.is_moving if status else None,
         },
         "device_info": asdict(device_info) if device_info else None,
