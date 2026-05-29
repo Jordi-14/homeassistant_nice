@@ -55,6 +55,7 @@ def calibration_report_attributes(report: CalibrationReport | None) -> dict[str,
         "max_abs_error_percent": report.get("max_abs_error_percent"),
         "avg_abs_error_percent": report.get("avg_abs_error_percent"),
         "bounds": report.get("bounds"),
+        "travel_speed": report.get("travel_speed"),
         "points": _compact_calibration_points(points),
         "event_count": len(events) if isinstance(events, list) else None,
         "last_events": _compact_calibration_events(events),
@@ -105,6 +106,7 @@ def build_calibration_report(profile: CalibrationProfile, state: str) -> Calibra
             "quality": "unknown",
             "summary": "No calibration points found in the stored profile",
             "profile": profile,
+            "travel_speed": profile.get("travel_speed", {}),
             "points": [],
             "events": events if isinstance(events, list) else [],
         }
@@ -176,6 +178,7 @@ def build_calibration_report(profile: CalibrationProfile, state: str) -> Calibra
         "max_abs_error_percent": max_abs_error,
         "avg_abs_error_percent": avg_abs_error,
         "bounds": profile.get("bounds", {}),
+        "travel_speed": profile.get("travel_speed", {}),
         "points": points,
         "events": events if isinstance(events, list) else [],
     }
@@ -202,6 +205,21 @@ def format_calibration_report(report: CalibrationReport) -> str:
         lines.append("Bounds:")
         for key, value in sorted(bounds.items()):
             lines.append(f"- {key}: {value}")
+
+    travel_speed = report.get("travel_speed")
+    if isinstance(travel_speed, dict) and travel_speed:
+        lines.append("")
+        lines.append("Full-travel speed:")
+        for direction, value in sorted(travel_speed.items()):
+            if not isinstance(value, dict):
+                continue
+            lines.append(
+                "- "
+                f"{direction}: {value.get('speed_percent_per_second')}%/s "
+                f"duration={value.get('duration_ms')}ms "
+                f"from={value.get('start_percent')}% "
+                f"to={value.get('end_percent')}%"
+            )
 
     points = report.get("points")
     if isinstance(points, list) and points:

@@ -64,11 +64,11 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
 
     @property
     def current_cover_position(self) -> int | None:
-        """Return current position from the BiDi encoder registers."""
-        status = self.status
-        if status is None or status.position is None:
+        """Return current or estimated display position."""
+        position = self.coordinator.display_position
+        if position is None:
             return None
-        return round(status.position)
+        return round(position)
 
     @property
     def is_closed(self) -> bool | None:
@@ -76,6 +76,8 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
         status = self.status
         if status is None:
             return None
+        if self.coordinator.position_simulation_action == "open":
+            return False
         if status.state == STATE_CLOSED:
             return True
         if status.state in {STATE_OPEN, STATE_OPENING, STATE_CLOSING, STATE_STOPPED}:
@@ -86,13 +88,17 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
     def is_opening(self) -> bool | None:
         """Return if the cover is opening."""
         status = self.status
-        return status.state == STATE_OPENING if status else None
+        if status is None:
+            return None
+        return status.state == STATE_OPENING or self.coordinator.position_simulation_action == "open"
 
     @property
     def is_closing(self) -> bool | None:
         """Return if the cover is closing."""
         status = self.status
-        return status.state == STATE_CLOSING if status else None
+        if status is None:
+            return None
+        return status.state == STATE_CLOSING or self.coordinator.position_simulation_action == "close"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -103,6 +109,13 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
         return {
             "bidi_state": status.state,
             "current_position_raw": status.current_position,
+            "real_position": status.position,
+            "display_position": self.coordinator.display_position,
+            "display_position_estimated": self.coordinator.display_position_estimated,
+            "position_simulation_action": self.coordinator.position_simulation_action,
+            "position_simulation_speed_percent_per_second": (
+                self.coordinator.position_simulation_speed_percent_per_second
+            ),
             "closed_position_raw": status.closed_position,
             "open_position_raw": status.open_position,
             "position_calibration_state": self.coordinator.calibration_state,

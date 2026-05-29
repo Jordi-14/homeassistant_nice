@@ -29,5 +29,9 @@ async def test_diagnostics_redacts_sensitive_data(hass) -> None:
     assert diagnostics["status"] == {
         "state": "opening",
         "position": 42.4,
+        "display_position": 42.4,
+        "display_position_estimated": False,
+        "position_simulation_action": None,
+        "position_simulation_speed_percent_per_second": None,
         "is_moving": True,
     }

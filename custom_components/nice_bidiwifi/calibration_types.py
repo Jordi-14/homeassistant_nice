@@ -70,6 +70,7 @@ class CalibrationProfile(TypedDict, total=False):
     target_tolerance_percent: float
     targets: list[int]
     bounds: dict[str, Any]
+    travel_speed: dict[str, dict[str, Any]]
     samples: dict[str, list[CalibrationSample]]
     events: list[CalibrationEvent]
 
@@ -97,6 +98,7 @@ class CalibrationReport(TypedDict, total=False):
     max_abs_error_percent: float | None
     avg_abs_error_percent: float | None
     bounds: dict[str, Any]
+    travel_speed: dict[str, dict[str, Any]]
     points: list[dict[str, Any]]
     events: list[CalibrationEvent]
     profile: CalibrationProfile

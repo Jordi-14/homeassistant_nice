@@ -150,6 +150,26 @@ class FakeCoordinator:
         self.calibration_report_attributes = {"quality": "good", "point_count": 8}
         self.calls: list[tuple[str, object | None]] = []
 
+    @property
+    def display_position(self) -> float | None:
+        """Return the displayed cover position."""
+        return self.data.position if self.data and self.data.position is not None else None
+
+    @property
+    def display_position_estimated(self) -> bool:
+        """Return whether the displayed position is estimated."""
+        return False
+
+    @property
+    def position_simulation_action(self) -> str | None:
+        """Return active simulated movement direction."""
+        return None
+
+    @property
+    def position_simulation_speed_percent_per_second(self) -> float | None:
+        """Return active simulated movement speed."""
+        return None
+
     async def async_send_action(self, action: str) -> None:
         """Record a cover action."""
         self.calls.append(("action", action))

@@ -15,17 +15,22 @@ that cannot be validated against Home Assistant's normal trust store. The
 integration therefore keeps certificate verification disabled for this local
 socket and relies on LAN isolation plus the NHK credentials for access control.
 
-Latest release: `v0.4.2`
+Latest release: `v0.4.4`
 
 ## Features
 
 - Open, stop, and close using the local `DoorAction` service.
 - Native Home Assistant cover position support.
 - Live position percentage while the gate moves.
+- Estimated cover-position animation starts immediately after open/close
+  commands, then rebases to real BiDi-WiFi position updates as they arrive.
 - Coarse set-position support by moving in the required direction and sending
   stop once the target percentage is reached or crossed.
 - Optional position calibration that moves through 20/40/60/80% targets, learns
   direction-specific stop correction, and interpolates between calibrated points.
+- Calibration measures one full opening and one full closing at the start and
+  uses 80% of the measured direction speed for display animation. Without
+  calibration, display animation falls back to 1% per second.
 - Detailed calibration quality report with per-target attempts, final errors,
   corrected stop thresholds, command latency, movement timing, and event logs.
 - Real state from DMP register `04/01`.

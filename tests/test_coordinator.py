@@ -123,6 +123,7 @@ async def test_send_action_records_command_metadata(hass: HomeAssistant) -> None
     instance = _coordinator(hass)
     client = FakeClient()
     instance.client = client
+    instance.async_set_updated_data(make_status(state="closed", position=0.0, current_position=0))
 
     await instance._async_send_action("open", refresh=False)
 
@@ -131,6 +132,50 @@ async def test_send_action_records_command_metadata(hass: HomeAssistant) -> None
     assert instance.last_command == "open"
     assert isinstance(instance.last_command_latency_ms, int)
     assert instance.update_interval == coordinator_module.MOVING_UPDATE_INTERVAL
+    assert instance.display_position_estimated is True
+
+    await instance._async_cancel_position_simulation()
+
+
+async def test_position_simulation_uses_calibrated_travel_speed(
+    hass: HomeAssistant,
+) -> None:
+    """Test display animation uses 80% of full-travel calibration speed."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.async_set_updated_data(make_status(state="closed", position=0.0, current_position=0))
+    instance.calibration_profile = {
+        "travel_speed": {
+            "open": {
+                "speed_percent_per_second": 5.0,
+            }
+        }
+    }
+
+    await instance._async_send_action("open", refresh=False)
+
+    assert instance.position_simulation_action == "open"
+    assert instance.position_simulation_speed_percent_per_second == 4.0
+
+    await instance._async_cancel_position_simulation()
+
+
+async def test_position_simulation_falls_back_without_calibration(
+    hass: HomeAssistant,
+) -> None:
+    """Test display animation falls back to 1% per second."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.async_set_updated_data(make_status(state="open", position=100.0, current_position=1000))
+
+    await instance._async_send_action("close", refresh=False)
+
+    assert instance.position_simulation_action == "close"
+    assert instance.position_simulation_speed_percent_per_second == 1.0
+
+    await instance._async_cancel_position_simulation()
 
 
 async def test_send_action_wraps_connection_errors(hass: HomeAssistant) -> None:
@@ -318,7 +363,7 @@ def _sample(
 def _calibration_profile() -> dict[str, Any]:
     """Build a stored calibration profile."""
     return {
-        "version": 4,
+        "version": 5,
         "created_at": "2026-05-28T10:00:00+00:00",
         "updated_at": "2026-05-28T10:05:00+00:00",
         "poll_seconds": 0.5,
@@ -329,6 +374,22 @@ def _calibration_profile() -> dict[str, Any]:
         "target_tolerance_percent": 2.0,
         "targets": [20, 40],
         "bounds": {"initial_closed_raw": 0, "initial_open_raw": 1000},
+        "travel_speed": {
+            "open": {
+                "action": "open",
+                "start_percent": 0.0,
+                "end_percent": 100.0,
+                "duration_ms": 25000,
+                "speed_percent_per_second": 4.0,
+            },
+            "close": {
+                "action": "close",
+                "start_percent": 100.0,
+                "end_percent": 0.0,
+                "duration_ms": 20000,
+                "speed_percent_per_second": 5.0,
+            },
+        },
         "samples": {
             "open": [_sample(target_percent=20, error_percent=0.4)],
             "close": [_sample(target_percent=40, error_percent=-0.8)],
@@ -366,10 +427,12 @@ def test_calibration_report_summary_attributes_and_formatting(
     assert attrs["quality"] == "good"
     assert attrs["point_count"] == 2
     assert attrs["event_count"] == 1
+    assert attrs["travel_speed"]["open"]["speed_percent_per_second"] == 4.0
     assert attrs["points"][0]["target_percent"] == 20
 
     formatted = instance._format_calibration_report(report)
     assert "Nice BiDi-WiFi position calibration report" in formatted
+    assert "Full-travel speed:" in formatted
     assert "Calibration points:" in formatted
     assert "Event log:" in formatted
 
