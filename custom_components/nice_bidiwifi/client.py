@@ -33,6 +33,26 @@ STATUS_BY_BYTE = {
     0x05: STATE_CLOSED,
 }
 
+DEP_ACTION_PARTIAL_OPEN_1 = "partial_open_1"
+DEP_ACTION_PARTIAL_OPEN_2 = "partial_open_2"
+DEP_ACTION_PARTIAL_OPEN_3 = "partial_open_3"
+DEP_ACTION_STEP_STEP = "step_step"
+DEP_ACTION_COURTESY_LIGHT = "courtesy_light"
+DEP_ACTION_COURTESY_LIGHT_TIMER = "courtesy_light_timer"
+DEP_ACTION_LOCK = "lock"
+DEP_ACTION_UNLOCK = "unlock"
+
+DEP_ACTION_COMMANDS = {
+    DEP_ACTION_STEP_STEP: 0x01,
+    DEP_ACTION_PARTIAL_OPEN_1: 0x05,
+    DEP_ACTION_PARTIAL_OPEN_2: 0x06,
+    DEP_ACTION_PARTIAL_OPEN_3: 0x07,
+    DEP_ACTION_LOCK: 0x0F,
+    DEP_ACTION_UNLOCK: 0x10,
+    DEP_ACTION_COURTESY_LIGHT_TIMER: 0x11,
+    DEP_ACTION_COURTESY_LIGHT: 0x12,
+}
+
 
 class NiceBidiError(Exception):
     """Base error for Nice BiDi-WiFi communication."""
@@ -102,6 +122,21 @@ class NiceBidiDeviceInfo:
     device_fw_version: str | None
     device_serial: str | None
     device_product_detail: str | None
+    services: tuple[NiceBidiServiceCapability, ...] = ()
+
+
+@dataclass(frozen=True)
+class NiceBidiServiceCapability:
+    """A service advertised by the BiDi-WiFi INFO request."""
+
+    owner: str
+    owner_id: str | None
+    name: str
+    path: str
+    value_type: str | None
+    permission: str | None
+    values_raw: str | None
+    values: tuple[str, ...]
 
 
 def _sha256(*values: bytes) -> bytes:
@@ -175,6 +210,32 @@ def build_dmp_read_frame(
         marker,
         *args,
         _dmp_checksum(*args),
+    ]
+    length = len(body)
+    return bytes([0x55, length, *body, length])
+
+
+def build_dep_action_frame(
+    command: int,
+    *,
+    daddr: int = 0x00,
+    dendpoint: int = 0x03,
+) -> bytes:
+    """Build a DEP action frame."""
+    if not 0 <= command <= 0xFF:
+        raise ValueError("command must be a byte")
+    args = [0x01, 0x82, command, 0x64]
+    checksum = _dmp_checksum(*args)
+    body = [
+        daddr,
+        dendpoint,
+        0x50,
+        0x91,
+        0x01,
+        0x05,
+        0xC6,
+        *args,
+        checksum,
     ]
     length = len(body)
     return bytes([0x55, length, *body, length])
@@ -259,6 +320,80 @@ def _xml_payload(frame: bytes) -> str:
     return payload.decode("utf-8", errors="replace")
 
 
+def _element_label(element: ET.Element) -> str:
+    element_id = element.get("id")
+    return element.tag if element_id is None else f'{element.tag}[@id="{element_id}"]'
+
+
+def _split_values(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(part.strip() for part in value.split(",") if part.strip())
+
+
+def _parse_info_services(root: ET.Element) -> tuple[NiceBidiServiceCapability, ...]:
+    services: list[NiceBidiServiceCapability] = []
+
+    def walk(node: ET.Element, path: str) -> None:
+        for child in list(node):
+            if child.tag == "Services":
+                for service in list(child):
+                    values_raw = service.get("values")
+                    services.append(
+                        NiceBidiServiceCapability(
+                            owner=node.tag,
+                            owner_id=node.get("id"),
+                            name=service.tag,
+                            path=f"{path}/Services/{service.tag}",
+                            value_type=service.get("type"),
+                            permission=service.get("perm"),
+                            values_raw=values_raw,
+                            values=_split_values(values_raw),
+                        )
+                    )
+            walk(child, f"{path}/{_element_label(child)}")
+
+    walk(root, _element_label(root))
+
+    return tuple(services)
+
+
+def parse_info_xml(info_xml: str, device_id: int = 1) -> NiceBidiDeviceInfo:
+    """Parse INFO XML into static metadata and advertised services."""
+    try:
+        root = ET.fromstring(info_xml)
+    except ET.ParseError as err:
+        raise NiceBidiConnectionError(f"Invalid INFO XML: {err}") from err
+
+    interface = root.find("Interface")
+    device = root.find(f"./Devices/Device[@id='{device_id}']")
+    if device is None:
+        device = root.find("./Devices/Device")
+
+    def find_text(node: ET.Element | None, name: str) -> str | None:
+        if node is None:
+            return None
+        value = node.findtext(name)
+        return value.strip() if value and value.strip() else None
+
+    return NiceBidiDeviceInfo(
+        interface_hw_version=find_text(interface, "VersionHW"),
+        interface_fw_version=find_text(interface, "VersionFW"),
+        interface_manufacturer=find_text(interface, "Manuf"),
+        interface_product=find_text(interface, "Prod"),
+        interface_serial=find_text(interface, "SerialNr"),
+        device_type=find_text(device, "Type"),
+        device_manufacturer=find_text(device, "Manuf"),
+        device_product=find_text(device, "Prod"),
+        device_description=find_text(device, "Desc"),
+        device_hw_version=find_text(device, "VersionHW"),
+        device_fw_version=find_text(device, "VersionFW"),
+        device_serial=find_text(device, "SerialNr"),
+        device_product_detail=find_text(device, "ProdDTL"),
+        services=_parse_info_services(root),
+    )
+
+
 T4_RE = re.compile(r"<T4\b(?P<attrs>[^>]*)>(?P<body>.*?)</T4>", re.DOTALL)
 
 
@@ -307,11 +442,22 @@ class NiceBidiClient:
         """Read static BiDi-WiFi and control-unit metadata."""
         return self._run_with_reconnect(self._read_info_locked)
 
+    def read_info_xml(self) -> str:
+        """Read raw INFO XML from the BiDi-WiFi."""
+        return self._run_with_reconnect(self._read_info_xml_locked)
+
     def send_action(self, action: str) -> None:
         """Send a high-level DoorAction command."""
         if action not in {"open", "stop", "close"}:
             raise ValueError("action must be open, stop, or close")
         self._run_with_reconnect(lambda: self._send_action_locked(action))
+
+    def send_dep_action(self, action: str) -> None:
+        """Send a low-level DEP action command."""
+        if action not in DEP_ACTION_COMMANDS:
+            valid = ", ".join(sorted(DEP_ACTION_COMMANDS))
+            raise ValueError(f"action must be one of: {valid}")
+        self._run_with_reconnect(lambda: self._send_dep_action_locked(action))
 
     def test_connection(self) -> NiceBidiStatus:
         """Authenticate and read status once."""
@@ -487,6 +633,17 @@ class NiceBidiClient:
         if "<Error>" in _printable(response):
             raise NiceBidiConnectionError(_printable(response))
 
+    def _send_dep_action_locked(self, action: str) -> None:
+        response, _ = self._t4_request_locked(
+            "DEP",
+            build_dep_action_frame(DEP_ACTION_COMMANDS[action]),
+            0x00,
+            0x03,
+            self.t4_timeout_ms,
+        )
+        if "<Error>" in _printable(response):
+            raise NiceBidiConnectionError(_printable(response))
+
     def _read_status_locked(self) -> NiceBidiStatus:
         registers: dict[str, dict[str, Any]] = {}
         for group, parameter in ((0x04, 0x01), (0x04, 0x11), (0x04, 0x18), (0x04, 0x19)):
@@ -526,43 +683,15 @@ class NiceBidiClient:
             registers={key: str(value.get("value_hex", "")) for key, value in registers.items()},
         )
 
-    def _read_info_locked(self) -> NiceBidiDeviceInfo:
+    def _read_info_xml_locked(self) -> str:
         response = self._signed_exchange_locked("INFO")
         text = _printable(response)
         if "<Error>" in text:
             raise NiceBidiConnectionError(text)
+        return _xml_payload(response)
 
-        try:
-            root = ET.fromstring(_xml_payload(response))
-        except ET.ParseError as err:
-            raise NiceBidiConnectionError(f"Invalid INFO XML: {err}") from err
-
-        interface = root.find("Interface")
-        device = root.find(f"./Devices/Device[@id='{self.device_id}']")
-        if device is None:
-            device = root.find("./Devices/Device")
-
-        def find_text(node: ET.Element | None, name: str) -> str | None:
-            if node is None:
-                return None
-            value = node.findtext(name)
-            return value.strip() if value and value.strip() else None
-
-        return NiceBidiDeviceInfo(
-            interface_hw_version=find_text(interface, "VersionHW"),
-            interface_fw_version=find_text(interface, "VersionFW"),
-            interface_manufacturer=find_text(interface, "Manuf"),
-            interface_product=find_text(interface, "Prod"),
-            interface_serial=find_text(interface, "SerialNr"),
-            device_type=find_text(device, "Type"),
-            device_manufacturer=find_text(device, "Manuf"),
-            device_product=find_text(device, "Prod"),
-            device_description=find_text(device, "Desc"),
-            device_hw_version=find_text(device, "VersionHW"),
-            device_fw_version=find_text(device, "VersionFW"),
-            device_serial=find_text(device, "SerialNr"),
-            device_product_detail=find_text(device, "ProdDTL"),
-        )
+    def _read_info_locked(self) -> NiceBidiDeviceInfo:
+        return parse_info_xml(self._read_info_xml_locked(), self.device_id)
 
     def _t4_request_locked(
         self,

@@ -12,6 +12,16 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .client import (
+    DEP_ACTION_COURTESY_LIGHT,
+    DEP_ACTION_COURTESY_LIGHT_TIMER,
+    DEP_ACTION_LOCK,
+    DEP_ACTION_PARTIAL_OPEN_1,
+    DEP_ACTION_PARTIAL_OPEN_2,
+    DEP_ACTION_PARTIAL_OPEN_3,
+    DEP_ACTION_STEP_STEP,
+    DEP_ACTION_UNLOCK,
+)
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entity import bidi_device_info, bidi_unique_id
 from .runtime import get_coordinator
@@ -28,6 +38,54 @@ class NiceBidiButtonEntityDescription(ButtonEntityDescription):
 
 
 BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
+    NiceBidiButtonEntityDescription(
+        key="partial_open_1",
+        name="Partial open 1",
+        icon="mdi:gate-open",
+        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_1),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="partial_open_2",
+        name="Partial open 2",
+        icon="mdi:gate-open",
+        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_2),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="partial_open_3",
+        name="Partial open 3",
+        icon="mdi:gate-open",
+        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_3),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="step_step",
+        name="Step-step",
+        icon="mdi:gesture-tap-button",
+        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_STEP_STEP),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="courtesy_light",
+        name="Courtesy light",
+        icon="mdi:lightbulb",
+        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_COURTESY_LIGHT),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="courtesy_light_timer",
+        name="Courtesy light timer",
+        icon="mdi:timer-outline",
+        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_COURTESY_LIGHT_TIMER),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="lock",
+        name="Lock",
+        icon="mdi:lock",
+        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_LOCK),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="unlock",
+        name="Unlock",
+        icon="mdi:lock-open-variant",
+        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_UNLOCK),
+    ),
     NiceBidiButtonEntityDescription(
         key="refresh_status",
         name="Refresh status",

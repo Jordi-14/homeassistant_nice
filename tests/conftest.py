@@ -97,12 +97,14 @@ class FakeClient:
 
     def __init__(self) -> None:
         self.actions: list[str] = []
+        self.dep_actions: list[str] = []
         self.closed = False
         self.read_status_result = make_status(state="open", position=100.0, current_position=1000)
         self.read_info_result = make_device_info()
         self.read_status_error: Exception | None = None
         self.read_info_error: Exception | None = None
         self.send_action_error: Exception | None = None
+        self.send_dep_action_error: Exception | None = None
         self.info_reads = 0
 
     def read_status(self) -> NiceBidiStatus:
@@ -123,6 +125,12 @@ class FakeClient:
         if self.send_action_error is not None:
             raise self.send_action_error
         self.actions.append(action)
+
+    def send_dep_action(self, action: str) -> None:
+        """Record a DEP command or raise a configured error."""
+        if self.send_dep_action_error is not None:
+            raise self.send_dep_action_error
+        self.dep_actions.append(action)
 
     def close(self) -> None:
         """Record that the client was closed."""
@@ -173,6 +181,10 @@ class FakeCoordinator:
     async def async_send_action(self, action: str) -> None:
         """Record a cover action."""
         self.calls.append(("action", action))
+
+    async def async_send_dep_action(self, action: str) -> None:
+        """Record a DEP action."""
+        self.calls.append(("dep_action", action))
 
     async def async_set_position(self, position: int) -> None:
         """Record a set-position request."""

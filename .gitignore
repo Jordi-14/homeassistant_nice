@@ -16,6 +16,8 @@ venv/
 *.pcapng
 *.sqlite
 *.db
+credentials.json
+bidi_capabilities*.json
 imazingapp_extract/
 myniceapp_extract/
 ipa_extract/

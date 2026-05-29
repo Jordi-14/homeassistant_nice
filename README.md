@@ -24,6 +24,8 @@ Latest release: `v0.4.4`
 - Live position percentage while the gate moves.
 - Estimated cover-position animation starts immediately after open/close
   commands, then rebases to real BiDi-WiFi position updates as they arrive.
+- Additional action buttons for partial open 1/2/3, step-step, courtesy light,
+  courtesy light timer, lock, and unlock.
 - Coarse set-position support by moving in the required direction and sending
   stop once the target percentage is reached or crossed.
 - Optional position calibration that moves through 20/40/60/80% targets, learns
@@ -207,6 +209,32 @@ Home Assistant diagnostics redact the configured host, MAC address, username,
 password, source/controller ID, serial numbers, and raw register details before
 export.
 
+## Capability Probe
+
+For development, the repository includes a local probe that dumps the
+BiDi-WiFi `INFO` service tree plus the status registers currently used by the
+integration. Use it after provisioning the BiDi-WiFi and extracting credentials:
+
+```bash
+python3 scripts/extract_mynice_credentials.py \
+  "path/to/Container/Library/Application Support/CachedData.sqlite" \
+  > credentials.json
+
+python3 scripts/dump_bidi_capabilities.py \
+  --host <bidi_ip> \
+  --credentials credentials.json \
+  --include-raw-info \
+  --output bidi_capabilities.json
+```
+
+The probe does not move the gate. It sends an authenticated `INFO` request and,
+unless `--skip-status` is used, reads the same DMP status registers used by the
+integration for state and position.
+
+The generated report redacts host, MAC address, username, source/controller ID,
+and serial numbers by default. The NHK password is never written to the report.
+Do not publish `credentials.json`.
+
 ### Android
 
 The Android extraction flow has not been tested yet. It is documented here so
@@ -388,6 +416,8 @@ by the Home Assistant frontend, not by this integration.
 Enabled by default:
 
 - `cover`: open, close, stop, current position, and set-position slider with optional calibration.
+- `switch`: open/close gate toggle.
+- `button`: partial open 1, partial open 2, partial open 3, step-step, courtesy light, courtesy light timer, lock, and unlock.
 - `sensor`: connection state.
 - `sensor`: position calibration state.
 - `sensor`: position calibration quality.
@@ -411,13 +441,13 @@ Disabled by default, but available from the entity registry:
 
 ## Future Work
 
-The following controls appeared in MyNice Pro but need more investigation before
-they should be exposed as Home Assistant entities:
+The following MyNice Pro controls need more investigation before they should be
+exposed as Home Assistant entities:
 
-- Partial open 1/2/3.
-- Step-step.
-- Courtesy light on/off.
-- Master/slave open/close, where applicable.
+- High-priority and condominium step-step variants.
+- Open-and-block, close-and-block, unblock-and-open, and unblock-and-close.
+- Master/slave open/close/step-step, where applicable.
+- BlueBUS search, redo position search, reset, and configuration writes.
 
 They will be added only after their local command names or T4/DMP frames are
 confirmed and tested safely.

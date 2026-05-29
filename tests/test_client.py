@@ -8,6 +8,8 @@ import ssl
 import pytest
 
 from custom_components.nice_bidiwifi.client import (
+    DEP_ACTION_COMMANDS,
+    DEP_ACTION_PARTIAL_OPEN_1,
     ETX,
     STX,
     NiceBidiAuthError,
@@ -22,8 +24,10 @@ from custom_components.nice_bidiwifi.client import (
     _xml_escape,
     _xml_payload,
     _xor_sha256,
+    build_dep_action_frame,
     build_dmp_read_frame,
     parse_dmp_response,
+    parse_info_xml,
 )
 
 
@@ -101,6 +105,19 @@ def test_parse_dmp_response_extracts_register_value() -> None:
     assert parsed["operation"] == "19"
     assert parsed["value_hex"] == "12 34"
     assert parsed["value_uint_be"] == 0x1234
+
+
+def test_build_dep_action_frame_matches_captured_partial_open_1() -> None:
+    """Test DEP action frame construction."""
+    frame = build_dep_action_frame(DEP_ACTION_COMMANDS[DEP_ACTION_PARTIAL_OPEN_1])
+
+    assert frame == bytes.fromhex("55 0c 00 03 50 91 01 05 c6 01 82 05 64 e2 0c")
+
+
+def test_build_dep_action_frame_rejects_invalid_command() -> None:
+    """Test DEP action frame command validation."""
+    with pytest.raises(ValueError, match="command must be a byte"):
+        build_dep_action_frame(0x100)
 
 
 def test_frame_helpers_escape_and_strip_control_bytes() -> None:
@@ -203,6 +220,57 @@ def test_read_info_extracts_interface_and_device_metadata() -> None:
         device_serial="0E6809FF",
         device_product_detail="detail",
     )
+
+
+def test_parse_info_xml_extracts_service_capabilities() -> None:
+    """Test INFO service capability parsing."""
+    info = parse_info_xml(
+        """
+        <Response>
+          <Interface id="1">
+            <Services>
+              <T4_allowed type="hex" values="1FFFF8FE" perm="r"/>
+            </Services>
+          </Interface>
+          <Devices>
+            <Device id="1">
+              <Services>
+                <DoorAction type="string" values="open, stop, close" perm="w"/>
+                <DoorStatus type="string" values="open, closed" perm="r"/>
+              </Services>
+            </Device>
+          </Devices>
+        </Response>
+        """
+    )
+
+    assert [service.name for service in info.services] == [
+        "T4_allowed",
+        "DoorAction",
+        "DoorStatus",
+    ]
+    assert info.services[1].owner == "Device"
+    assert info.services[1].owner_id == "1"
+    assert info.services[1].path == 'Response/Devices/Device[@id="1"]/Services/DoorAction'
+    assert info.services[1].value_type == "string"
+    assert info.services[1].permission == "w"
+    assert info.services[1].values == ("open", "stop", "close")
+
+
+def test_read_info_xml_returns_payload() -> None:
+    """Test raw INFO XML reading."""
+
+    class InfoClient(NiceBidiClient):
+        def _signed_exchange_locked(self, request_type, body=""):
+            return STX + b'<Response type="INFO" id="263"><Interface /></Response>' + ETX
+
+    client = InfoClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+    )
+
+    assert client._read_info_xml_locked() == '<Response type="INFO" id="263"><Interface /></Response>'
 
 
 def test_decrypt_t4_payloads_returns_plain_payloads() -> None:
@@ -366,6 +434,41 @@ def test_send_action_locked_raises_on_error_response() -> None:
 
     with pytest.raises(NiceBidiConnectionError, match="blocked"):
         client._send_action_locked("open")
+
+
+def test_send_dep_action_rejects_invalid_action() -> None:
+    """Test DEP action validation."""
+    with pytest.raises(ValueError, match="action must be one of"):
+        _client().send_dep_action("not-an-action")
+
+
+def test_send_dep_action_locked_sends_dep_frame() -> None:
+    """Test low-level DEP action command sending."""
+
+    class DepActionClient(NiceBidiClient):
+        def __init__(self):
+            super().__init__(
+                "192.0.2.10",
+                443,
+                NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+            )
+            self.request = None
+
+        def _t4_request_locked(self, protocol, plain_payload, daddr, dendpoint, tout_ms):
+            self.request = (protocol, plain_payload, daddr, dendpoint, tout_ms)
+            return b"<Response />", []
+
+    client = DepActionClient()
+
+    client._send_dep_action_locked(DEP_ACTION_PARTIAL_OPEN_1)
+
+    assert client.request == (
+        "DEP",
+        bytes.fromhex("55 0c 00 03 50 91 01 05 c6 01 82 05 64 e2 0c"),
+        0x00,
+        0x03,
+        200,
+    )
 
 
 def test_t4_request_builds_body_and_decrypts_response(monkeypatch: pytest.MonkeyPatch) -> None:

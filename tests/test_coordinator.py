@@ -13,6 +13,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.nice_bidiwifi import coordinator as coordinator_module
 from custom_components.nice_bidiwifi.client import (
+    DEP_ACTION_COURTESY_LIGHT,
+    DEP_ACTION_PARTIAL_OPEN_1,
     NiceBidiAuthError,
     NiceBidiConnectionError,
 )
@@ -187,6 +189,49 @@ async def test_send_action_wraps_connection_errors(hass: HomeAssistant) -> None:
 
     with pytest.raises(HomeAssistantError, match="command failed"):
         await instance._async_send_action("stop", refresh=False)
+
+    assert instance.connection_state == coordinator_module.CONNECTION_STATE_FAILED
+    assert instance.last_error == "offline"
+    assert client.closed is True
+
+
+async def test_send_dep_action_records_command_metadata(hass: HomeAssistant) -> None:
+    """Test DEP command success handling."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+
+    await instance._async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_1, refresh=False)
+
+    assert client.dep_actions == [DEP_ACTION_PARTIAL_OPEN_1]
+    assert instance.connection_state == coordinator_module.CONNECTION_STATE_CONNECTED
+    assert instance.last_command == DEP_ACTION_PARTIAL_OPEN_1
+    assert isinstance(instance.last_command_latency_ms, int)
+    assert instance.update_interval == coordinator_module.MOVING_UPDATE_INTERVAL
+    assert instance.display_position_estimated is False
+
+
+async def test_send_dep_action_uses_idle_interval_for_non_movement_actions(hass: HomeAssistant) -> None:
+    """Test non-movement DEP actions do not switch to moving polling."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+
+    await instance._async_send_dep_action(DEP_ACTION_COURTESY_LIGHT, refresh=False)
+
+    assert client.dep_actions == [DEP_ACTION_COURTESY_LIGHT]
+    assert instance.update_interval == coordinator_module.IDLE_UPDATE_INTERVAL
+
+
+async def test_send_dep_action_wraps_connection_errors(hass: HomeAssistant) -> None:
+    """Test DEP command connection error handling."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.send_dep_action_error = NiceBidiConnectionError("offline")
+    instance.client = client
+
+    with pytest.raises(HomeAssistantError, match="command failed"):
+        await instance._async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_1, refresh=False)
 
     assert instance.connection_state == coordinator_module.CONNECTION_STATE_FAILED
     assert instance.last_error == "offline"

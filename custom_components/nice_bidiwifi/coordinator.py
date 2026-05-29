@@ -27,6 +27,10 @@ from .calibration_report import (
 )
 from .calibration_types import CalibrationEvent, CalibrationProfile, CalibrationReport
 from .client import (
+    DEP_ACTION_PARTIAL_OPEN_1,
+    DEP_ACTION_PARTIAL_OPEN_2,
+    DEP_ACTION_PARTIAL_OPEN_3,
+    DEP_ACTION_STEP_STEP,
     NiceBidiAuthError,
     NiceBidiClient,
     NiceBidiConnectionError,
@@ -89,6 +93,13 @@ CALIBRATION_STATE_CANCELLED = "cancelled"
 CALIBRATION_STATE_FAILED = "failed"
 CALIBRATION_STATE_NOT_CALIBRATED = "not_calibrated"
 CALIBRATION_STATE_RUNNING = "running"
+
+DEP_MOVEMENT_ACTIONS = {
+    DEP_ACTION_PARTIAL_OPEN_1,
+    DEP_ACTION_PARTIAL_OPEN_2,
+    DEP_ACTION_PARTIAL_OPEN_3,
+    DEP_ACTION_STEP_STEP,
+}
 
 
 class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
@@ -285,6 +296,12 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         await self._async_cancel_calibration(stop=action != "stop")
         await self._async_send_action(action)
 
+    async def async_send_dep_action(self, action: str) -> None:
+        """Send a low-level DEP action command."""
+        await self._async_cancel_position_target()
+        await self._async_cancel_calibration()
+        await self._async_send_dep_action(action)
+
     async def _async_send_action(
         self,
         action: str,
@@ -319,6 +336,34 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             self._start_position_simulation(action, target_position=simulation_target_position)
         elif action == "stop":
             self._clear_position_simulation()
+        if refresh:
+            self._schedule_post_command_refresh()
+            await self.async_request_refresh()
+
+    async def _async_send_dep_action(self, action: str, *, refresh: bool = True) -> None:
+        """Send a low-level DEP action command."""
+        started = time.monotonic()
+        try:
+            await self.hass.async_add_executor_job(self.client.send_dep_action, action)
+        except NiceBidiAuthError as err:
+            self.client.close()
+            self.connection_state = CONNECTION_STATE_AUTH_FAILED
+            self.last_error = str(err)
+            self._clear_position_simulation()
+            raise HomeAssistantError(f"Nice BiDi-WiFi authentication failed: {err}") from err
+        except (NiceBidiConnectionError, OSError) as err:
+            self.client.close()
+            self.connection_state = CONNECTION_STATE_FAILED
+            self.last_error = str(err)
+            self._clear_position_simulation()
+            raise HomeAssistantError(f"Nice BiDi-WiFi command failed: {err}") from err
+
+        self.connection_state = CONNECTION_STATE_CONNECTED
+        self.last_command = action
+        self.last_command_latency_ms = round((time.monotonic() - started) * 1000)
+        self.last_error = None
+        self.update_interval = MOVING_UPDATE_INTERVAL if action in DEP_MOVEMENT_ACTIONS else IDLE_UPDATE_INTERVAL
+        self._clear_position_simulation()
         if refresh:
             self._schedule_post_command_refresh()
             await self.async_request_refresh()
