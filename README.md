@@ -15,8 +15,7 @@ that cannot be validated against Home Assistant's normal trust store. The
 integration therefore keeps certificate verification disabled for this local
 socket and relies on LAN isolation plus the NHK credentials for access control.
 
-Latest release: `v0.4.4`
-Latest beta: `v0.5.0b1`
+Latest release: `v0.5.0`
 
 ## Features
 
@@ -443,16 +442,22 @@ Disabled by default, but available from the entity registry:
 
 ## Future Work
 
-The following MyNice Pro controls need more investigation before they should be
-exposed as Home Assistant entities:
+The integration currently exposes the entities I need for daily use, but the
+BiDi-WiFi can do more. Additional MyNice Pro controls can be added by following
+the same process used for the existing DEP actions: capture one app action,
+decrypt or inspect the local NHK/T4 frame, document the observed behavior, and
+add the smallest safe Home Assistant entity for that capability.
+
+The following MyNice Pro controls are good candidates if a contributor wants to
+spend the time capturing and validating packets:
 
 - High-priority and condominium step-step variants.
 - Open-and-block, close-and-block, unblock-and-open, and unblock-and-close.
 - Master/slave open/close/step-step, where applicable.
 - BlueBUS search, redo position search, reset, and configuration writes.
 
-They will be added only after their local command names or T4/DMP frames are
-confirmed and tested safely. To help map a new MyNice Pro control, follow the
+They should be added only after their local command names or T4/DMP frames are
+confirmed and tested safely. To map a new MyNice Pro control, follow the
 capability-capture workflow in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Safety

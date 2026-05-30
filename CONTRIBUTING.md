@@ -24,6 +24,13 @@ is enough to provision the BiDi-WiFi and extract credentials, but MyNice Pro
 usually exposes installer-level actions and settings that are not visible in the
 normal app.
 
+This integration is intentionally limited to the entities that have been
+captured, understood, and tested. That is not a protocol limit. There are more
+MyNice Pro actions, read-only sensors, and configuration settings that should be
+straightforward to add once somebody spends the time capturing the packets,
+checking what the gate actually does, and contributing the mapping. The process
+below is the same process used for the existing extra buttons.
+
 Work from a real gate only when you can see it. Avoid testing locks, force,
 speed, reset, BlueBUS search, or position-search commands unless you know how to
 recover the installation locally.
