@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract local NHK credentials from a MyNice app-data SQLite backup."""
+"""Extract local NHK credentials from a MyNice or MyNice Pro SQLite backup."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("sqlite", type=Path, help="Path to MyNice CachedData.sqlite")
+    parser.add_argument("sqlite", type=Path, help="Path to MyNice/MyNice Pro credential SQLite database")
     parser.add_argument("--mac", help="Optional BiDi MAC address to select")
     return parser.parse_args()
 

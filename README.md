@@ -16,6 +16,7 @@ integration therefore keeps certificate verification disabled for this local
 socket and relies on LAN isolation plus the NHK credentials for access control.
 
 Latest release: `v0.4.4`
+Latest beta: `v0.5.0b1`
 
 ## Features
 
@@ -451,7 +452,8 @@ exposed as Home Assistant entities:
 - BlueBUS search, redo position search, reset, and configuration writes.
 
 They will be added only after their local command names or T4/DMP frames are
-confirmed and tested safely.
+confirmed and tested safely. To help map a new MyNice Pro control, follow the
+capability-capture workflow in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Safety
 
