@@ -237,9 +237,9 @@ Do not publish `credentials.json`.
 
 ### Android
 
-The Android extraction flow has not been tested yet. It is documented here so
-Android users know what data is needed and can report whether the same database
-layout is present.
+The Android app stores the same local NHK credentials, but modern Android
+phones usually do not allow direct access to app-private data. A rooted device
+or rooted Android emulator is required.
 
 The current MyNice Android package name is:
 
@@ -247,40 +247,66 @@ The current MyNice Android package name is:
 com.niceforyou.welcome
 ```
 
-1. Install **MyNice** from Google Play and configure the BiDi-WiFi normally.
-2. Confirm the Android app can control the gate.
-3. Export the MyNice app data using a method that can read private app data,
-   such as a rooted device, a full-device backup tool, or another Android app
-   data extraction workflow. Modern non-rooted Android devices may block this;
-   `adb backup` often does not work for current apps.
-4. Search the extracted app data for:
+One confirmed workaround is to use LDPlayer with root mode enabled:
+
+1. Install **MyNice** in the rooted emulator.
+2. Sign in and confirm MyNice can control the BiDi-WiFi.
+3. Pull the app-private data directory with `adb`:
+
+   ```powershell
+   .\adb.exe -s emulator-5554 root
+   .\adb.exe -s emulator-5554 pull /data/data/com.niceforyou.welcome/ C:\BidiNice
+   ```
+
+4. Open the extracted `databases` directory. The relevant files reported by
+   Android users are:
 
    ```text
-   CachedData.sqlite
+   my_nice_general
+   my_nice_general-wal
+   my_nice_general-shm
+   nhk_extra
+   nhk_extra-wal
+   nhk_extra-shm
+   nhk_web
+   nhk_web-wal
+   nhk_web-shm
    ```
 
-   On a rooted device, it may be under the app-private data tree for
-   `com.niceforyou.welcome`.
-5. Run the same extractor against that SQLite file:
+5. Keep each SQLite database together with its `-wal` and `-shm` companion
+   files. The app uses SQLite WAL mode, so the main database file alone can be
+   incomplete.
+
+6. Query `nhk_extra`. The useful Android table is `nhk_credentials`:
 
    ```bash
-   python3 scripts/extract_mynice_credentials.py \
-     "path/to/CachedData.sqlite"
+   sqlite3 nhk_extra
    ```
 
-6. If there is more than one BiDi-WiFi stored in MyNice, pass the BiDi MAC
-   address:
+   Then in the SQLite shell:
 
-   ```bash
-   python3 scripts/extract_mynice_credentials.py \
-     "path/to/CachedData.sqlite" \
-     --mac "AA:BB:CC:DD:EE:FF"
+   ```sql
+   PRAGMA wal_checkpoint(TRUNCATE);
+   .tables
+   SELECT device_id, nhk_username, nhk_password FROM nhk_credentials;
    ```
 
-If the extractor says `No credential row found in ZACCESSORYCREDENTIALENTITY`,
-the Android app may store the credentials differently. In that case, do not
-publish the database; open an issue describing the extraction method, Android
-version, MyNice version, and whether a `CachedData.sqlite` file was present.
+Use these values in Home Assistant:
+
+- `device_id` -> **BiDi MAC address**
+- `nhk_username` -> **NHK username**
+- `nhk_password` -> **NHK password hex**
+- **Source/controller ID** can be left empty if it is not present in the
+  Android database. The integration then uses the NHK username as the source.
+
+The `my_nice_general` database may also contain an `accessory_table` with module
+metadata such as the product type. `nhk_web` contains cloud credentials and is
+not needed for this local integration.
+
+Do not publish the extracted app data, SQLite databases, WAL files, or extracted
+NHK credentials. If the Android app schema changes, open an issue with the
+Android version, MyNice version, extraction method, database file names, and
+table names, but redact all secrets.
 
 ## Setup
 
