@@ -6,6 +6,7 @@ import base64
 from collections.abc import Callable
 from dataclasses import dataclass
 import hashlib
+import logging
 import re
 import secrets
 import socket
@@ -18,6 +19,8 @@ import xml.etree.ElementTree as ET
 
 STX = b"\x02"
 ETX = b"\x03"
+
+_LOGGER = logging.getLogger(__name__)
 
 STATE_STOPPED = "stopped"
 STATE_OPENING = "opening"
@@ -397,6 +400,18 @@ def parse_info_xml(info_xml: str, device_id: int = 1) -> NiceBidiDeviceInfo:
 T4_RE = re.compile(r"<T4\b(?P<attrs>[^>]*)>(?P<body>.*?)</T4>", re.DOTALL)
 
 
+def _response_summary(response: bytes) -> str:
+    """Return a credential-safe summary of an NHK response."""
+    text = _printable(response)
+    response_type = _attr(text, "type") or "unknown"
+    response_id = _attr(text, "id") or "unknown"
+    error = " error=yes" if re.search(r"<Error\b", text) else ""
+    return (
+        f"type={response_type} id={response_id} bytes={len(response)} "
+        f"t4_payloads={len(T4_RE.findall(text))}{error}"
+    )
+
+
 class NiceBidiClient:
     """Persistent local NHK client for a Nice BiDi-WiFi."""
 
@@ -474,6 +489,10 @@ class NiceBidiClient:
                     last_error = exc
                     self._close_locked()
                     if attempt == 0:
+                        _LOGGER.debug(
+                            "Nice BiDi-WiFi operation failed; reconnecting once: %s",
+                            exc.__class__.__name__,
+                        )
                         self._reconnect_count += 1
                         time.sleep(1.0)
             assert last_error is not None
@@ -485,6 +504,12 @@ class NiceBidiClient:
             raw: socket.socket | None = None
             tls_sock: ssl.SSLSocket | None = None
             try:
+                _LOGGER.debug(
+                    "Opening Nice BiDi-WiFi TLS connection to %s:%s (attempt %s/3)",
+                    self.host,
+                    self.port,
+                    attempt + 1,
+                )
                 raw = socket.create_connection((self.host, self.port), timeout=self.timeout)
                 raw.settimeout(self.timeout)
                 tls_sock = _make_context().wrap_socket(
@@ -494,6 +519,7 @@ class NiceBidiClient:
                 )
                 tls_sock.do_handshake()
                 self._socket = tls_sock
+                _LOGGER.debug("Nice BiDi-WiFi TLS connection established to %s:%s", self.host, self.port)
                 return
             except (OSError, ssl.SSLError) as exc:
                 last_error = exc
@@ -502,6 +528,12 @@ class NiceBidiClient:
                 elif raw:
                     raw.close()
                 if attempt < 2:
+                    _LOGGER.debug(
+                        "Nice BiDi-WiFi TLS connection attempt %s failed: %s: %s",
+                        attempt + 1,
+                        exc.__class__.__name__,
+                        exc,
+                    )
                     time.sleep(0.75 * (attempt + 1))
         assert last_error is not None
         raise NiceBidiConnectionError(str(last_error)) from last_error
@@ -530,6 +562,7 @@ class NiceBidiClient:
             _reverse_hex(server_challenge),
             _reverse_hex(client_challenge),
         )
+        _LOGGER.debug("Nice BiDi-WiFi NHK authentication succeeded with session id %s", self._session_id)
 
     def _ensure_connected_locked(self) -> None:
         if self._socket and self._session_key is not None:
@@ -578,6 +611,13 @@ class NiceBidiClient:
         if not self._socket:
             raise NiceBidiConnectionError("socket is not open")
         self._socket.settimeout(self.timeout)
+        _LOGGER.debug(
+            "Sending Nice BiDi-WiFi request type=%s id=%s to %s:%s",
+            expected_type or "unknown",
+            expected_id if expected_id is not None else "unknown",
+            self.host,
+            self.port,
+        )
         self._socket.sendall(_frame(xml))
         last_response = b""
         deadline = time.time() + self.timeout
@@ -587,8 +627,11 @@ class NiceBidiClient:
                 break
             last_response = response
             if self._matches_response(response, expected_type, expected_id):
+                _LOGGER.debug("Received matching Nice BiDi-WiFi response: %s", _response_summary(response))
                 return response
+            _LOGGER.debug("Received non-matching Nice BiDi-WiFi response: %s", _response_summary(response))
         if last_response:
+            _LOGGER.debug("Returning last Nice BiDi-WiFi response after timeout: %s", _response_summary(last_response))
             return last_response
         raise NiceBidiConnectionError("device did not respond")
 
@@ -715,7 +758,15 @@ class NiceBidiClient:
             "</Interface>\r\n"
         )
         response = self._signed_exchange_locked("T4_REQUEST", body)
-        return response, self._decrypt_t4_payloads(response)
+        plains = self._decrypt_t4_payloads(response)
+        _LOGGER.debug(
+            "Nice BiDi-WiFi T4 %s request daddr=%02X dendpoint=%02X returned %s payload(s)",
+            protocol,
+            daddr,
+            dendpoint,
+            len(plains),
+        )
+        return response, plains
 
     def _decrypt_t4_payloads(self, response: bytes) -> list[bytes]:
         text = _printable(response)

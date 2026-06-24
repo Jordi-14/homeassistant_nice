@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -118,6 +119,37 @@ async def test_user_step_connection_error_returns_form(hass: HomeAssistant) -> N
     assert result["type"] == FlowResultType.FORM
     assert result["errors"]["base"] == "cannot_connect"
     assert FakeClient.instances[0].closed is True
+
+
+async def test_user_step_connection_error_logs_sanitized_details(hass: HomeAssistant, caplog) -> None:
+    """Test setup validation failures are logged without extracted credentials."""
+    password = "AB" * 32
+    FakeClient.connect_error = NiceBidiConnectionError(
+        f"offline for nhk_login source-123 AA:BB:CC:DD:EE:FF {password}"
+    )
+    caplog.set_level(logging.WARNING, logger=config_flow.__name__)
+
+    with patch.object(config_flow, "NiceBidiClient", FakeClient):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            _input(
+                **{
+                    CONF_USERNAME: "nhk_login",
+                    CONF_SOURCE_ID: "source-123",
+                    CONF_PASSWORD: password,
+                }
+            ),
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert "Nice BiDi-WiFi setup validation failed at user" in caplog.text
+    assert "NiceBidiConnectionError" in caplog.text
+    assert "192.0.2.10:443" in caplog.text
+    assert "nhk_login" not in caplog.text
+    assert "source-123" not in caplog.text
+    assert "AA:BB:CC:DD:EE:FF" not in caplog.text
+    assert password not in caplog.text
 
 
 async def test_reauth_success_updates_entry_and_reloads(hass: HomeAssistant) -> None:

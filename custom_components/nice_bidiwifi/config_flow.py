@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import voluptuous as vol
@@ -25,6 +26,8 @@ from .const import (
     DEFAULT_TIMEOUT,
     DOMAIN,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 _TEXT_SELECTOR = selector.TextSelector(selector.TextSelectorConfig())
@@ -123,6 +126,30 @@ def _error_from_exception(err: Exception) -> str:
     return "unknown"
 
 
+def _redact_known_values(message: str, data: dict[str, Any]) -> str:
+    redacted = message
+    for key in (CONF_USERNAME, CONF_PASSWORD, CONF_SOURCE_ID, CONF_TARGET_MAC):
+        value = data.get(key)
+        if value:
+            redacted = redacted.replace(str(value), "<redacted>")
+    return redacted
+
+
+def _log_validation_failure(step: str, data: dict[str, Any], err: Exception) -> None:
+    """Log a setup validation failure without exposing extracted credentials."""
+    _LOGGER.warning(
+        "Nice BiDi-WiFi setup validation failed at %s for %s:%s "
+        "(device_id=%s, t4_timeout_ms=%s): %s: %s",
+        step,
+        data.get(CONF_HOST),
+        data.get(CONF_PORT),
+        data.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID),
+        data.get(CONF_T4_TIMEOUT_MS, DEFAULT_T4_TIMEOUT_MS),
+        err.__class__.__name__,
+        _redact_known_values(str(err), data),
+    )
+
+
 class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a Nice BiDi-WiFi config flow."""
 
@@ -139,6 +166,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 await _async_validate_input(self.hass, data)
             except Exception as err:
+                _log_validation_failure("user", data, err)
                 errors["base"] = _error_from_exception(err)
             else:
                 await self.async_set_unique_id(data[CONF_TARGET_MAC])
@@ -176,6 +204,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                 try:
                     await _async_validate_input(self.hass, data)
                 except Exception as err:
+                    _log_validation_failure("reauth", data, err)
                     errors["base"] = _error_from_exception(err)
                 else:
                     self.hass.config_entries.async_update_entry(
@@ -209,6 +238,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                 try:
                     await _async_validate_input(self.hass, data)
                 except Exception as err:
+                    _log_validation_failure("reconfigure", data, err)
                     errors["base"] = _error_from_exception(err)
                 else:
                     self.hass.config_entries.async_update_entry(

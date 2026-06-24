@@ -21,6 +21,7 @@ from custom_components.nice_bidiwifi.client import (
     _frame,
     _make_context,
     _random_t4_key,
+    _response_summary,
     _xml_escape,
     _xml_payload,
     _xor_sha256,
@@ -287,6 +288,19 @@ def test_decrypt_t4_payloads_returns_plain_payloads() -> None:
     )
 
     assert _client()._decrypt_t4_payloads(response) == [plain]
+
+
+def test_response_summary_omits_raw_t4_payload() -> None:
+    """Test response summaries do not expose raw T4 data."""
+    response = b'<Response type="T4_REQUEST" id="263"><T4 key="secret-key">secret-payload</T4></Response>'
+
+    summary = _response_summary(response)
+
+    assert "type=T4_REQUEST" in summary
+    assert "id=263" in summary
+    assert "t4_payloads=1" in summary
+    assert "secret-key" not in summary
+    assert "secret-payload" not in summary
 
 
 def test_signed_request_increments_request_id_and_adds_signature() -> None:

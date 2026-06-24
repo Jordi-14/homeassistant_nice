@@ -81,7 +81,7 @@
       }
     },
     "error": {
-      "cannot_connect": "No s'ha pogut connectar. Comprova l'accés LAN al port TCP 443, tanca MyNice/MyNice Pro i torna-ho a provar.",
+      "cannot_connect": "No s'ha pogut validar la connexió local. Comprova l'accés LAN al port TCP configurat, tanca MyNice/MyNice Pro i consulta els registres de Home Assistant per veure l'error exacte.",
       "invalid_auth": "L'autenticació ha fallat. Comprova el nom d'usuari extret, l'ID d'origen, la MAC de destinació i la contrasenya.",
       "unknown": "Error inesperat",
       "wrong_device": "L'adreça MAC no coincideix amb aquest BiDi-WiFi configurat."

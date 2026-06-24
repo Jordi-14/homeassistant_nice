@@ -81,7 +81,7 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect. Check LAN access to TCP 443, close MyNice/MyNice Pro, then try again.",
+      "cannot_connect": "Failed to validate the local connection. Check LAN access to the configured TCP port, close MyNice/MyNice Pro, then check Home Assistant logs for the exact failure.",
       "invalid_auth": "Authentication failed. Check the extracted username, source ID, target MAC, and password.",
       "unknown": "Unexpected error",
       "wrong_device": "The MAC address does not match this configured BiDi-WiFi."

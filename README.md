@@ -15,7 +15,7 @@ that cannot be validated against Home Assistant's normal trust store. The
 integration therefore keeps certificate verification disabled for this local
 socket and relies on LAN isolation plus the NHK credentials for access control.
 
-Latest release: `v0.5.0`
+Latest release: `v0.5.1`
 
 ## Features
 
@@ -328,14 +328,29 @@ integration.
 
 ## Setup Troubleshooting
 
-- `cannot_connect`: Home Assistant cannot reach the BiDi-WiFi local service.
-  Check the IP address, VLAN/firewall rules, and TCP 443 reachability.
+- `cannot_connect`: Home Assistant could not validate the BiDi-WiFi local
+  service. Check the IP address, VLAN/firewall rules, configured TCP port, and
+  that MyNice/MyNice Pro is closed. The integration writes a sanitized warning
+  to Home Assistant logs with the exact exception seen during setup.
 - `invalid_auth`: One of the extracted credential fields does not match the
   BiDi-WiFi. Re-run the extractor and use `--mac` if multiple devices are
   stored in MyNice.
 - TLS EOF or temporary connection errors: close MyNice/MyNice Pro, wait a few
   seconds, then retry. The integration reconnects automatically after transient
   drops once configured.
+
+For deeper setup diagnostics, temporarily enable debug logging:
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.nice_bidiwifi: debug
+```
+
+Debug logs include connection stage, request type, response type/id, response
+size, and T4 payload count. They do not include extracted usernames, source IDs,
+target MAC addresses, or passwords.
 
 ## Behavior
 
