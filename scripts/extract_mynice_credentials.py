@@ -27,6 +27,10 @@ def main() -> int:
                        ZCONTROLLERID, ZPERMISSIONLEVEL, ZMAINTENANCESTATE
                 FROM ZACCESSORYCREDENTIALENTITY
                 WHERE ZACCESSORYMACADDRESS = ?
+                  AND ZACCESSORYUSER IS NOT NULL
+                  AND ZACCESSORYPASSWORD IS NOT NULL
+                ORDER BY Z_PK DESC
+                LIMIT 1
                 """,
                 (args.mac.upper(),),
             ).fetchone()
