@@ -15,7 +15,7 @@ that cannot be validated against Home Assistant's normal trust store. The
 integration therefore keeps certificate verification disabled for this local
 socket and relies on LAN isolation plus the NHK credentials for access control.
 
-Latest release: `v0.5.2`
+Latest release: `v0.5.3`
 
 ## Features
 

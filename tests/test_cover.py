@@ -24,6 +24,16 @@ class TestNiceBidiCoverProperties:
         assert entity.supported_features & CoverEntityFeature.STOP
         assert entity.supported_features & CoverEntityFeature.SET_POSITION
 
+    def test_supported_features_without_position(self) -> None:
+        coordinator = FakeCoordinator()
+        coordinator.data = make_status(state=None, position=None)
+        entity = NiceBidiCover(coordinator, config_entry())
+        assert entity.available is True
+        assert entity.supported_features & CoverEntityFeature.OPEN
+        assert entity.supported_features & CoverEntityFeature.CLOSE
+        assert entity.supported_features & CoverEntityFeature.STOP
+        assert not entity.supported_features & CoverEntityFeature.SET_POSITION
+
     def test_current_cover_position(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.data = make_status(position=42.4)

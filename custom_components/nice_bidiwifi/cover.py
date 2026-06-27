@@ -34,18 +34,21 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
     _attr_device_class = CoverDeviceClass.GATE
     _attr_has_entity_name = True
     _attr_name = None
-    _attr_supported_features = (
-        CoverEntityFeature.OPEN
-        | CoverEntityFeature.CLOSE
-        | CoverEntityFeature.STOP
-        | CoverEntityFeature.SET_POSITION
-    )
 
     def __init__(self, coordinator: NiceBidiDataUpdateCoordinator, entry: ConfigEntry) -> None:
         """Initialize the cover."""
         super().__init__(coordinator)
         self._entry = entry
         self._attr_unique_id = bidi_unique_id(entry, "cover")
+
+    @property
+    def supported_features(self) -> CoverEntityFeature:
+        """Return supported cover features."""
+        features = CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.STOP
+        status = self.status
+        if status is not None and status.position is not None:
+            features |= CoverEntityFeature.SET_POSITION
+        return features
 
     @property
     def device_info(self):

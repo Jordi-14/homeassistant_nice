@@ -37,6 +37,7 @@ from .client import (
     NiceBidiCredentials,
     NiceBidiDeviceInfo,
     NiceBidiError,
+    nice_bidi_error_code,
     NiceBidiStatus,
     STATE_CLOSED,
     STATE_CLOSING,
@@ -102,6 +103,18 @@ DEP_MOVEMENT_ACTIONS = {
 }
 
 
+def _unknown_status() -> NiceBidiStatus:
+    """Return an empty status for devices that support commands but not DMP status."""
+    return NiceBidiStatus(
+        state=None,
+        position=None,
+        current_position=None,
+        closed_position=None,
+        open_position=None,
+        registers={},
+    )
+
+
 class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
     """DataUpdateCoordinator for one Nice BiDi-WiFi interface."""
 
@@ -112,6 +125,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.config_entry = entry
         self.connection_state = CONNECTION_STATE_UNKNOWN
         self.device_info: NiceBidiDeviceInfo | None = None
+        self.status_polling_supported = True
         self.last_command: str | None = None
         self.last_command_latency_ms: int | None = None
         self.last_error: str | None = None
@@ -216,13 +230,49 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
 
     def _read_status_and_maybe_info(self) -> NiceBidiStatus:
         """Read dynamic status and cache static device info."""
-        status = self.client.read_status()
+        if not self.status_polling_supported:
+            if self.device_info is None:
+                self.device_info = self.client.read_info()
+            return _unknown_status()
+
+        try:
+            status = self.client.read_status()
+        except NiceBidiConnectionError as err:
+            if nice_bidi_error_code(err) != "14":
+                raise
+            try:
+                self.device_info = self.device_info or self.client.read_info()
+            except NiceBidiError:
+                raise err from None
+            if not self._supports_high_level_actions():
+                raise
+            self.status_polling_supported = False
+            _LOGGER.info(
+                "Nice BiDi-WiFi DMP status polling is not supported by this device; "
+                "using command-only mode"
+            )
+            return _unknown_status()
+
         if self.device_info is None:
             try:
                 self.device_info = self.client.read_info()
             except NiceBidiError as err:
                 _LOGGER.debug("Could not read Nice BiDi-WiFi INFO metadata: %s", err)
         return status
+
+    def _supports_high_level_actions(self) -> bool:
+        """Return true when INFO advertises writable DoorAction support."""
+        if self.device_info is None:
+            return False
+        device_id = str(self.config_entry.data.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID))
+        for service in self.device_info.services:
+            if service.name != "DoorAction":
+                continue
+            if service.owner != "Device" or service.owner_id not in {None, device_id}:
+                continue
+            if "w" in (service.permission or ""):
+                return True
+        return False
 
     def _store_successful_status(self, status: NiceBidiStatus) -> None:
         """Store successful status read metadata."""

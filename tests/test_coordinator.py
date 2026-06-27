@@ -89,6 +89,49 @@ async def test_update_data_ignores_device_info_read_errors(
     assert client.info_reads == 1
 
 
+async def test_update_data_falls_back_to_command_only_when_dmp_status_is_unsupported(
+    hass: HomeAssistant,
+) -> None:
+    """Test devices with writable DoorAction can set up without DMP status."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.read_status_error = NiceBidiConnectionError(
+        '<Response type="T4_REQUEST"><Error><Code>14</Code></Error></Response>'
+    )
+    instance.client = client
+
+    result = await instance._async_update_data()
+
+    assert result.state is None
+    assert result.position is None
+    assert result.registers == {}
+    assert instance.device_info is client.read_info_result
+    assert instance.status_polling_supported is False
+    assert instance.connection_state == coordinator_module.CONNECTION_STATE_CONNECTED
+    assert instance.last_error is None
+
+    await instance._async_update_data()
+    assert client.info_reads == 1
+
+
+async def test_update_data_does_not_fallback_to_command_only_for_other_status_errors(
+    hass: HomeAssistant,
+) -> None:
+    """Test non-Code 14 status errors still fail setup/update."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.read_status_error = NiceBidiConnectionError(
+        '<Response type="T4_REQUEST"><Error><Code>4</Code></Error></Response>'
+    )
+    instance.client = client
+
+    with pytest.raises(UpdateFailed):
+        await instance._async_update_data()
+
+    assert instance.status_polling_supported is True
+    assert instance.connection_state == coordinator_module.CONNECTION_STATE_FAILED
+
+
 async def test_update_data_maps_auth_failure(hass: HomeAssistant) -> None:
     """Test auth error handling."""
     instance = _coordinator(hass)

@@ -27,6 +27,7 @@ from custom_components.nice_bidiwifi.client import (
     _xor_sha256,
     build_dep_action_frame,
     build_dmp_read_frame,
+    nice_bidi_error_code,
     parse_dmp_response,
     parse_info_xml,
 )
@@ -95,6 +96,14 @@ def test_credentials_reject_invalid_password() -> None:
 
     with pytest.raises(NiceBidiAuthError):
         _ = credentials.password
+
+
+def test_nice_bidi_error_code_extracts_xml_code() -> None:
+    """Test XML error code extraction."""
+    err = NiceBidiConnectionError('<Response><Error><Code>14</Code></Error></Response>')
+
+    assert nice_bidi_error_code(err) == "14"
+    assert nice_bidi_error_code("offline") is None
 
 
 def test_parse_dmp_response_extracts_register_value() -> None:
@@ -397,6 +406,51 @@ def test_connect_locked_maps_error_response_to_auth_error() -> None:
 
     with pytest.raises(NiceBidiAuthError):
         client._connect_locked()
+
+
+def test_test_connection_falls_back_to_info_when_dmp_status_is_unsupported() -> None:
+    """Test setup validation accepts devices with INFO but no DMP status."""
+
+    class CommandOnlyClient(NiceBidiClient):
+        def __init__(self):
+            super().__init__(
+                "192.0.2.10",
+                443,
+                NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+            )
+            self.info_reads = 0
+
+        def read_status(self):
+            raise NiceBidiConnectionError(
+                '<Response type="T4_REQUEST"><Error><Code>14</Code></Error></Response>'
+            )
+
+        def read_info(self):
+            self.info_reads += 1
+            return NiceBidiDeviceInfo(
+                interface_hw_version=None,
+                interface_fw_version=None,
+                interface_manufacturer=None,
+                interface_product=None,
+                interface_serial=None,
+                device_type=None,
+                device_manufacturer=None,
+                device_product=None,
+                device_description=None,
+                device_hw_version=None,
+                device_fw_version=None,
+                device_serial=None,
+                device_product_detail=None,
+            )
+
+    client = CommandOnlyClient()
+
+    status = client.test_connection()
+
+    assert status.state is None
+    assert status.position is None
+    assert status.registers == {}
+    assert client.info_reads == 1
 
 
 def test_run_with_reconnect_retries_once(monkeypatch: pytest.MonkeyPatch) -> None:

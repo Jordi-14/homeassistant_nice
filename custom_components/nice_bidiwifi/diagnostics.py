@@ -39,6 +39,7 @@ async def async_get_config_entry_diagnostics(
         "entry": dict(entry.data),
         "connection": {
             "state": coordinator.connection_state,
+            "status_polling_supported": coordinator.status_polling_supported,
             "last_error": coordinator.last_error,
             "last_successful_update": (
                 coordinator.last_successful_update.isoformat()

@@ -49,7 +49,11 @@ class NiceBidiCoverSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Swit
     @property
     def available(self) -> bool:
         """Return true if the latest coordinator update succeeded."""
-        return self.coordinator.last_update_success and self.status is not None
+        return (
+            self.coordinator.last_update_success
+            and self.status is not None
+            and self.status.state is not None
+        )
 
     @property
     def status(self) -> NiceBidiStatus | None:

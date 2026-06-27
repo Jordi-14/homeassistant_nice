@@ -69,6 +69,12 @@ class NiceBidiConnectionError(NiceBidiError):
     """Connection failed or device did not respond."""
 
 
+def nice_bidi_error_code(err: Exception | str) -> str | None:
+    """Return a Nice XML error code from an exception or response string."""
+    match = re.search(r"<Code>\s*([^<\s]+)\s*</Code>", str(err))
+    return match.group(1) if match else None
+
+
 @dataclass(frozen=True)
 class NiceBidiCredentials:
     """Credentials needed for NHK local authentication."""
@@ -476,7 +482,20 @@ class NiceBidiClient:
 
     def test_connection(self) -> NiceBidiStatus:
         """Authenticate and read status once."""
-        return self.read_status()
+        try:
+            return self.read_status()
+        except NiceBidiConnectionError as err:
+            if nice_bidi_error_code(err) != "14":
+                raise
+            self.read_info()
+            return NiceBidiStatus(
+                state=None,
+                position=None,
+                current_position=None,
+                closed_position=None,
+                open_position=None,
+                registers={},
+            )
 
     def _run_with_reconnect(self, operation: Callable[[], Any]) -> Any:
         last_error: Exception | None = None

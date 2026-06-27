@@ -15,7 +15,11 @@ from homeassistant.const import (
     CONF_USERNAME,
 )
 
-from custom_components.nice_bidiwifi.client import NiceBidiDeviceInfo, NiceBidiStatus
+from custom_components.nice_bidiwifi.client import (
+    NiceBidiDeviceInfo,
+    NiceBidiServiceCapability,
+    NiceBidiStatus,
+)
 from custom_components.nice_bidiwifi.const import (
     CONF_DEVICE_ID,
     CONF_SOURCE_ID,
@@ -87,6 +91,18 @@ def make_device_info() -> NiceBidiDeviceInfo:
         device_fw_version="FG01h",
         device_serial="0E6809FF",
         device_product_detail="detail",
+        services=(
+            NiceBidiServiceCapability(
+                owner="Device",
+                owner_id="1",
+                name="DoorAction",
+                path='Response/Devices/Device[@id="1"]/Services/DoorAction',
+                value_type="string",
+                permission="w",
+                values_raw="open, stop, close",
+                values=("open", "stop", "close"),
+            ),
+        ),
     )
 
 
@@ -143,6 +159,7 @@ class FakeCoordinator:
     def __init__(self) -> None:
         self.data = make_status()
         self.device_info = make_device_info()
+        self.status_polling_supported = True
         self.last_update_success = True
         self.connection_state = "connected"
         self.last_successful_update = datetime(2026, 5, 28, tzinfo=UTC)

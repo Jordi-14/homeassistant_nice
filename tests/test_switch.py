@@ -45,6 +45,14 @@ class TestNiceBidiCoverSwitchProperties:
         assert entity.available is False
         assert entity.is_on is None
 
+    def test_unavailable_without_status_state(self) -> None:
+        coordinator = FakeCoordinator()
+        coordinator.data = make_status(state=None, position=None)
+        entity = NiceBidiCoverSwitch(coordinator, config_entry())
+
+        assert entity.available is False
+        assert entity.is_on is None
+
 
 class TestNiceBidiCoverSwitchCommands:
     """Test switch command forwarding."""
