@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with the Nice BiDi-WiFi integration.
+description: Report a problem with the Nice integration.
 title: "[Bug]: "
 labels: ["bug"]
 body:
