@@ -1,4 +1,4 @@
-"""Calibration report helpers for Nice BiDi-WiFi."""
+"""Calibration report helpers for Nice."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def calibration_report_attributes(report: CalibrationReport | None) -> dict[str,
         "points": _compact_calibration_points(points),
         "event_count": len(events) if isinstance(events, list) else None,
         "last_events": _compact_calibration_events(events),
-        "full_report_log_prefix": "Nice BiDi-WiFi calibration report",
+        "full_report_log_prefix": "Nice calibration report",
         "full_report_note": (
             "Full report is written to Home Assistant logs in chunks when calibration finishes or fails."
         ),
@@ -187,7 +187,7 @@ def build_calibration_report(profile: CalibrationProfile, state: str) -> Calibra
 def format_calibration_report(report: CalibrationReport) -> str:
     """Format a calibration report as copyable plain text."""
     lines = [
-        "Nice BiDi-WiFi position calibration report",
+        "Nice position calibration report",
         f"State: {report.get('state')}",
         f"Quality: {report.get('quality')}",
         f"Summary: {report.get('summary')}",

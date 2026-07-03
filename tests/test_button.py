@@ -1,4 +1,4 @@
-"""Tests for Nice BiDi-WiFi button entities."""
+"""Tests for Nice button entities."""
 
 from __future__ import annotations
 

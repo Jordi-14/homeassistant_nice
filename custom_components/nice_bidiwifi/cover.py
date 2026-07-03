@@ -1,4 +1,4 @@
-"""Cover platform for Nice BiDi-WiFi."""
+"""Cover platform for Nice."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ async def async_setup_entry(
 
 
 class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntity):
-    """Nice BiDi-WiFi gate cover."""
+    """Nice gate cover."""
 
     _attr_device_class = CoverDeviceClass.GATE
     _attr_has_entity_name = True

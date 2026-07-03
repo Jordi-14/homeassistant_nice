@@ -1,4 +1,4 @@
-"""Tests for the local Nice BiDi-WiFi protocol client."""
+"""Tests for the local Nice protocol client."""
 
 from __future__ import annotations
 

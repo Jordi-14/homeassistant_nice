@@ -1,4 +1,4 @@
-"""Shared entity helpers for Nice BiDi-WiFi."""
+"""Shared entity helpers for Nice."""
 
 from __future__ import annotations
 

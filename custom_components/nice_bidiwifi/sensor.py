@@ -1,4 +1,4 @@
-"""Sensor platform for Nice BiDi-WiFi."""
+"""Sensor platform for Nice."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from .runtime import get_coordinator
 
 @dataclass(frozen=True, kw_only=True)
 class NiceBidiSensorEntityDescription(SensorEntityDescription):
-    """Description for a Nice BiDi-WiFi sensor."""
+    """Description for a Nice sensor."""
 
     value_fn: Callable[[NiceBidiDataUpdateCoordinator], datetime | float | int | str | None]
     extra_attributes_fn: Callable[[NiceBidiDataUpdateCoordinator], dict[str, Any]] | None = None
@@ -229,7 +229,7 @@ async def async_setup_entry(
 
 
 class NiceBidiSensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SensorEntity):
-    """Nice BiDi-WiFi diagnostic sensor."""
+    """Nice diagnostic sensor."""
 
     _attr_has_entity_name = True
 

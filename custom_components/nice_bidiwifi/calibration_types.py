@@ -1,4 +1,4 @@
-"""Typed calibration data structures for Nice BiDi-WiFi."""
+"""Typed calibration data structures for Nice."""
 
 from __future__ import annotations
 

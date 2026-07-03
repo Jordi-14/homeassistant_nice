@@ -1,13 +1,13 @@
-# Nice BiDi-WiFi for Home Assistant
+# Nice for Home Assistant
 
 [![HACS Validation](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hacs.yml/badge.svg)](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hacs.yml)
 [![Hassfest](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml/badge.svg)](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/Jordi-14/homeassistant_nice)](https://github.com/Jordi-14/homeassistant_nice/releases/latest)
 
-Custom Home Assistant integration for local control of a Nice gate through a
-Nice BiDi-WiFi interface.
+Custom Home Assistant integration for local control of compatible Nice gates
+and garage doors.
 
-This integration talks directly to the BiDi-WiFi local NHK/T4 service over
+This integration talks directly to compatible local NHK/T4 services over
 TLS/TCP 443 and creates one `cover` entity plus helper diagnostic entities.
 
 The local TLS endpoint on tested BiDi-WiFi firmware uses a device certificate
@@ -15,7 +15,7 @@ that cannot be validated against Home Assistant's normal trust store. The
 integration therefore keeps certificate verification disabled for this local
 socket and relies on LAN isolation plus the NHK credentials for access control.
 
-Latest release: `v0.5.4`
+Latest release: `v0.6.0`
 
 ## Features
 
@@ -53,12 +53,18 @@ Known working setup:
 - Tested control unit firmware: `FG01h`
 - Home Assistant: `2024.11.0` or newer
 
-This integration depends on the BiDi-WiFi local NHK/T4/DMP protocol, which is
-not publicly documented by Nice. If you rely on this integration, we recommend
-not updating the BiDi-WiFi firmware beyond `2.6.4` unless you are prepared to
-retest local control and recover using the official Nice app or remote. A
-firmware update could change authentication, command framing, register layout,
-or local TCP 443 behavior and break the integration.
+This integration was originally tested with BiDi-WiFi devices and depends on
+the local NHK/T4/DMP protocol surface, which is not publicly documented by
+Nice. Some devices reporting `interface_product: CU_WIFI` may also work in
+basic command-only mode when they expose the same local NHK/T4 command surface.
+Full status and position support depends on the local services and DMP
+registers exposed by the device.
+
+If you rely on this integration, we recommend not updating the BiDi-WiFi
+firmware beyond `2.6.4` unless you are prepared to retest local control and
+recover using the official Nice app or remote. A firmware update could change
+authentication, command framing, register layout, or local TCP 443 behavior and
+break the integration.
 
 ## Requirements
 
@@ -88,7 +94,7 @@ Category:
 Integration
 ```
 
-Download it through HACS, restart Home Assistant, then add **Nice BiDi-WiFi**
+Download it through HACS, restart Home Assistant, then add **Nice**
 from **Settings -> Devices & services**.
 
 This repository is being prepared for inclusion in the HACS default
@@ -313,10 +319,10 @@ table names, but redact all secrets.
 In Home Assistant:
 
 1. Go to **Settings -> Devices & services**.
-2. Add **Nice BiDi-WiFi**.
+2. Add **Nice**.
 3. Enter:
-   - BiDi IP address
-   - BiDi MAC address from `target_mac`
+   - Interface IP address
+   - Interface MAC address from `target_mac`
    - NHK username from `username`
    - NHK password hex from `password`
    - Source/controller ID from `source_id`
@@ -407,11 +413,11 @@ During calibration it polls every 0.5 seconds and waits 0.5 seconds after a
 stop or fully reached endpoint before sending the next movement command.
 
 Calibration writes detailed Home Assistant log lines with the prefix
-`Nice BiDi-WiFi calibration:`. It also exposes a disabled-by-default diagnostic
+`Nice calibration:`. It also exposes a disabled-by-default diagnostic
 sensor named `Position calibration report` with recorder-safe summary
 attributes. When calibration finishes or fails, the full detailed report is
 written to Home Assistant logs in chunks with the prefix
-`Nice BiDi-WiFi calibration report`. The full report includes a quality grade,
+`Nice calibration report`. The full report includes a quality grade,
 max/average error, failed points, all attempts per target, command latency,
 movement duration, and the event log.
 

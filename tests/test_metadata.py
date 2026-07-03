@@ -14,6 +14,7 @@ def test_manifest_matches_hacs_metadata() -> None:
     hacs = json.loads((ROOT / "hacs.json").read_text())
 
     assert manifest["domain"] == "nice_bidiwifi"
+    assert manifest["name"] == "Nice"
     assert manifest["name"] == hacs["name"]
     assert manifest["config_flow"] is True
     assert manifest["integration_type"] == "device"

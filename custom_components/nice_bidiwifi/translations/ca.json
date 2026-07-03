@@ -2,13 +2,13 @@
   "config": {
     "step": {
       "user": {
-        "title": "Nice BiDi-WiFi",
-        "description": "Configura el control local per a un Nice BiDi-WiFi. Tanca MyNice/MyNice Pro abans de validar la connexió.",
+        "title": "Nice",
+        "description": "Configura el control local per a una interfície Nice compatible de porta o porta de garatge. Tanca MyNice/MyNice Pro abans de validar la connexió.",
         "data": {
           "name": "Nom",
-          "host": "Adreça IP del BiDi",
+          "host": "Adreça IP de la interfície",
           "port": "Port",
-          "target_mac": "Adreça MAC del BiDi",
+          "target_mac": "Adreça MAC de la interfície",
           "username": "Nom d'usuari NHK",
           "password": "Contrasenya NHK en hexadecimal",
           "source_id": "ID d'origen/controlador",
@@ -17,9 +17,9 @@
         },
         "data_description": {
           "name": "Nom visible d'aquesta porta a Home Assistant.",
-          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar al BiDi-WiFi a la xarxa local.",
-          "port": "Port TLS local del BiDi-WiFi. El valor per defecte és 443.",
-          "target_mac": "Adreça MAC del BiDi-WiFi extreta de les credencials de MyNice.",
+          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
+          "port": "Port TLS local de la interfície Nice. El valor per defecte és 443.",
+          "target_mac": "Adreça MAC de la interfície extreta de les credencials de MyNice.",
           "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
           "source_id": "ID d'origen/controlador extret de les credencials de MyNice. Deixa'l buit per utilitzar el nom d'usuari.",
@@ -28,13 +28,13 @@
         }
       },
       "reauth_confirm": {
-        "title": "Torna a autenticar Nice BiDi-WiFi",
-        "description": "Actualitza les credencials locals d'aquest BiDi-WiFi. L'adreça MAC ha de coincidir amb el dispositiu existent.",
+        "title": "Torna a autenticar Nice",
+        "description": "Actualitza les credencials locals d'aquesta interfície Nice. L'adreça MAC ha de coincidir amb el dispositiu existent.",
         "data": {
           "name": "Nom",
-          "host": "Adreça IP del BiDi",
+          "host": "Adreça IP de la interfície",
           "port": "Port",
-          "target_mac": "Adreça MAC del BiDi",
+          "target_mac": "Adreça MAC de la interfície",
           "username": "Nom d'usuari NHK",
           "password": "Contrasenya NHK en hexadecimal",
           "source_id": "ID d'origen/controlador",
@@ -43,9 +43,9 @@
         },
         "data_description": {
           "name": "Nom visible d'aquesta porta a Home Assistant.",
-          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar al BiDi-WiFi a la xarxa local.",
-          "port": "Port TLS local del BiDi-WiFi. El valor per defecte és 443.",
-          "target_mac": "Adreça MAC del BiDi-WiFi extreta de les credencials de MyNice.",
+          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
+          "port": "Port TLS local de la interfície Nice. El valor per defecte és 443.",
+          "target_mac": "Adreça MAC de la interfície extreta de les credencials de MyNice.",
           "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
           "source_id": "ID d'origen/controlador extret de les credencials de MyNice. Deixa'l buit per utilitzar el nom d'usuari.",
@@ -54,13 +54,13 @@
         }
       },
       "reconfigure": {
-        "title": "Reconfigura Nice BiDi-WiFi",
-        "description": "Actualitza la configuració de connexió local d'aquest BiDi-WiFi. L'adreça MAC ha de coincidir amb el dispositiu existent.",
+        "title": "Reconfigura Nice",
+        "description": "Actualitza la configuració de connexió local d'aquesta interfície Nice. L'adreça MAC ha de coincidir amb el dispositiu existent.",
         "data": {
           "name": "Nom",
-          "host": "Adreça IP del BiDi",
+          "host": "Adreça IP de la interfície",
           "port": "Port",
-          "target_mac": "Adreça MAC del BiDi",
+          "target_mac": "Adreça MAC de la interfície",
           "username": "Nom d'usuari NHK",
           "password": "Contrasenya NHK en hexadecimal",
           "source_id": "ID d'origen/controlador",
@@ -69,9 +69,9 @@
         },
         "data_description": {
           "name": "Nom visible d'aquesta porta a Home Assistant.",
-          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar al BiDi-WiFi a la xarxa local.",
-          "port": "Port TLS local del BiDi-WiFi. El valor per defecte és 443.",
-          "target_mac": "Adreça MAC del BiDi-WiFi extreta de les credencials de MyNice.",
+          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
+          "port": "Port TLS local de la interfície Nice. El valor per defecte és 443.",
+          "target_mac": "Adreça MAC de la interfície extreta de les credencials de MyNice.",
           "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
           "source_id": "ID d'origen/controlador extret de les credencials de MyNice. Deixa'l buit per utilitzar el nom d'usuari.",
@@ -84,10 +84,10 @@
       "cannot_connect": "No s'ha pogut validar la connexió local. Comprova l'accés LAN al port TCP configurat, tanca MyNice/MyNice Pro i consulta els registres de Home Assistant per veure l'error exacte.",
       "invalid_auth": "L'autenticació ha fallat. Comprova el nom d'usuari extret, l'ID d'origen, la MAC de destinació i la contrasenya.",
       "unknown": "Error inesperat",
-      "wrong_device": "L'adreça MAC no coincideix amb aquest BiDi-WiFi configurat."
+      "wrong_device": "L'adreça MAC no coincideix amb aquesta interfície Nice configurada."
     },
     "abort": {
-      "already_configured": "Aquest BiDi-WiFi ja està configurat",
+      "already_configured": "Aquesta interfície Nice ja està configurada",
       "reauth_successful": "Reautenticació correcta",
       "reconfigure_successful": "Reconfiguració correcta"
     }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dump a sanitized capability report from a local Nice BiDi-WiFi."""
+"""Dump a sanitized capability report from a local Nice interface."""
 
 from __future__ import annotations
 

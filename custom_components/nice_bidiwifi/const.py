@@ -1,4 +1,4 @@
-"""Constants for the Nice BiDi-WiFi integration."""
+"""Constants for the Nice integration."""
 
 from datetime import timedelta
 

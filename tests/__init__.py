@@ -1,1 +1,1 @@
-"""Test package for the Nice BiDi-WiFi integration."""
+"""Test package for the Nice integration."""

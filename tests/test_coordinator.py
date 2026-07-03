@@ -519,7 +519,7 @@ def test_calibration_report_summary_attributes_and_formatting(
     assert attrs["points"][0]["target_percent"] == 20
 
     formatted = instance._format_calibration_report(report)
-    assert "Nice BiDi-WiFi position calibration report" in formatted
+    assert "Nice position calibration report" in formatted
     assert "Full-travel speed:" in formatted
     assert "Calibration points:" in formatted
     assert "Event log:" in formatted

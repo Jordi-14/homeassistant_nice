@@ -1,4 +1,4 @@
-"""Button platform for Nice BiDi-WiFi."""
+"""Button platform for Nice."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ PARALLEL_UPDATES = 1
 
 @dataclass(frozen=True, kw_only=True)
 class NiceBidiButtonEntityDescription(ButtonEntityDescription):
-    """Description for a Nice BiDi-WiFi button."""
+    """Description for a Nice button."""
 
     press_fn: Callable[[NiceBidiDataUpdateCoordinator], Awaitable[None]]
     available_when_offline: bool = False
@@ -124,7 +124,7 @@ async def async_setup_entry(
 
 
 class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEntity):
-    """Nice BiDi-WiFi diagnostic button."""
+    """Nice diagnostic button."""
 
     _attr_has_entity_name = True
 

@@ -1,4 +1,4 @@
-"""Coordinator for Nice BiDi-WiFi."""
+"""Coordinator for Nice."""
 
 from __future__ import annotations
 
@@ -116,7 +116,7 @@ def _unknown_status() -> NiceBidiStatus:
 
 
 class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
-    """DataUpdateCoordinator for one Nice BiDi-WiFi interface."""
+    """DataUpdateCoordinator for one Nice interface."""
 
     config_entry: ConfigEntry
 
@@ -185,7 +185,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             self.calibration_updated_at = None
             self.calibration_state = CALIBRATION_STATE_NOT_CALIBRATED
             self.calibration_last_error = f"Stored calibration could not be loaded: {err}"
-            _LOGGER.warning("Nice BiDi-WiFi stored calibration could not be loaded: %s", err)
+            _LOGGER.warning("Nice stored calibration could not be loaded: %s", err)
             return
 
         if not isinstance(stored_profile, dict):
@@ -248,7 +248,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 raise
             self.status_polling_supported = False
             _LOGGER.info(
-                "Nice BiDi-WiFi DMP status polling is not supported by this device; "
+                "Nice DMP status polling is not supported by this device; "
                 "using command-only mode"
             )
             return _unknown_status()
@@ -257,7 +257,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             try:
                 self.device_info = self.client.read_info()
             except NiceBidiError as err:
-                _LOGGER.debug("Could not read Nice BiDi-WiFi INFO metadata: %s", err)
+                _LOGGER.debug("Could not read Nice INFO metadata: %s", err)
         return status
 
     def _supports_high_level_actions(self) -> bool:
@@ -369,13 +369,13 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             self.connection_state = CONNECTION_STATE_AUTH_FAILED
             self.last_error = str(err)
             self._clear_position_simulation()
-            raise HomeAssistantError(f"Nice BiDi-WiFi authentication failed: {err}") from err
+            raise HomeAssistantError(f"Nice authentication failed: {err}") from err
         except (NiceBidiConnectionError, OSError) as err:
             self.client.close()
             self.connection_state = CONNECTION_STATE_FAILED
             self.last_error = str(err)
             self._clear_position_simulation()
-            raise HomeAssistantError(f"Nice BiDi-WiFi command failed: {err}") from err
+            raise HomeAssistantError(f"Nice command failed: {err}") from err
 
         self.connection_state = CONNECTION_STATE_CONNECTED
         self.last_command = action
@@ -400,13 +400,13 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             self.connection_state = CONNECTION_STATE_AUTH_FAILED
             self.last_error = str(err)
             self._clear_position_simulation()
-            raise HomeAssistantError(f"Nice BiDi-WiFi authentication failed: {err}") from err
+            raise HomeAssistantError(f"Nice authentication failed: {err}") from err
         except (NiceBidiConnectionError, OSError) as err:
             self.client.close()
             self.connection_state = CONNECTION_STATE_FAILED
             self.last_error = str(err)
             self._clear_position_simulation()
-            raise HomeAssistantError(f"Nice BiDi-WiFi command failed: {err}") from err
+            raise HomeAssistantError(f"Nice command failed: {err}") from err
 
         self.connection_state = CONNECTION_STATE_CONNECTED
         self.last_command = action
@@ -646,7 +646,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             await self.async_request_refresh()
             status = self.data
         if status is None or status.position is None:
-            raise HomeAssistantError("Nice BiDi-WiFi position is not available")
+            raise HomeAssistantError("Nice position is not available")
 
         current = status.position
         if target <= 0:
@@ -710,13 +710,13 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             self.client.close()
             self.connection_state = CONNECTION_STATE_AUTH_FAILED
             self.last_error = str(err)
-            _LOGGER.warning("Nice BiDi-WiFi target-position authentication failed: %s", err)
+            _LOGGER.warning("Nice target-position authentication failed: %s", err)
         except (NiceBidiConnectionError, OSError) as err:
             self.client.close()
             self.connection_state = CONNECTION_STATE_FAILED
             self.last_error = str(err)
             self.update_interval = ERROR_UPDATE_INTERVAL
-            _LOGGER.warning("Nice BiDi-WiFi target-position tracking failed: %s", err)
+            _LOGGER.warning("Nice target-position tracking failed: %s", err)
         finally:
             if self._position_target_task is task:
                 self._position_target_task = None
@@ -725,7 +725,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         """Start a background position calibration run."""
         task = self._calibration_task
         if task is not None and not task.done():
-            raise HomeAssistantError("Nice BiDi-WiFi position calibration is already running")
+            raise HomeAssistantError("Nice position calibration is already running")
 
         await self._async_cancel_position_target()
         await self._async_cancel_post_command_refresh()
@@ -777,7 +777,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             self._add_calibration_event("run", "Position calibration failed", error=str(err))
             self.calibration_report = self._build_live_calibration_report("Calibration failed")
             self._log_calibration_report(self.calibration_report, "failed")
-            _LOGGER.warning("Nice BiDi-WiFi position calibration failed: %s", err)
+            _LOGGER.warning("Nice position calibration failed: %s", err)
         finally:
             if self._calibration_task is task:
                 self._calibration_task = None
@@ -1119,7 +1119,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         status = await self._async_read_motion_status()
         self._validate_position_bounds(status)
         if status.current_position is None:
-            raise HomeAssistantError("Nice BiDi-WiFi current encoder position is not available")
+            raise HomeAssistantError("Nice current encoder position is not available")
 
         start_raw = status.current_position
         target_raw = self._raw_for_percent(status, target)
@@ -1181,7 +1181,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             attempt=attempt,
         )
         if settled.current_position is None:
-            raise HomeAssistantError("Nice BiDi-WiFi final encoder position is not available")
+            raise HomeAssistantError("Nice final encoder position is not available")
 
         if settle_timed_out:
             return self._invalid_calibration_sample(
@@ -1325,7 +1325,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         status = await self._async_read_motion_status()
         self._validate_position_bounds(status)
         if status.current_position is None or status.position is None:
-            raise HomeAssistantError("Nice BiDi-WiFi current position is not available")
+            raise HomeAssistantError("Nice current position is not available")
 
         start_raw = status.current_position
         start_percent = status.position
@@ -1348,7 +1348,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             status = await self._async_read_motion_status()
             if self._is_at_endpoint(status, action):
                 if status.current_position is None or status.position is None:
-                    raise HomeAssistantError("Nice BiDi-WiFi endpoint position is not available")
+                    raise HomeAssistantError("Nice endpoint position is not available")
                 duration_ms = round((time.monotonic() - started) * 1000)
                 distance_raw = status.current_position - start_raw
                 distance_percent = status.position - start_percent
@@ -1626,15 +1626,15 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
     def _validate_position_bounds(status: NiceBidiStatus) -> None:
         """Validate that encoder endpoints are available."""
         if status.closed_position is None or status.open_position is None:
-            raise HomeAssistantError("Nice BiDi-WiFi encoder endpoints are not available")
+            raise HomeAssistantError("Nice encoder endpoints are not available")
         if status.closed_position == status.open_position:
-            raise HomeAssistantError("Nice BiDi-WiFi encoder endpoints are identical")
+            raise HomeAssistantError("Nice encoder endpoints are identical")
 
     @staticmethod
     def _raw_for_percent(status: NiceBidiStatus, percent: float) -> int:
         """Convert percentage to raw encoder position."""
         if status.closed_position is None or status.open_position is None:
-            raise HomeAssistantError("Nice BiDi-WiFi encoder endpoints are not available")
+            raise HomeAssistantError("Nice encoder endpoints are not available")
         span = status.open_position - status.closed_position
         raw = status.closed_position + (span * (percent / 100.0))
         return round(raw)
@@ -1643,17 +1643,17 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
     def _percent_for_raw(status: NiceBidiStatus, raw: int) -> float:
         """Convert raw encoder position to percentage."""
         if status.closed_position is None or status.open_position is None:
-            raise HomeAssistantError("Nice BiDi-WiFi encoder endpoints are not available")
+            raise HomeAssistantError("Nice encoder endpoints are not available")
         span = status.open_position - status.closed_position
         if span == 0:
-            raise HomeAssistantError("Nice BiDi-WiFi encoder endpoints are identical")
+            raise HomeAssistantError("Nice encoder endpoints are identical")
         return max(0.0, min(100.0, ((raw - status.closed_position) / span) * 100.0))
 
     @staticmethod
     def _raw_reached(action: str, status: NiceBidiStatus, current_raw: int, target_raw: int) -> bool:
         """Return true if raw position crossed target in the requested direction."""
         if status.closed_position is None or status.open_position is None:
-            raise HomeAssistantError("Nice BiDi-WiFi encoder endpoints are not available")
+            raise HomeAssistantError("Nice encoder endpoints are not available")
         increasing = status.open_position > status.closed_position
         if action == "open":
             return current_raw >= target_raw if increasing else current_raw <= target_raw
@@ -1663,7 +1663,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
     def _clamp_raw(status: NiceBidiStatus, raw: int) -> int:
         """Clamp raw position to known encoder bounds."""
         if status.closed_position is None or status.open_position is None:
-            raise HomeAssistantError("Nice BiDi-WiFi encoder endpoints are not available")
+            raise HomeAssistantError("Nice encoder endpoints are not available")
         lower = min(status.closed_position, status.open_position)
         upper = max(status.closed_position, status.open_position)
         return max(lower, min(upper, raw))
@@ -1711,9 +1711,9 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         }
         self._calibration_events.append(event)
         if details:
-            _LOGGER.info("Nice BiDi-WiFi calibration: %s | %s", message, json.dumps(details, sort_keys=True))
+            _LOGGER.info("Nice calibration: %s | %s", message, json.dumps(details, sort_keys=True))
         else:
-            _LOGGER.info("Nice BiDi-WiFi calibration: %s", message)
+            _LOGGER.info("Nice calibration: %s", message)
 
         if self.calibration_state == CALIBRATION_STATE_RUNNING:
             self.calibration_report = self._build_live_calibration_report(message)
@@ -1727,7 +1727,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             (len(report_text) + CALIBRATION_REPORT_LOG_CHUNK_SIZE - 1) // CALIBRATION_REPORT_LOG_CHUNK_SIZE,
         )
         _LOGGER.warning(
-            "Nice BiDi-WiFi calibration report %s: writing %s bytes in %s chunks",
+            "Nice calibration report %s: writing %s bytes in %s chunks",
             reason,
             len(report_text),
             total_chunks,
@@ -1736,7 +1736,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             start = chunk_index * CALIBRATION_REPORT_LOG_CHUNK_SIZE
             chunk = report_text[start : start + CALIBRATION_REPORT_LOG_CHUNK_SIZE]
             _LOGGER.warning(
-                "Nice BiDi-WiFi calibration report %s chunk %s/%s:\n%s",
+                "Nice calibration report %s chunk %s/%s:\n%s",
                 reason,
                 chunk_index + 1,
                 total_chunks,

@@ -1,4 +1,4 @@
-"""Runtime helpers for Nice BiDi-WiFi."""
+"""Runtime helpers for Nice."""
 
 from __future__ import annotations
 

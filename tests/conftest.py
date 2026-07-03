@@ -1,4 +1,4 @@
-"""Shared fixtures for Nice BiDi-WiFi integration tests."""
+"""Shared fixtures for Nice integration tests."""
 
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ def make_status(
     closed_position: int | None = 0,
     open_position: int | None = 1000,
 ) -> NiceBidiStatus:
-    """Create a Nice BiDi-WiFi status object."""
+    """Create a Nice status object."""
     return NiceBidiStatus(
         state=state,
         position=position,

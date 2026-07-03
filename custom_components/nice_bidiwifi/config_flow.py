@@ -1,4 +1,4 @@
-"""Config flow for Nice BiDi-WiFi."""
+"""Config flow for Nice."""
 
 from __future__ import annotations
 
@@ -138,7 +138,7 @@ def _redact_known_values(message: str, data: dict[str, Any]) -> str:
 def _log_validation_failure(step: str, data: dict[str, Any], err: Exception) -> None:
     """Log a setup validation failure without exposing extracted credentials."""
     _LOGGER.warning(
-        "Nice BiDi-WiFi setup validation failed at %s for %s:%s "
+        "Nice setup validation failed at %s for %s:%s "
         "(device_id=%s, t4_timeout_ms=%s): %s: %s",
         step,
         data.get(CONF_HOST),
@@ -151,7 +151,7 @@ def _log_validation_failure(step: str, data: dict[str, Any], err: Exception) -> 
 
 
 class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a Nice BiDi-WiFi config flow."""
+    """Handle a Nice config flow."""
 
     VERSION = 1
     _reauth_entry: ConfigEntry | None = None

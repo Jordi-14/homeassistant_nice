@@ -2,13 +2,13 @@
   "config": {
     "step": {
       "user": {
-        "title": "Nice BiDi-WiFi",
-        "description": "Set up local control for a Nice BiDi-WiFi. Close MyNice/MyNice Pro before validating the connection.",
+        "title": "Nice",
+        "description": "Set up local control for a compatible Nice gate or garage-door interface. Close MyNice/MyNice Pro before validating the connection.",
         "data": {
           "name": "Name",
-          "host": "BiDi IP address",
+          "host": "Interface IP address",
           "port": "Port",
-          "target_mac": "BiDi MAC address",
+          "target_mac": "Interface MAC address",
           "username": "NHK username",
           "password": "NHK password hex",
           "source_id": "Source/controller ID",
@@ -17,9 +17,9 @@
         },
         "data_description": {
           "name": "Display name for this gate in Home Assistant.",
-          "host": "IP address or hostname that Home Assistant uses to reach the BiDi-WiFi on the local network.",
-          "port": "Local BiDi-WiFi TLS port. The default is 443.",
-          "target_mac": "BiDi-WiFi MAC address from the extracted MyNice credentials.",
+          "host": "IP address or hostname that Home Assistant uses to reach the Nice interface on the local network.",
+          "port": "Local Nice interface TLS port. The default is 443.",
+          "target_mac": "Interface MAC address from the extracted MyNice credentials.",
           "username": "NHK username from the extracted MyNice credentials.",
           "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
           "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
@@ -28,13 +28,13 @@
         }
       },
       "reauth_confirm": {
-        "title": "Reauthenticate Nice BiDi-WiFi",
-        "description": "Update the local credentials for this BiDi-WiFi. The MAC address must match the existing device.",
+        "title": "Reauthenticate Nice",
+        "description": "Update the local credentials for this Nice interface. The MAC address must match the existing device.",
         "data": {
           "name": "Name",
-          "host": "BiDi IP address",
+          "host": "Interface IP address",
           "port": "Port",
-          "target_mac": "BiDi MAC address",
+          "target_mac": "Interface MAC address",
           "username": "NHK username",
           "password": "NHK password hex",
           "source_id": "Source/controller ID",
@@ -43,9 +43,9 @@
         },
         "data_description": {
           "name": "Display name for this gate in Home Assistant.",
-          "host": "IP address or hostname that Home Assistant uses to reach the BiDi-WiFi on the local network.",
-          "port": "Local BiDi-WiFi TLS port. The default is 443.",
-          "target_mac": "BiDi-WiFi MAC address from the extracted MyNice credentials.",
+          "host": "IP address or hostname that Home Assistant uses to reach the Nice interface on the local network.",
+          "port": "Local Nice interface TLS port. The default is 443.",
+          "target_mac": "Interface MAC address from the extracted MyNice credentials.",
           "username": "NHK username from the extracted MyNice credentials.",
           "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
           "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
@@ -54,13 +54,13 @@
         }
       },
       "reconfigure": {
-        "title": "Reconfigure Nice BiDi-WiFi",
-        "description": "Update the local connection settings for this BiDi-WiFi. The MAC address must match the existing device.",
+        "title": "Reconfigure Nice",
+        "description": "Update the local connection settings for this Nice interface. The MAC address must match the existing device.",
         "data": {
           "name": "Name",
-          "host": "BiDi IP address",
+          "host": "Interface IP address",
           "port": "Port",
-          "target_mac": "BiDi MAC address",
+          "target_mac": "Interface MAC address",
           "username": "NHK username",
           "password": "NHK password hex",
           "source_id": "Source/controller ID",
@@ -69,9 +69,9 @@
         },
         "data_description": {
           "name": "Display name for this gate in Home Assistant.",
-          "host": "IP address or hostname that Home Assistant uses to reach the BiDi-WiFi on the local network.",
-          "port": "Local BiDi-WiFi TLS port. The default is 443.",
-          "target_mac": "BiDi-WiFi MAC address from the extracted MyNice credentials.",
+          "host": "IP address or hostname that Home Assistant uses to reach the Nice interface on the local network.",
+          "port": "Local Nice interface TLS port. The default is 443.",
+          "target_mac": "Interface MAC address from the extracted MyNice credentials.",
           "username": "NHK username from the extracted MyNice credentials.",
           "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
           "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
@@ -84,10 +84,10 @@
       "cannot_connect": "Failed to validate the local connection. Check LAN access to the configured TCP port, close MyNice/MyNice Pro, then check Home Assistant logs for the exact failure.",
       "invalid_auth": "Authentication failed. Check the extracted username, source ID, target MAC, and password.",
       "unknown": "Unexpected error",
-      "wrong_device": "The MAC address does not match this configured BiDi-WiFi."
+      "wrong_device": "The MAC address does not match this configured Nice interface."
     },
     "abort": {
-      "already_configured": "This BiDi-WiFi is already configured",
+      "already_configured": "This Nice interface is already configured",
       "reauth_successful": "Reauthentication successful",
       "reconfigure_successful": "Reconfiguration successful"
     }

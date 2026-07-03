@@ -143,7 +143,7 @@ async def test_user_step_connection_error_logs_sanitized_details(hass: HomeAssis
         )
 
     assert result["type"] == FlowResultType.FORM
-    assert "Nice BiDi-WiFi setup validation failed at user" in caplog.text
+    assert "Nice setup validation failed at user" in caplog.text
     assert "NiceBidiConnectionError" in caplog.text
     assert "192.0.2.10:443" in caplog.text
     assert "nhk_login" not in caplog.text

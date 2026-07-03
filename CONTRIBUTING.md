@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for improving Nice BiDi-WiFi for Home Assistant.
+Thanks for improving Nice for Home Assistant.
 
 ## Safety and Privacy
 

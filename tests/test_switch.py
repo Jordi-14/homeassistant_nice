@@ -1,4 +1,4 @@
-"""Tests for the Nice BiDi-WiFi cover state switch entity."""
+"""Tests for the Nice cover state switch entity."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Diagnostics tests for Nice BiDi-WiFi."""
+"""Diagnostics tests for Nice."""
 
 from __future__ import annotations
 

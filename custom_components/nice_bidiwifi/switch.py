@@ -1,4 +1,4 @@
-"""Switch platform for Nice BiDi-WiFi."""
+"""Switch platform for Nice."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ async def async_setup_entry(
 
 
 class NiceBidiCoverSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SwitchEntity):
-    """Nice BiDi-WiFi gate state switch."""
+    """Nice gate state switch."""
 
     _attr_has_entity_name = True
     _attr_name = None
