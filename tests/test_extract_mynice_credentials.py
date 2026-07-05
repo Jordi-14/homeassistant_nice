@@ -6,6 +6,7 @@ import json
 import sqlite3
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "extract_mynice_credentials.py"
@@ -80,3 +81,47 @@ def test_extractor_with_mac_returns_newest_matching_credential(tmp_path: Path) -
     assert credentials["username"] == "new-user"
     assert credentials["password"] == "CC" * 32
     assert credentials["source_id"] == "new-source"
+
+
+def test_extractor_accepts_extracted_app_container_directory(tmp_path: Path) -> None:
+    """Test the extractor can find the credential database in an app export folder."""
+    db_path = tmp_path / "Container" / "Library" / "Application Support" / "CachedData.sqlite"
+    db_path.parent.mkdir(parents=True)
+    _create_db(db_path)
+
+    credentials = _run_extractor(tmp_path)
+
+    assert credentials["target_mac"] == "AA:BB:CC:DD:EE:FF"
+    assert credentials["username"] == "new-user"
+
+
+def test_extractor_accepts_zip_like_imazing_export(tmp_path: Path) -> None:
+    """Test the extractor can read a zip-like iMazing app-data export directly."""
+    source = tmp_path / "source"
+    db_path = source / "Container" / "Library" / "Application Support" / "CachedData.sqlite"
+    db_path.parent.mkdir(parents=True)
+    _create_db(db_path)
+
+    export_path = tmp_path / "MyNice.imazingapp"
+    with zipfile.ZipFile(export_path, "w") as export:
+        export.write(db_path, "Container/Library/Application Support/CachedData.sqlite")
+
+    credentials = _run_extractor(export_path)
+
+    assert credentials["target_mac"] == "AA:BB:CC:DD:EE:FF"
+    assert credentials["username"] == "new-user"
+
+
+def test_extractor_reports_missing_database(tmp_path: Path) -> None:
+    """Test a folder without a credential database returns a clear error."""
+    (tmp_path / "nice.log").write_text("no sqlite here", encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), str(tmp_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "No credential row found in ZACCESSORYCREDENTIALENTITY" in result.stderr

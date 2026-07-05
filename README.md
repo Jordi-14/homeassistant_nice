@@ -163,14 +163,25 @@ The integration needs the local credential stored by the normal MyNice app.
 1. Connect the iPhone to your Mac over USB and trust the Mac if prompted.
 2. Use iMazing, or another iOS app-data backup tool, to make a backup of the
    **MyNice** app data.
-3. Export or extract the MyNice app-data backup to a folder.
-4. Locate this SQLite file inside the extracted app container:
+3. Export the MyNice app-data backup. iMazing may create a `.imazingapp` or
+   `.imazing` file instead of an extracted folder; that file is the app-data
+   export, not the SQLite database itself.
+4. Run the extractor from this repository against the iMazing export file, the
+   extracted app-data folder, or the SQLite database if you have already found
+   it:
+
+```bash
+python3 scripts/extract_mynice_credentials.py "path/to/MyNice.imazingapp"
+```
+
+The extractor searches for the credential database automatically. In known iOS
+exports the database is usually here:
 
 ```text
 Container/Library/Application Support/CachedData.sqlite
 ```
 
-5. Run the extractor from this repository:
+You can also run the extractor against that file directly:
 
 ```bash
 python3 scripts/extract_mynice_credentials.py \
@@ -182,9 +193,17 @@ to select the right one:
 
 ```bash
 python3 scripts/extract_mynice_credentials.py \
-  "path/to/Container/Library/Application Support/CachedData.sqlite" \
+  "path/to/MyNice.imazingapp" \
   --mac "AA:BB:CC:DD:EE:FF"
 ```
+
+If the exported app data only contains `nice.log`, the export does not include
+the MyNice private app container needed by this integration. Open MyNice, verify
+it can control the BiDi-WiFi, close MyNice completely, then create a fresh
+iMazing app-data backup of the **MyNice** app rather than browsing the app's
+file-sharing documents. If the fresh export still has no SQLite database, open
+an issue with the iOS version, MyNice version, iMazing version, and the file
+names present in the export. Do not attach the backup or database.
 
 The extractor prints JSON similar to this:
 
@@ -223,7 +242,7 @@ integration. Use it after provisioning the BiDi-WiFi and extracting credentials:
 
 ```bash
 python3 scripts/extract_mynice_credentials.py \
-  "path/to/Container/Library/Application Support/CachedData.sqlite" \
+  "path/to/MyNice.imazingapp" \
   > credentials.json
 
 python3 scripts/dump_bidi_capabilities.py \
