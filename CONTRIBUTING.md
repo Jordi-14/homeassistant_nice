@@ -100,6 +100,23 @@ default. The password is never written to the report.
 `bidi_capabilities.json` is also ignored by git. If it needs to be shared,
 review it first and keep it redacted.
 
+For CU_WIFI / Robus devices where commands work but normal DMP status returns
+`Code 14`, run the broader read-only status probe:
+
+```bash
+python3 scripts/probe_cuwifi_status.py \
+  --host <cuwifi_ip> \
+  --credentials credentials.json \
+  --output cuwifi_status_probe_closed.json
+```
+
+This probe sends only `INFO`, read-shaped NHK selector requests, and DMP
+register reads. It does not send `CHANGE`, `DEP`, open, stop, close, or
+partial-open commands. The default run is intentionally broad and may take a
+couple of minutes. If possible, collect separate reports while the gate is
+closed, open, and moving or stopped halfway. Do not use `--include-sensitive`
+for reports shared publicly.
+
 ### 3. Capture One MyNice Pro Action at a Time
 
 For commands that are not visible in `INFO`, capture the local NHK/T4 traffic

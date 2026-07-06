@@ -18,6 +18,7 @@ venv/
 *.db
 credentials.json
 bidi_capabilities*.json
+cuwifi_status_probe*.json
 imazingapp_extract/
 myniceapp_extract/
 ipa_extract/

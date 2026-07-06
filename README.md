@@ -15,7 +15,7 @@ that cannot be validated against Home Assistant's normal trust store. The
 integration therefore keeps certificate verification disabled for this local
 socket and relies on LAN isolation plus the NHK credentials for access control.
 
-Latest release: `v0.6.1`
+Latest stable release: `v0.6.1`
 
 ## Features
 
@@ -259,6 +259,27 @@ integration for state and position.
 The generated report redacts host, MAC address, username, source/controller ID,
 and serial numbers by default. The NHK password is never written to the report.
 Do not publish `credentials.json`.
+
+### CU_WIFI Status Probe
+
+For CU_WIFI / Robus devices where commands work but DMP status returns `Code 14`,
+use the broader read-only probe:
+
+```bash
+python3 scripts/probe_cuwifi_status.py \
+  --host <cuwifi_ip> \
+  --credentials credentials.json \
+  --output cuwifi_status_probe_closed.json
+```
+
+The probe authenticates locally and sends only `INFO`, read-shaped NHK selector
+requests, and DMP register reads. It does not send `CHANGE`, `DEP`, open, stop,
+close, or partial-open commands.
+
+The default run is intentionally broad and can take a couple of minutes. If the
+tester is willing, collect separate reports while the gate is closed, open, and
+moving or stopped halfway. Do not use `--include-sensitive` for reports shared
+publicly.
 
 ### Android
 

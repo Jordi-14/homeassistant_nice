@@ -132,11 +132,12 @@ class NiceBidiDeviceInfo:
     device_serial: str | None
     device_product_detail: str | None
     services: tuple[NiceBidiServiceCapability, ...] = ()
+    properties: tuple[NiceBidiServiceCapability, ...] = ()
 
 
 @dataclass(frozen=True)
 class NiceBidiServiceCapability:
-    """A service advertised by the BiDi-WiFi INFO request."""
+    """A service or property advertised by the BiDi-WiFi INFO request."""
 
     owner: str
     owner_id: str | None
@@ -340,22 +341,22 @@ def _split_values(value: str | None) -> tuple[str, ...]:
     return tuple(part.strip() for part in value.split(",") if part.strip())
 
 
-def _parse_info_services(root: ET.Element) -> tuple[NiceBidiServiceCapability, ...]:
-    services: list[NiceBidiServiceCapability] = []
+def _parse_info_capabilities(root: ET.Element, container_tag: str) -> tuple[NiceBidiServiceCapability, ...]:
+    capabilities: list[NiceBidiServiceCapability] = []
 
     def walk(node: ET.Element, path: str) -> None:
         for child in list(node):
-            if child.tag == "Services":
-                for service in list(child):
-                    values_raw = service.get("values")
-                    services.append(
+            if child.tag == container_tag:
+                for capability in list(child):
+                    values_raw = capability.get("values")
+                    capabilities.append(
                         NiceBidiServiceCapability(
                             owner=node.tag,
                             owner_id=node.get("id"),
-                            name=service.tag,
-                            path=f"{path}/Services/{service.tag}",
-                            value_type=service.get("type"),
-                            permission=service.get("perm"),
+                            name=capability.tag,
+                            path=f"{path}/{container_tag}/{capability.tag}",
+                            value_type=capability.get("type"),
+                            permission=capability.get("perm"),
                             values_raw=values_raw,
                             values=_split_values(values_raw),
                         )
@@ -364,11 +365,19 @@ def _parse_info_services(root: ET.Element) -> tuple[NiceBidiServiceCapability, .
 
     walk(root, _element_label(root))
 
-    return tuple(services)
+    return tuple(capabilities)
+
+
+def _parse_info_services(root: ET.Element) -> tuple[NiceBidiServiceCapability, ...]:
+    return _parse_info_capabilities(root, "Services")
+
+
+def _parse_info_properties(root: ET.Element) -> tuple[NiceBidiServiceCapability, ...]:
+    return _parse_info_capabilities(root, "Properties")
 
 
 def parse_info_xml(info_xml: str, device_id: int = 1) -> NiceBidiDeviceInfo:
-    """Parse INFO XML into static metadata and advertised services."""
+    """Parse INFO XML into static metadata and advertised capabilities."""
     try:
         root = ET.fromstring(info_xml)
     except ET.ParseError as err:
@@ -400,6 +409,7 @@ def parse_info_xml(info_xml: str, device_id: int = 1) -> NiceBidiDeviceInfo:
         device_serial=find_text(device, "SerialNr"),
         device_product_detail=find_text(device, "ProdDTL"),
         services=_parse_info_services(root),
+        properties=_parse_info_properties(root),
     )
 
 
