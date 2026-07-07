@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a broad read-only CU_WIFI status and position probe."""
+"""Run a live read-only CU_WIFI status and position probe."""
 
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ from custom_components.nice_bidiwifi.client import (  # noqa: E402
     NiceBidiDeviceInfo,
     NiceBidiStatus,
     _attr,
+    _frame,
     _printable,
     _response_summary,
     _xml_payload,
@@ -37,7 +38,8 @@ from custom_components.nice_bidiwifi.client import (  # noqa: E402
 
 INFO_CONTAINERS = {"Commands", "Events", "Properties", "Scheduled", "Services", "Settings"}
 PRIORITY_READ_NAMES = {"DoorStatus", "Obstruct", "T4_allowed", "LastEvent", "Name", "Location"}
-DEFAULT_NHK_REQUEST_TYPES = ("INFO", "GET", "READ")
+DEFAULT_NHK_REQUEST_TYPES = ("INFO", "READ")
+LIVE_REQUEST_TYPES = ("STATUS", "T4_STATUS", "INFO")
 
 SENSITIVE_DATA_KEYS = {
     "device_serial",
@@ -96,6 +98,76 @@ class ProbeClient(NiceBidiClient):
 
         return self._run_with_reconnect(operation)
 
+    def signed_probe_trace(
+        self,
+        request_type: str,
+        body: str = "",
+        *,
+        wait_timeout: float | None = None,
+        post_response_listen_seconds: float = 0.0,
+    ) -> dict[str, Any]:
+        """Send a signed NHK request and keep every frame seen around it."""
+
+        def operation() -> dict[str, Any]:
+            self._ensure_connected_locked()
+            if not self._socket:
+                raise RuntimeError("socket is not open")
+
+            xml, request_id = self._signed_request_with_id(request_type, body)
+            self._socket.settimeout(self.timeout)
+            self._socket.sendall(_frame(xml))
+
+            timeout = wait_timeout if wait_timeout is not None else self.timeout
+            frames: list[bytes] = []
+            expected_frame_index: int | None = None
+            deadline = time.monotonic() + max(0.1, timeout)
+            post_deadline: float | None = None
+
+            while True:
+                now = time.monotonic()
+                active_deadline = post_deadline if post_deadline is not None else deadline
+                if now >= active_deadline:
+                    break
+
+                response = self._recv_frame_locked(max(0.1, active_deadline - now))
+                if not response:
+                    break
+
+                frames.append(response)
+                if expected_frame_index is None and self._matches_response(response, None, request_id):
+                    expected_frame_index = len(frames) - 1
+                    if post_response_listen_seconds <= 0:
+                        break
+                    post_deadline = time.monotonic() + post_response_listen_seconds
+
+            return {
+                "request_id": request_id,
+                "frames": frames,
+                "expected_frame_index": expected_frame_index,
+            }
+
+        return self._run_with_reconnect(operation)
+
+    def listen_frames(self, duration_s: float, poll_timeout_s: float) -> list[bytes]:
+        """Listen on the current authenticated session without sending commands."""
+
+        def operation() -> list[bytes]:
+            self._ensure_connected_locked()
+            frames: list[bytes] = []
+            deadline = time.monotonic() + max(0.0, duration_s)
+            while time.monotonic() < deadline:
+                remaining = deadline - time.monotonic()
+                response = self._recv_frame_locked(max(0.1, min(poll_timeout_s, remaining)))
+                if response:
+                    frames.append(response)
+            return frames
+
+        return self._run_with_reconnect(operation)
+
+    def decrypt_t4_payloads(self, response: bytes) -> list[bytes]:
+        """Decrypt T4 payloads contained in a response or async event frame."""
+        return self._decrypt_t4_payloads(response)
+
     def t4_probe(
         self,
         protocol: str,
@@ -128,10 +200,51 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=float, default=4.0, help="Socket timeout in seconds")
     parser.add_argument("--t4-timeout-ms", type=int, default=200, help="T4 read timeout")
     parser.add_argument(
+        "--listen-seconds",
+        type=float,
+        default=60.0,
+        help="Seconds to keep a live authenticated session open for async events and status polling",
+    )
+    parser.add_argument(
+        "--listen-poll-timeout",
+        type=float,
+        default=1.0,
+        help="Maximum seconds to wait for each passive receive attempt during live capture",
+    )
+    parser.add_argument(
+        "--post-request-listen-seconds",
+        type=float,
+        default=0.75,
+        help="Seconds to keep listening after each live signed response for trailing async events",
+    )
+    parser.add_argument(
+        "--status-poll-interval",
+        type=float,
+        default=5.0,
+        help="Seconds between signed STATUS polls during live capture; set 0 to disable",
+    )
+    parser.add_argument(
+        "--t4-status-poll-interval",
+        type=float,
+        default=10.0,
+        help="Seconds between signed T4_STATUS polls during live capture; set 0 to disable",
+    )
+    parser.add_argument(
+        "--info-poll-interval",
+        type=float,
+        default=15.0,
+        help="Seconds between signed INFO polls during live capture; set 0 to disable",
+    )
+    parser.add_argument(
+        "--skip-live-capture",
+        action="store_true",
+        help="Skip the 60-second live session capture",
+    )
+    parser.add_argument(
         "--info-samples",
         type=int,
-        default=8,
-        help="Number of INFO samples to collect during the run",
+        default=1,
+        help="Number of standalone INFO samples to collect outside the live session",
     )
     parser.add_argument(
         "--sample-interval",
@@ -153,8 +266,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dmp-profile",
         choices=("none", "focused", "broad"),
-        default="broad",
-        help="How many read-only DMP register candidates to try",
+        default="none",
+        help="Optional post-live DMP register scan size",
     )
     parser.add_argument(
         "--max-dmp-reads",
@@ -297,6 +410,46 @@ def _response_report(response: bytes, include_sensitive: bool) -> dict[str, Any]
     }
 
 
+def _frame_kind(response: bytes) -> str:
+    try:
+        return ET.fromstring(_xml_payload(response)).tag
+    except ET.ParseError:
+        text = _printable(response)
+        if "<Event " in text:
+            return "Event"
+        if "<Response " in text:
+            return "Response"
+        if "<Request " in text:
+            return "Request"
+        return "Unknown"
+
+
+def _t4_payload_reports(client: ProbeClient, response: bytes) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    for plain in client.decrypt_t4_payloads(response):
+        parsed = parse_dmp_response(plain)
+        parsed["value_interpretations"] = _value_interpretations(parsed)
+        payloads.append(
+            {
+                "length": len(plain),
+                "plain_hex": plain.hex(" "),
+                "dmp_parse": parsed,
+            }
+        )
+    return payloads
+
+
+def _frame_report(client: ProbeClient, response: bytes, include_sensitive: bool) -> dict[str, Any]:
+    report = _response_report(response, include_sensitive)
+    report["frame_kind"] = _frame_kind(response)
+    report["leaf_values"] = _leaf_values(_xml_payload(response), include_sensitive)
+
+    t4_payloads = _t4_payload_reports(client, response)
+    if t4_payloads:
+        report["decrypted_t4_payloads"] = t4_payloads
+    return report
+
+
 def _exception_report(exc: Exception, include_sensitive: bool) -> dict[str, Any]:
     return {
         "ok": False,
@@ -327,6 +480,15 @@ def _split_values(value: str | None) -> list[str]:
 def _text_value(element: ET.Element) -> str | None:
     value = (element.text or "").strip()
     return value or None
+
+
+def _redact_xml_attrs(attrs: dict[str, str], include_sensitive: bool) -> dict[str, str]:
+    if include_sensitive:
+        return dict(attrs)
+    return {
+        key: str(_redacted(value)) if key.lower() in SENSITIVE_XML_ATTRS else value
+        for key, value in attrs.items()
+    }
 
 
 def _info_inventory(info_xml: str) -> list[dict[str, Any]]:
@@ -412,7 +574,7 @@ def _leaf_values(xml_text: str, include_sensitive: bool) -> list[dict[str, Any]]
                         "path": path,
                         "name": node.tag,
                         "value": value if include_sensitive or node.tag not in SENSITIVE_XML_TAGS else _redacted(value),
-                        "attributes": dict(node.attrib),
+                        "attributes": _redact_xml_attrs(dict(node.attrib), include_sensitive),
                     }
                 )
         for child in children:
@@ -453,6 +615,52 @@ def _read_info_sample(
         }
     )
     return sample
+
+
+def _run_signed_trace_probe(
+    client: ProbeClient,
+    args: argparse.Namespace,
+    request_type: str,
+    body: str,
+    label: str,
+    started: float,
+    *,
+    wait_timeout: float | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "elapsed_s": round(time.monotonic() - started, 3),
+        "label": label,
+        "request_type": request_type,
+        "ok": False,
+    }
+    if body:
+        result["request_body_xml"] = _redact_xml(body, args.include_sensitive)
+
+    try:
+        trace = client.signed_probe_trace(
+            request_type,
+            body,
+            wait_timeout=wait_timeout,
+            post_response_listen_seconds=args.post_request_listen_seconds,
+        )
+    except Exception as exc:  # noqa: BLE001 - diagnostics must preserve all failures.
+        result.update(_exception_report(exc, args.include_sensitive))
+        return result
+
+    frames = [_frame_report(client, frame, args.include_sensitive) for frame in trace["frames"]]
+    expected_frame_index = trace["expected_frame_index"]
+    expected_frame = frames[expected_frame_index] if expected_frame_index is not None else None
+    result.update(
+        {
+            "request_id": trace["request_id"],
+            "expected_frame_index": expected_frame_index,
+            "ok": bool(expected_frame) and not bool(expected_frame.get("has_error")),
+            "frames": frames,
+        }
+    )
+    if expected_frame is None:
+        result["message"] = "No matching same-id response was received before timeout."
+    return result
 
 
 def _selector_body(owner: str, owner_id: str | None, container: str, names: list[str], device_id: int) -> str | None:
@@ -535,19 +743,30 @@ def _run_nhk_probe(
         "ok": False,
     }
     try:
-        response = client.signed_probe(request_type, str(candidate["body"]))
+        trace = client.signed_probe_trace(
+            request_type,
+            str(candidate["body"]),
+            post_response_listen_seconds=args.post_request_listen_seconds,
+        )
     except Exception as exc:  # noqa: BLE001 - diagnostics must preserve all failures.
         result.update(_exception_report(exc, args.include_sensitive))
         return result
 
-    response_report = _response_report(response, args.include_sensitive)
+    frames = [_frame_report(client, frame, args.include_sensitive) for frame in trace["frames"]]
+    expected_frame_index = trace["expected_frame_index"]
+    response_report = frames[expected_frame_index] if expected_frame_index is not None else None
     result.update(
         {
-            "ok": not response_report["has_error"],
+            "request_id": trace["request_id"],
+            "expected_frame_index": expected_frame_index,
+            "ok": bool(response_report) and not response_report["has_error"],
             "response": response_report,
-            "leaf_values": _leaf_values(_xml_payload(response), args.include_sensitive),
+            "frames": frames,
+            "leaf_values": response_report.get("leaf_values", []) if response_report else [],
         }
     )
+    if response_report is None:
+        result["message"] = "No matching same-id response was received before timeout."
     return result
 
 
@@ -685,6 +904,147 @@ def _read_current_integration_status(client: ProbeClient, started: float) -> dic
     return result
 
 
+def _poll_schedule(args: argparse.Namespace, live_started: float) -> dict[str, dict[str, float | str]]:
+    schedule: dict[str, dict[str, float | str]] = {}
+    for request_type, interval in (
+        ("STATUS", args.status_poll_interval),
+        ("T4_STATUS", args.t4_status_poll_interval),
+        ("INFO", args.info_poll_interval),
+    ):
+        if interval > 0:
+            schedule[request_type] = {
+                "request_type": request_type,
+                "interval": interval,
+                "next_due": live_started + interval,
+            }
+    return schedule
+
+
+def _listen_once(
+    client: ProbeClient,
+    args: argparse.Namespace,
+    started: float,
+    duration_s: float,
+) -> list[dict[str, Any]]:
+    try:
+        frames = client.listen_frames(duration_s, args.listen_poll_timeout)
+    except Exception as exc:  # noqa: BLE001 - diagnostics must preserve all failures.
+        return [
+            {
+                "elapsed_s": round(time.monotonic() - started, 3),
+                "ok": False,
+                **_exception_report(exc, args.include_sensitive),
+            }
+        ]
+
+    return [
+        {
+            "elapsed_s": round(time.monotonic() - started, 3),
+            "ok": True,
+            "frame": _frame_report(client, frame, args.include_sensitive),
+        }
+        for frame in frames
+    ]
+
+
+def _run_live_capture(client: ProbeClient, args: argparse.Namespace, started: float) -> dict[str, Any]:
+    live_started = time.monotonic()
+    deadline = live_started + max(0.0, args.listen_seconds)
+    result: dict[str, Any] = {
+        "ok": True,
+        "started_elapsed_s": round(live_started - started, 3),
+        "duration_requested_s": args.listen_seconds,
+        "listen_poll_timeout_s": args.listen_poll_timeout,
+        "post_request_listen_seconds": args.post_request_listen_seconds,
+        "poll_intervals_s": {
+            "STATUS": args.status_poll_interval,
+            "T4_STATUS": args.t4_status_poll_interval,
+            "INFO": args.info_poll_interval,
+        },
+        "initial_request_traces": [],
+        "request_traces": [],
+        "passive_frames": [],
+    }
+
+    for request_type in LIVE_REQUEST_TYPES:
+        _progress(args, f"Live capture initial {request_type}")
+        result["initial_request_traces"].append(
+            _run_signed_trace_probe(
+                client,
+                args,
+                request_type,
+                "",
+                f"live initial {request_type}",
+                started,
+                wait_timeout=args.timeout,
+            )
+        )
+
+    schedule = _poll_schedule(args, live_started)
+    last_progress_bucket = -1
+    while time.monotonic() < deadline:
+        now = time.monotonic()
+        elapsed_live = now - live_started
+        progress_bucket = int(elapsed_live // 10)
+        if progress_bucket != last_progress_bucket:
+            last_progress_bucket = progress_bucket
+            _progress(args, f"Live capture running: {min(elapsed_live, args.listen_seconds):.0f}/{args.listen_seconds:.0f}s")
+
+        due = [
+            item
+            for item in schedule.values()
+            if float(item["next_due"]) <= now
+        ]
+        if due:
+            for item in due:
+                request_type = str(item["request_type"])
+                _progress(args, f"Live capture poll {request_type}")
+                result["request_traces"].append(
+                    _run_signed_trace_probe(
+                        client,
+                        args,
+                        request_type,
+                        "",
+                        f"live poll {request_type}",
+                        started,
+                        wait_timeout=args.timeout,
+                    )
+                )
+                item["next_due"] = time.monotonic() + float(item["interval"])
+            continue
+
+        next_due = min(
+            [float(item["next_due"]) for item in schedule.values()] + [deadline]
+        )
+        listen_for = min(args.listen_poll_timeout, max(0.0, next_due - time.monotonic()))
+        if listen_for > 0:
+            result["passive_frames"].extend(_listen_once(client, args, started, listen_for))
+
+    result["duration_actual_s"] = round(time.monotonic() - live_started, 3)
+    return result
+
+
+def _iter_trace_frames(trace: dict[str, Any]) -> list[dict[str, Any]]:
+    frames = trace.get("frames", [])
+    return frames if isinstance(frames, list) else []
+
+
+def _iter_reported_frames(report: dict[str, Any]) -> list[dict[str, Any]]:
+    frames: list[dict[str, Any]] = []
+    live_capture = report.get("live_capture") or {}
+    for trace in live_capture.get("initial_request_traces", []):
+        frames.extend(_iter_trace_frames(trace))
+    for trace in live_capture.get("request_traces", []):
+        frames.extend(_iter_trace_frames(trace))
+    for item in live_capture.get("passive_frames", []):
+        frame = item.get("frame")
+        if isinstance(frame, dict):
+            frames.append(frame)
+    for probe in report.get("nhk_read_probes", []):
+        frames.extend(_iter_trace_frames(probe))
+    return frames
+
+
 def _summarize_results(report: dict[str, Any]) -> dict[str, Any]:
     observations: list[str] = []
     info_samples = report.get("info_samples", [])
@@ -715,6 +1075,27 @@ def _summarize_results(report: dict[str, Any]) -> dict[str, Any]:
     if nhk_successes:
         observations.append(f"{len(nhk_successes)} read-shaped NHK property probe(s) returned without an XML error.")
 
+    live_capture = report.get("live_capture") or {}
+    live_frames = _iter_reported_frames(report)
+    live_events = [frame for frame in live_frames if frame.get("frame_kind") == "Event"]
+    live_t4_payloads = [
+        payload
+        for frame in live_frames
+        for payload in frame.get("decrypted_t4_payloads", [])
+    ]
+    live_status_values = [
+        value
+        for frame in live_frames
+        for value in frame.get("leaf_values", [])
+        if value.get("name") in {"DoorStatus", "Obstruct", "Status", "Event", "T4"}
+    ]
+    if live_events:
+        observations.append(f"Live capture recorded {len(live_events)} async Event frame(s).")
+    if live_t4_payloads:
+        observations.append(f"Live capture decrypted {len(live_t4_payloads)} T4 payload(s).")
+    if live_status_values:
+        observations.append("Live capture included leaf values that may describe status or events.")
+
     dmp_results = report.get("dmp_register_probes", [])
     dmp_successes = [probe for probe in dmp_results if probe.get("ok")]
     if dmp_successes:
@@ -723,14 +1104,28 @@ def _summarize_results(report: dict[str, Any]) -> dict[str, Any]:
     error_codes = Counter()
     for section_name in ("nhk_read_probes", "dmp_register_probes"):
         for item in report.get(section_name, []):
-            code = item.get("error_code") or item.get("response", {}).get("error_code")
+            response = item.get("response") or {}
+            code = item.get("error_code") or response.get("error_code")
             if code:
                 error_codes[str(code)] += 1
+    for frame in live_frames:
+        code = frame.get("error_code")
+        if code:
+            error_codes[str(code)] += 1
+
+    frame_kinds = Counter(str(frame.get("frame_kind") or "Unknown") for frame in live_frames)
 
     return {
         "observations": observations,
         "counts": {
             "info_samples": len(info_samples),
+            "live_initial_request_traces": len(live_capture.get("initial_request_traces", [])),
+            "live_request_traces": len(live_capture.get("request_traces", [])),
+            "live_passive_frame_entries": len(live_capture.get("passive_frames", [])),
+            "live_frames": len(live_frames),
+            "live_frame_kinds": dict(sorted(frame_kinds.items())),
+            "live_event_frames": len(live_events),
+            "live_decrypted_t4_payloads": len(live_t4_payloads),
             "nhk_read_probes": len(nhk_results),
             "nhk_read_successes": len(nhk_successes),
             "dmp_register_probes": len(dmp_results),
@@ -758,7 +1153,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             "moves_gate": False,
             "sends_change_requests": False,
             "sends_dep_actions": False,
-            "description": "This script authenticates locally and sends INFO, read-shaped NHK selectors, and DMP register reads only.",
+            "description": "This script authenticates locally, listens for async frames, sends read-only STATUS/T4_STATUS/INFO polls, and can optionally send read-shaped selectors and DMP register reads.",
         },
         "connection": _redact_mapping(
             {
@@ -774,6 +1169,13 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         "probe_config": {
             "timeout": args.timeout,
             "t4_timeout_ms": args.t4_timeout_ms,
+            "listen_seconds": args.listen_seconds,
+            "listen_poll_timeout": args.listen_poll_timeout,
+            "post_request_listen_seconds": args.post_request_listen_seconds,
+            "status_poll_interval": args.status_poll_interval,
+            "t4_status_poll_interval": args.t4_status_poll_interval,
+            "info_poll_interval": args.info_poll_interval,
+            "skip_live_capture": args.skip_live_capture,
             "info_samples": args.info_samples,
             "sample_interval": args.sample_interval,
             "nhk_request_types": args.nhk_request_types,
@@ -783,6 +1185,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             "dmp_delay": args.dmp_delay,
         },
         "info_samples": [],
+        "live_capture": None,
         "current_integration_status": None,
         "nhk_read_probes": [],
         "dmp_register_probes": [],
@@ -794,6 +1197,10 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         first_sample = _read_info_sample(client, args, 1, started)
         report["info_samples"].append(first_sample)
         inventory = first_sample.get("inventory", []) if first_sample.get("ok") else []
+
+        if not args.skip_live_capture and args.listen_seconds > 0:
+            _progress(args, f"Starting {args.listen_seconds:.0f}s live capture; move the gate during this window")
+            report["live_capture"] = _run_live_capture(client, args, started)
 
         _progress(args, "Running current integration status read")
         report["current_integration_status"] = _read_current_integration_status(client, started)

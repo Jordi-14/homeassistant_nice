@@ -263,23 +263,27 @@ Do not publish `credentials.json`.
 ### CU_WIFI Status Probe
 
 For CU_WIFI / Robus devices where commands work but DMP status returns `Code 14`,
-use the broader read-only probe:
+use the live read-only probe:
 
 ```bash
 python3 scripts/probe_cuwifi_status.py \
   --host <cuwifi_ip> \
   --credentials credentials.json \
-  --output cuwifi_status_probe_closed.json
+  --listen-seconds 60 \
+  --output cuwifi_status_probe_live_60s.json
 ```
 
-The probe authenticates locally and sends only `INFO`, read-shaped NHK selector
-requests, and DMP register reads. It does not send `CHANGE`, `DEP`, open, stop,
-close, or partial-open commands.
+Start the script first, then move the gate with the normal remote or MyNice app
+during the 60-second live window. The probe authenticates locally, keeps one
+session open, listens for async frames, and polls read-only `STATUS`,
+`T4_STATUS`, and `INFO`. It does not send `CHANGE`, `DEP`, open, stop, close, or
+partial-open commands.
 
-The default run is intentionally broad and can take a couple of minutes. If the
-tester is willing, collect separate reports while the gate is closed, open, and
-moving or stopped halfway. Do not use `--include-sensitive` for reports shared
-publicly.
+After the live window it also records the current integration DMP status path
+and read-shaped NHK selector probes. The broad DMP sweep is still available with
+`--dmp-profile broad`, but it is opt-in because CU_WIFI devices can return only
+errors for those reads and the sweep can make the session noisy. Do not use
+`--include-sensitive` for reports shared publicly.
 
 ### Android
 

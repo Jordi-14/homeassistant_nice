@@ -40,6 +40,29 @@ CUWIFI_INFO_XML = """
 """
 
 
+class FakeSocket:
+    """Minimal socket fake for probe trace tests."""
+
+    def __init__(self, frames: list[bytes]) -> None:
+        self.frames = frames
+        self.sent: list[bytes] = []
+        self.timeout: float | None = None
+
+    def settimeout(self, timeout: float) -> None:
+        self.timeout = timeout
+
+    def sendall(self, data: bytes) -> None:
+        self.sent.append(data)
+
+    def recv(self, _size: int) -> bytes:
+        if self.frames:
+            return self.frames.pop(0)
+        raise TimeoutError
+
+    def close(self) -> None:
+        return None
+
+
 def test_info_inventory_extracts_cuwifi_properties() -> None:
     """Test the probe reports readable properties separately from services."""
     inventory = probe._info_inventory(CUWIFI_INFO_XML)
@@ -80,6 +103,54 @@ def test_generate_dmp_reads_prioritizes_known_status_registers() -> None:
     assert (0x00, 0x03, 0x04, 0x3F) in keys
     assert len(keys) == len(reads)
     assert len(reads) <= 400
+
+
+def test_signed_probe_trace_preserves_async_frame_before_response() -> None:
+    """Test traced signed probes keep non-matching frames around the response."""
+    client = probe.ProbeClient(
+        "127.0.0.1",
+        443,
+        probe.NiceBidiCredentials(
+            username="user",
+            password_hex="00" * 32,
+            target_mac="AA:BB:CC:DD:EE:FF",
+            source_id="controller",
+        ),
+    )
+    event = b'\x02<Event id="42" type="T4_EVENT"><DoorStatus>opening</DoorStatus></Event>\x03'
+    response = b'\x02<Response id="257" type="STATUS"><DoorStatus>opening</DoorStatus></Response>\x03'
+    fake_socket = FakeSocket([event, response])
+    client._socket = fake_socket
+    client._session_key = b"\x01" * 32
+    client._session_id = 1
+    client._sequence = 1
+
+    trace = client.signed_probe_trace("STATUS")
+
+    assert fake_socket.sent
+    assert trace["expected_frame_index"] == 1
+    assert trace["frames"] == [event, response]
+
+
+def test_frame_report_marks_event_and_leaf_values() -> None:
+    """Test raw async event frames are classified and parsed."""
+    client = probe.ProbeClient(
+        "127.0.0.1",
+        443,
+        probe.NiceBidiCredentials(
+            username="user",
+            password_hex="00" * 32,
+            target_mac="AA:BB:CC:DD:EE:FF",
+        ),
+    )
+    event = b'\x02<Event id="42" type="T4_EVENT"><DoorStatus>opening</DoorStatus></Event>\x03'
+
+    report = probe._frame_report(client, event, include_sensitive=False)
+
+    assert report["frame_kind"] == "Event"
+    assert report["type"] == "T4_EVENT"
+    assert report["leaf_values"][0]["name"] == "DoorStatus"
+    assert report["leaf_values"][0]["value"] == "opening"
 
 
 def test_redact_text_masks_response_identifiers() -> None:
