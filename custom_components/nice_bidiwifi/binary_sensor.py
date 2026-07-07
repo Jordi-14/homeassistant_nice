@@ -58,28 +58,28 @@ BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
     ),
     NiceBidiBinarySensorEntityDescription(
         key="input_1",
-        name="Input 1",
+        name="Input 1 enabled",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda status: status.input_1,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="input_2",
-        name="Input 2",
+        name="Input 2 enabled",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda status: status.input_2,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="input_3",
-        name="Input 3",
+        name="Input 3 enabled",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda status: status.input_3,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="input_4",
-        name="Input 4",
+        name="Input 4 enabled",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda status: status.input_4,
@@ -165,6 +165,7 @@ class NiceBidiBinarySensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Bin
         self._entry = entry
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
+        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
 
     @property
     def device_info(self):

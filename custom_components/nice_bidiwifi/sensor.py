@@ -33,6 +33,12 @@ def _status(coordinator: NiceBidiDataUpdateCoordinator) -> NiceBidiStatus | None
     return coordinator.data
 
 
+def _hex_byte(value: int | None) -> str | None:
+    if value is None:
+        return None
+    return f"0x{value:02X}"
+
+
 SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
     NiceBidiSensorEntityDescription(
         key="connection_state",
@@ -285,7 +291,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         icon="mdi:code-brackets",
-        value_fn=lambda coordinator: _status(coordinator).diagnostics_io_byte if _status(coordinator) else None,
+        value_fn=lambda coordinator: _hex_byte(_status(coordinator).diagnostics_io_byte)
+        if _status(coordinator)
+        else None,
     ),
     NiceBidiSensorEntityDescription(
         key="diagnostics_parameters",

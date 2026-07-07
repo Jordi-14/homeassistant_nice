@@ -32,6 +32,8 @@ class TestNiceBidiBinarySensorProperties:
         entity = NiceBidiBinarySensor(coordinator, config_entry(), _description("limit_open"))
 
         assert entity.unique_id == "aabbccddeeff_1_limit_open"
+        assert entity.entity_description.entity_registry_enabled_default is False
+        assert entity._attr_entity_registry_enabled_default is False
         assert entity.is_on is True
         assert entity.available is True
 

@@ -963,9 +963,12 @@ class NiceBidiClient:
             standby=_dmp_bool(registers.get("04/8C")),
             pre_flash=_dmp_bool(registers.get("04/94")),
             key_lock=_dmp_bool(registers.get("04/9C")),
-            limit_closed=bool(io_byte & 0x01) if io_byte is not None else None,
-            limit_open=bool(io_byte & 0x02) if io_byte is not None else None,
-            photocell=bool(io_byte & 0x04) if io_byte is not None else None,
+            # 04/D1 is controller-specific. On a NewRobus it stayed at 0x40
+            # when fully closed, half-open, and fully open, so do not expose
+            # guessed limit/photocell bits as live state.
+            limit_closed=None,
+            limit_open=None,
+            photocell=None,
             obstacle=stop_reason_code in {0x01, 0x02} if stop_reason_code is not None else None,
             diagnostics_io_byte=io_byte,
             last_stop_reason=STOP_REASON_BY_BYTE.get(stop_reason_code) if stop_reason_code is not None else None,
