@@ -703,9 +703,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         try:
             while True:
                 await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
-                status = await self.hass.async_add_executor_job(self.client.read_status)
-                self._store_successful_status(status)
-                self.async_set_updated_data(status)
+                status = await self._async_read_motion_status()
 
                 position = status.position
                 if position is None:
@@ -1514,7 +1512,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
     async def _async_read_motion_status(self) -> NiceBidiStatus:
         """Read status during motion-sensitive operations."""
         try:
-            status = await self.hass.async_add_executor_job(self.client.read_status)
+            status = await self.hass.async_add_executor_job(self._read_motion_status)
         except NiceBidiAuthError as err:
             self.client.close()
             self.connection_state = CONNECTION_STATE_AUTH_FAILED
@@ -1530,6 +1528,12 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self._store_successful_status(status)
         self.async_set_updated_data(status)
         return status
+
+    def _read_motion_status(self) -> NiceBidiStatus:
+        """Read status through the active polling strategy."""
+        if self._use_nhk_status:
+            return self.client.read_nhk_status()
+        return self.client.read_status()
 
     def _calibrated_stop_raw(self, target: int, action: str, status: NiceBidiStatus) -> int | None:
         """Return an interpolated calibrated stop threshold for a target."""

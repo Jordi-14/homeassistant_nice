@@ -39,6 +39,20 @@ def _dmp_response(group: int, parameter: int, value: bytes) -> bytes:
     return body + value + bytes([0x0D])
 
 
+def _encrypted_t4_event(plain: bytes) -> bytes:
+    key = b"event-key"
+    encrypted = _xor_sha256(plain, key)
+    return (
+        STX
+        + b'<Event type="T4_EVENT" id="42"><Interface id="1"><T4 protocol="DEP" key="'
+        + base64.b64encode(key)
+        + b'">'
+        + base64.b64encode(encrypted)
+        + b"</T4></Interface></Event>"
+        + ETX
+    )
+
+
 def _client() -> NiceBidiClient:
     return NiceBidiClient(
         "192.0.2.10",
@@ -315,7 +329,13 @@ def test_read_nhk_status_parses_status_response() -> None:
     """Test CU_WIFI-style NHK STATUS DoorStatus parsing."""
 
     class NhkStatusClient(NiceBidiClient):
-        def _signed_exchange_frames_locked(self, request_type, body=""):
+        def _signed_exchange_frames_locked(
+            self,
+            request_type,
+            body="",
+            *,
+            post_response_listen_seconds=0.0,
+        ):
             assert request_type == "STATUS"
             return [
                 STX
@@ -345,7 +365,13 @@ def test_read_nhk_status_accepts_change_event_frame() -> None:
     """Test async CHANGE frames use the same DoorStatus parser."""
 
     class NhkStatusClient(NiceBidiClient):
-        def _signed_exchange_frames_locked(self, request_type, body=""):
+        def _signed_exchange_frames_locked(
+            self,
+            request_type,
+            body="",
+            *,
+            post_response_listen_seconds=0.0,
+        ):
             return [
                 STX
                 + b'<Event type="CHANGE" id="41"><Devices><Device id="1"><Properties>'
@@ -362,6 +388,74 @@ def test_read_nhk_status_accepts_change_event_frame() -> None:
 
     assert status.state == "stopped"
     assert status.obstacle is True
+
+
+def test_read_nhk_status_parses_cuwifi_instant_position_event() -> None:
+    """Test CU_WIFI 04/40 live T4 events can provide tentative position."""
+
+    class NhkStatusClient(NiceBidiClient):
+        def _signed_exchange_frames_locked(
+            self,
+            request_type,
+            body="",
+            *,
+            post_response_listen_seconds=0.0,
+        ):
+            assert request_type == "STATUS"
+            assert post_response_listen_seconds > 0
+            return [
+                STX
+                + b'<Response type="STATUS" id="513"><Devices><Device id="1"><Properties>'
+                + b"<DoorStatus>opening</DoorStatus><Obstruct>0</Obstruct>"
+                + b"</Properties></Device></Devices></Response>"
+                + ETX,
+                _encrypted_t4_event(bytes.fromhex("55 0f 00 ff 00 03 01 08 f5 04 40 00 00 4c ff ff 52 0f")),
+            ]
+
+    status = NhkStatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+    )._read_nhk_status_locked()
+
+    assert status.state == "opening"
+    assert status.position == 76.0
+    assert status.current_position is None
+    assert status.closed_position is None
+    assert status.open_position is None
+    assert status.registers["NHK/T4InstantPosition"] == "76"
+    assert status.registers["NHK/T4InstantPositionPayload"] == "04 40 00 00 4c ff ff"
+
+
+def test_read_nhk_status_ignores_out_of_range_cuwifi_position_event() -> None:
+    """Test invalid tentative CU_WIFI position frames fall back to state-only."""
+
+    class NhkStatusClient(NiceBidiClient):
+        def _signed_exchange_frames_locked(
+            self,
+            request_type,
+            body="",
+            *,
+            post_response_listen_seconds=0.0,
+        ):
+            return [
+                STX
+                + b'<Response type="STATUS" id="513"><Devices><Device id="1"><Properties>'
+                + b"<DoorStatus>opening</DoorStatus><Obstruct>0</Obstruct>"
+                + b"</Properties></Device></Devices></Response>"
+                + ETX,
+                _encrypted_t4_event(bytes.fromhex("55 0f 00 ff 00 03 01 08 f5 04 40 00 04 00 ff ff 52 0f")),
+            ]
+
+    status = NhkStatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+    )._read_nhk_status_locked()
+
+    assert status.state == "opening"
+    assert status.position is None
+    assert "NHK/T4InstantPosition" not in status.registers
 
 
 def test_decrypt_t4_payloads_returns_plain_payloads() -> None:

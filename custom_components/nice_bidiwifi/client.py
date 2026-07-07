@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import logging
 import re
@@ -46,6 +46,9 @@ NHK_DOOR_STATUS = {
     "stopped": STATE_STOPPED,
     "stop": STATE_STOPPED,
 }
+
+DMP_TARGET_CONTROLLER = (0x00, 0x03)
+NHK_STATUS_POST_RESPONSE_LISTEN_SECONDS = 0.75
 
 DEP_ACTION_PARTIAL_OPEN_1 = "partial_open_1"
 DEP_ACTION_PARTIAL_OPEN_2 = "partial_open_2"
@@ -118,6 +121,7 @@ class NiceBidiStatus:
     closed_position: int | None
     open_position: int | None
     registers: dict[str, str]
+    obstacle: bool | None = None
 
     @property
     def is_moving(self) -> bool:
@@ -517,6 +521,42 @@ def _parse_nhk_status_frames(frames: list[bytes], device_id: int = 1) -> NiceBid
     return status
 
 
+def _parse_cuwifi_instant_position_payload(plain: bytes) -> tuple[int, str] | None:
+    if len(plain) < 12:
+        return None
+
+    if plain[0] == 0x55:
+        if len(plain) < 4:
+            return None
+        body_size = plain[1]
+        if body_size != plain[-1] or body_size != len(plain) - 3:
+            return None
+        body = plain[2:-1]
+    else:
+        body = plain
+
+    if len(body) < 10:
+        return None
+
+    to_row, to_address, from_row, from_address, message_type, message_size = body[:6]
+    message = body[7:-1]
+    if message_size != len(message) + 1:
+        return None
+    if (to_row, to_address) != (0x00, 0xFF):
+        return None
+    if (from_row, from_address) != DMP_TARGET_CONTROLLER:
+        return None
+    if message_type != 0x01:
+        return None
+    if len(message) < 5 or message[:2] != b"\x04\x40":
+        return None
+
+    position = int.from_bytes(message[3:5], "big")
+    if not 0 <= position <= 100:
+        return None
+    return position, message.hex(" ")
+
+
 T4_RE = re.compile(r"<T4\b(?P<attrs>[^>]*)>(?P<body>.*?)</T4>", re.DOTALL)
 
 
@@ -749,9 +789,20 @@ class NiceBidiClient:
         xml, request_id = self._signed_request_with_id(request_type, body)
         return self._send_locked(xml, expected_type=request_type, expected_id=request_id)
 
-    def _signed_exchange_frames_locked(self, request_type: str, body: str = "") -> list[bytes]:
+    def _signed_exchange_frames_locked(
+        self,
+        request_type: str,
+        body: str = "",
+        *,
+        post_response_listen_seconds: float = 0.0,
+    ) -> list[bytes]:
         xml, request_id = self._signed_request_with_id(request_type, body)
-        return self._send_frames_locked(xml, expected_type=request_type, expected_id=request_id)
+        return self._send_frames_locked(
+            xml,
+            expected_type=request_type,
+            expected_id=request_id,
+            post_response_listen_seconds=post_response_listen_seconds,
+        )
 
     def _send_locked(self, xml: str, expected_type: str | None, expected_id: int | None) -> bytes:
         frames = self._send_frames_locked(xml, expected_type=expected_type, expected_id=expected_id)
@@ -762,7 +813,14 @@ class NiceBidiClient:
             return frames[-1]
         raise NiceBidiConnectionError("device did not respond")
 
-    def _send_frames_locked(self, xml: str, expected_type: str | None, expected_id: int | None) -> list[bytes]:
+    def _send_frames_locked(
+        self,
+        xml: str,
+        expected_type: str | None,
+        expected_id: int | None,
+        *,
+        post_response_listen_seconds: float = 0.0,
+    ) -> list[bytes]:
         if not self._socket:
             raise NiceBidiConnectionError("socket is not open")
         self._socket.settimeout(self.timeout)
@@ -776,14 +834,20 @@ class NiceBidiClient:
         self._socket.sendall(_frame(xml))
         frames: list[bytes] = []
         deadline = time.time() + self.timeout
+        post_response_deadline: float | None = None
         while time.time() < deadline:
-            response = self._recv_frame_locked(max(0.1, deadline - time.time()))
+            active_deadline = post_response_deadline or deadline
+            response = self._recv_frame_locked(max(0.1, active_deadline - time.time()))
             if not response:
                 break
             frames.append(response)
             if self._matches_response(response, expected_type, expected_id):
                 _LOGGER.debug("Received matching Nice local response: %s", _response_summary(response))
-                return frames
+                if post_response_listen_seconds <= 0:
+                    return frames
+                post_response_deadline = time.time() + post_response_listen_seconds
+                deadline = post_response_deadline
+                continue
             _LOGGER.debug("Received non-matching Nice local response: %s", _response_summary(response))
         if frames:
             _LOGGER.debug("Returning last Nice local response after timeout: %s", _response_summary(frames[-1]))
@@ -882,11 +946,23 @@ class NiceBidiClient:
         )
 
     def _read_nhk_status_locked(self) -> NiceBidiStatus:
-        frames = self._signed_exchange_frames_locked("STATUS")
+        frames = self._signed_exchange_frames_locked(
+            "STATUS",
+            post_response_listen_seconds=NHK_STATUS_POST_RESPONSE_LISTEN_SECONDS,
+        )
         for frame in frames:
             if "<Error>" in _printable(frame):
                 raise NiceBidiConnectionError(_printable(frame))
-        return _parse_nhk_status_frames(frames, self.device_id)
+        status = _parse_nhk_status_frames(frames, self.device_id)
+        instant_position = self._cuwifi_instant_position_from_frames(frames)
+        if instant_position is None:
+            return status
+
+        position, payload_hex = instant_position
+        registers = dict(status.registers)
+        registers["NHK/T4InstantPosition"] = str(position)
+        registers["NHK/T4InstantPositionPayload"] = payload_hex
+        return replace(status, position=float(position), registers=registers)
 
     def _read_info_xml_locked(self) -> str:
         response = self._signed_exchange_locked("INFO")
@@ -944,3 +1020,12 @@ class NiceBidiClient:
                 continue
             payloads.append(_xor_sha256(encrypted, key))
         return payloads
+
+    def _cuwifi_instant_position_from_frames(self, frames: list[bytes]) -> tuple[int, str] | None:
+        latest: tuple[int, str] | None = None
+        for frame in frames:
+            for plain in self._decrypt_t4_payloads(frame):
+                parsed = _parse_cuwifi_instant_position_payload(plain)
+                if parsed is not None:
+                    latest = parsed
+        return latest

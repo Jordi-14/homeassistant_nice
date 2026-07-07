@@ -148,6 +148,29 @@ async def test_update_data_uses_nhk_status_when_dmp_status_is_unsupported(
     assert client.info_reads == 1
 
 
+async def test_motion_status_uses_nhk_status_after_fallback(
+    hass: HomeAssistant,
+) -> None:
+    """Test target-position tracking uses the selected NHK status reader."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.read_nhk_status_result = make_status(
+        state="opening",
+        position=42.0,
+        current_position=None,
+        closed_position=None,
+        open_position=None,
+    )
+    instance.client = client
+    instance._use_nhk_status = True
+
+    result = await instance._async_read_motion_status()
+
+    assert result.state == "opening"
+    assert result.position == 42.0
+    assert client.nhk_status_reads == 1
+
+
 async def test_update_data_does_not_fallback_to_command_only_for_other_status_errors(
     hass: HomeAssistant,
 ) -> None:
