@@ -1,5 +1,42 @@
 # Entity Reference
 
+This file describes what each Home Assistant entity is for and how it is created
+by default in the current beta.
+
+For daily use, the `cover` entity is the main dashboard entity. It provides
+open, stop, close, current position, and set-position support when position data
+is available. The gate `switch` is a simpler on/off duplicate for users who want
+that style of control.
+
+`Hidden` does not mean broken. It means Home Assistant creates and updates the
+entity, but hides it from default views because it is diagnostic, advanced, or
+not normally useful on a dashboard.
+
+Entities ending in `setting` are writable BusT4 configuration entities. The
+matching entities without `setting` are read-only views of the current
+controller values. Change writable settings only while the gate is visible and
+safe to operate, and write down the original values first.
+
+Quick recommendations:
+
+| Need | Use | Notes |
+| --- | --- | --- |
+| Daily open/close/stop | Gate cover | Best default dashboard entity. |
+| Separate position display | Gate position | Real percentage from the latest DMP status registers. |
+| Remote-control style action | Step-step | Follows the controller's configured step-step cycle. |
+| Pedestrian or partial opening | Partial open 1/2/3 | Uses the configured partial-open encoder positions. |
+| Local connection health | Connection state, last successful update, reconnect count | Useful for troubleshooting Wi-Fi or local API issues. |
+| Controller tuning | Entities ending in `setting` | Advanced; these write controller registers. |
+| Raw diagnostics | Diagnostics I/O byte and diagnostics parameters | Developer/debug data for comparing controllers. |
+| Radio receiver info | OXI entities | Metadata from the OXI/radio endpoint when it answers locally. |
+
+Mode settings such as `Photo close mode setting` and `Always close mode setting`
+are raw Nice mode bytes. They are exposed as `0`-`255` values because tested
+controllers can report values outside a small enum range. They are not seconds,
+percentages, or decoded options. Strongly recommended: do not change them
+unless you already know the exact byte your controller expects. A wrong raw mode
+byte may leave that controller feature misconfigured.
+
 This table describes the default entity registry behavior for the current beta.
 Home Assistant preserves existing entity registry settings, so an entity already
 created by an older version may keep its previous hidden or disabled state.
@@ -59,9 +96,9 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Number | Opening speed setting | `bus_t4_opening_speed` | Writes BusT4 opening speed to register `04/42` as a one-byte value. | Hidden | Enabled |
 | Number | Closing speed setting | `bus_t4_closing_speed` | Writes BusT4 closing speed to register `04/43` as a one-byte value. | Hidden | Enabled |
 | Number | Photo close time setting | `bus_t4_photo_close_time` | Writes BusT4 photo-close time to register `04/85` as a one-byte value. | Hidden | Enabled |
-| Number | Photo close mode setting | `bus_t4_photo_close_mode` | Writes BusT4 photo-close mode to register `04/86` as a raw one-byte value. | Hidden | Enabled |
+| Number | Photo close mode setting | `bus_t4_photo_close_mode` | Writes BusT4 photo-close mode to register `04/86` as a raw one-byte value. This value is not decoded; avoid changing it unless you know the correct byte. | Hidden | Enabled |
 | Number | Always close time setting | `bus_t4_always_close_time` | Writes BusT4 always-close time to register `04/89` as a one-byte value. | Hidden | Enabled |
-| Number | Always close mode setting | `bus_t4_always_close_mode` | Writes BusT4 always-close mode to register `04/8A` as a raw one-byte value. | Hidden | Enabled |
+| Number | Always close mode setting | `bus_t4_always_close_mode` | Writes BusT4 always-close mode to register `04/8A` as a raw one-byte value. This value is not decoded; avoid changing it unless you know the correct byte. | Hidden | Enabled |
 | Number | Partial open 1 position setting | `bus_t4_partial_open_1_position` | Writes BusT4 partial-open 1 encoder position to register `04/21` as a two-byte value. | Hidden | Enabled |
 | Number | Partial open 2 position setting | `bus_t4_partial_open_2_position` | Writes BusT4 partial-open 2 encoder position to register `04/22` as a two-byte value. | Hidden | Enabled |
 | Number | Partial open 3 position setting | `bus_t4_partial_open_3_position` | Writes BusT4 partial-open 3 encoder position to register `04/23` as a two-byte value. | Hidden | Enabled |
