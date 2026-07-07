@@ -45,7 +45,7 @@ Latest release: `v0.6.1`
 
 ### 0.7 Beta BusT4 Diagnostics
 
-The `0.7.0b1` beta branch adds disabled-by-default diagnostic entities based on
+The `0.7.0b3` beta branch adds disabled-by-default diagnostic entities based on
 the broader BusT4/OXI register map seen in
 [ngem1/esphome-nice-bidiwifi](https://github.com/ngem1/esphome-nice-bidiwifi)
 and community testing:

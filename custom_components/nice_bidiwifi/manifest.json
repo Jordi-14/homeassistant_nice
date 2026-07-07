@@ -8,5 +8,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/Jordi-14/homeassistant_nice/issues",
   "requirements": [],
-  "version": "0.7.0b1"
+  "version": "0.7.0b3"
 }
