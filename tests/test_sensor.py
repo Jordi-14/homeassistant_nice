@@ -84,7 +84,8 @@ class TestNiceBidiSensorProperties:
 
         assert entity.native_value == 42.4
         assert entity.native_unit_of_measurement == PERCENTAGE
-        assert entity.entity_description.entity_registry_enabled_default is False
+        assert entity.entity_description.entity_registry_enabled_default is True
+        assert entity.entity_description.entity_registry_visible_default is False
 
     def test_device_info_sensor_reads_info_metadata(self) -> None:
         coordinator = FakeCoordinator()

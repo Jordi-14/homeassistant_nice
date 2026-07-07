@@ -30,14 +30,14 @@ BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
         key="limit_closed",
         name="Closed limit switch",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.limit_closed,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="limit_open",
         name="Open limit switch",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.limit_open,
     ),
     NiceBidiBinarySensorEntityDescription(
@@ -45,7 +45,7 @@ BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
         name="Photocell",
         device_class=BinarySensorDeviceClass.SAFETY,
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.photocell,
     ),
     NiceBidiBinarySensorEntityDescription(
@@ -53,77 +53,77 @@ BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
         name="Obstacle detected",
         device_class=BinarySensorDeviceClass.SAFETY,
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.obstacle,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="input_1",
         name="Input 1 enabled",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.input_1,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="input_2",
         name="Input 2 enabled",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.input_2,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="input_3",
         name="Input 3 enabled",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.input_3,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="input_4",
         name="Input 4 enabled",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.input_4,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="auto_close",
         name="Auto close",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.auto_close,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="photo_close",
         name="Photo close",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.photo_close,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="always_close",
         name="Always close",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.always_close,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="standby",
         name="Standby",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.standby,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="pre_flash",
         name="Pre-flash",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.pre_flash,
     ),
     NiceBidiBinarySensorEntityDescription(
         key="key_lock",
         name="Key lock",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.key_lock,
     ),
     NiceBidiBinarySensorEntityDescription(
@@ -131,7 +131,7 @@ BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
         name="OXI receiver detected",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         value_fn=lambda status: status.oxi_detected,
     ),
 )
@@ -166,6 +166,7 @@ class NiceBidiBinarySensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Bin
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
+        self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 
     @property
     def device_info(self):

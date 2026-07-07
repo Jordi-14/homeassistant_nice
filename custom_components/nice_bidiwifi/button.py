@@ -106,7 +106,7 @@ BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
         key="calibrate_positions",
         name="Calibrate positions",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         icon="mdi:map-marker-path",
         press_fn=lambda coordinator: coordinator.async_start_position_calibration(),
     ),
@@ -142,6 +142,7 @@ class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEnt
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
+        self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 
     @property
     def device_info(self):

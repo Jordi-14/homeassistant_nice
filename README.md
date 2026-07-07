@@ -45,7 +45,7 @@ Latest release: `v0.6.1`
 
 ### 0.7 Beta BusT4 Diagnostics
 
-The `0.7.0b5` beta branch adds disabled-by-default diagnostic entities based on
+The `0.7.0b6` beta branch adds hidden-by-default diagnostic entities based on
 the broader BusT4/OXI register map seen in
 [ngem1/esphome-nice-bidiwifi](https://github.com/ngem1/esphome-nice-bidiwifi)
 and community testing:
@@ -425,7 +425,7 @@ do not calibrate; normal open/close control works without it. Calibration only
 helps if you want Home Assistant's position slider or set-position service to
 land closer to intermediate positions such as 20%, 40%, 60%, or 80%.
 
-The calibration button is a disabled-by-default diagnostic button. Enable it
+The calibration button is a hidden-by-default diagnostic button. Unhide it
 only when the gate is visible, the path is clear, and you are ready for the gate
 to move repeatedly for several minutes.
 
@@ -462,7 +462,7 @@ During calibration it polls every 0.5 seconds and waits 0.5 seconds after a
 stop or fully reached endpoint before sending the next movement command.
 
 Calibration writes detailed Home Assistant log lines with the prefix
-`Nice calibration:`. It also exposes a disabled-by-default diagnostic
+`Nice calibration:`. It also exposes a hidden-by-default diagnostic
 sensor named `Position calibration report` with recorder-safe summary
 attributes. When calibration finishes or fails, the full detailed report is
 written to Home Assistant logs in chunks with the prefix
