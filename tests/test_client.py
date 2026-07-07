@@ -265,8 +265,8 @@ def test_read_info_extracts_interface_and_device_metadata() -> None:
     )
 
 
-def test_parse_info_xml_extracts_service_capabilities() -> None:
-    """Test INFO service capability parsing."""
+def test_parse_info_xml_extracts_service_and_property_capabilities() -> None:
+    """Test INFO service and property capability parsing."""
     info = parse_info_xml(
         """
         <Response>
@@ -279,8 +279,11 @@ def test_parse_info_xml_extracts_service_capabilities() -> None:
             <Device id="1">
               <Services>
                 <DoorAction type="string" values="open, stop, close" perm="w"/>
-                <DoorStatus type="string" values="open, closed" perm="r"/>
               </Services>
+              <Properties>
+                <DoorStatus type="string" values="open, closed" perm="r"/>
+                <Obstruct type="bool" perm="r"/>
+              </Properties>
             </Device>
           </Devices>
         </Response>
@@ -290,14 +293,17 @@ def test_parse_info_xml_extracts_service_capabilities() -> None:
     assert [service.name for service in info.services] == [
         "T4_allowed",
         "DoorAction",
-        "DoorStatus",
     ]
+    assert [prop.name for prop in info.properties] == ["DoorStatus", "Obstruct"]
     assert info.services[1].owner == "Device"
     assert info.services[1].owner_id == "1"
     assert info.services[1].path == 'Response/Devices/Device[@id="1"]/Services/DoorAction'
     assert info.services[1].value_type == "string"
     assert info.services[1].permission == "w"
     assert info.services[1].values == ("open", "stop", "close")
+    assert info.properties[0].path == 'Response/Devices/Device[@id="1"]/Properties/DoorStatus'
+    assert info.properties[0].permission == "r"
+    assert info.properties[0].values == ("open", "closed")
 
 
 def test_read_info_xml_returns_payload() -> None:

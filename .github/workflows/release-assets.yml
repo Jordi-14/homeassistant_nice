@@ -1,6 +1,9 @@
 name: Release Assets
 
 on:
+  push:
+    tags:
+      - "v*"
   release:
     types: [published]
   workflow_dispatch:
@@ -17,7 +20,7 @@ jobs:
     name: HACS ZIP
     runs-on: ubuntu-latest
     env:
-      TAG_NAME: ${{ github.event.release.tag_name || inputs.tag }}
+      TAG_NAME: ${{ github.event.release.tag_name || github.ref_name || inputs.tag }}
     steps:
       - name: Check out release tag
         uses: actions/checkout@v7
@@ -26,6 +29,24 @@ jobs:
 
       - name: Build HACS ZIP
         run: python scripts/package_hacs_release.py --output nice_bidiwifi.zip
+
+      - name: Ensure GitHub release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG_NAME" > /dev/null 2>&1; then
+            exit 0
+          fi
+
+          extra_args=()
+          if [[ "$TAG_NAME" =~ (a|b|rc)[0-9]+$ ]]; then
+            extra_args+=(--prerelease)
+          fi
+
+          gh release create "$TAG_NAME" \
+            --title "$TAG_NAME" \
+            --generate-notes \
+            "${extra_args[@]}"
 
       - name: Upload release asset
         env:

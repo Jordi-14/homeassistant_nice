@@ -161,12 +161,16 @@ def _redact_mapping(data: dict[str, Any], include_sensitive: bool) -> dict[str, 
 def _device_info_report(info: NiceBidiDeviceInfo, include_sensitive: bool) -> dict[str, Any]:
     data = asdict(info)
     data.pop("services", None)
+    data.pop("properties", None)
     return _redact_mapping(data, include_sensitive)
 
 
-def _service_report(info: NiceBidiDeviceInfo) -> list[dict[str, Any]]:
-    services = sorted(info.services, key=lambda service: (service.owner, service.owner_id or "", service.name))
-    return [asdict(service) for service in services]
+def _capability_report(capabilities: tuple[Any, ...]) -> list[dict[str, Any]]:
+    sorted_capabilities = sorted(
+        capabilities,
+        key=lambda capability: (capability.owner, capability.owner_id or "", capability.name),
+    )
+    return [asdict(capability) for capability in sorted_capabilities]
 
 
 def _status_report(status: NiceBidiStatus | None) -> dict[str, Any] | None:
@@ -198,19 +202,29 @@ def _redact_info_xml(info_xml: str, include_sensitive: bool) -> str:
     return ET.tostring(root, encoding="unicode")
 
 
-def _capability_summary(services: list[dict[str, Any]]) -> dict[str, list[str]]:
-    writable = []
-    readable = []
-    for service in services:
-        name = service["name"]
-        permission = service["permission"] or ""
-        if "w" in permission:
-            writable.append(name)
-        if "r" in permission:
-            readable.append(name)
+def _capability_names(capabilities: list[dict[str, Any]], permission_flag: str) -> list[str]:
+    names = []
+    for capability in capabilities:
+        name = capability["name"]
+        permission = capability["permission"] or ""
+        if permission_flag in permission:
+            names.append(name)
+    return sorted(set(names))
+
+
+def _capability_summary(services: list[dict[str, Any]], properties: list[dict[str, Any]]) -> dict[str, list[str]]:
+    readable_services = _capability_names(services, "r")
+    writable_services = _capability_names(services, "w")
+    readable_properties = _capability_names(properties, "r")
+    writable_properties = _capability_names(properties, "w")
+
     return {
-        "readable_services": sorted(set(readable)),
-        "writable_services": sorted(set(writable)),
+        "readable_services": readable_services,
+        "writable_services": writable_services,
+        "readable_properties": readable_properties,
+        "writable_properties": writable_properties,
+        "readable": sorted(set(readable_services + readable_properties)),
+        "writable": sorted(set(writable_services + writable_properties)),
     }
 
 
@@ -232,7 +246,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     finally:
         client.close()
 
-    services = _service_report(info)
+    services = _capability_report(info.services)
+    properties = _capability_report(info.properties)
     report: dict[str, Any] = {
         "generated_at": datetime.now(UTC).isoformat(),
         "connection": _redact_mapping(
@@ -247,8 +262,9 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             args.include_sensitive,
         ),
         "device_info": _device_info_report(info, args.include_sensitive),
-        "summary": _capability_summary(services),
+        "summary": _capability_summary(services, properties),
         "services": services,
+        "properties": properties,
         "status": _status_report(status),
     }
     if args.include_raw_info:

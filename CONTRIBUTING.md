@@ -100,6 +100,32 @@ default. The password is never written to the report.
 `bidi_capabilities.json` is also ignored by git. If it needs to be shared,
 review it first and keep it redacted.
 
+For CU_WIFI / Robus devices where commands work but normal DMP status returns
+`Code 14`, run the live read-only status probe:
+
+```bash
+python3 scripts/probe_cuwifi_status.py \
+  --host <cuwifi_ip> \
+  --credentials credentials.json \
+  --manual-stop \
+  --exhaustive \
+  --output cuwifi_status_probe_manual_exhaustive.json
+```
+
+Start the script first, then move the gate with the normal remote or MyNice app
+through the states you want to capture. Press `Ctrl-C` once when the actions are
+finished; the probe treats that as the end of the live capture and still writes
+the report. The probe keeps one authenticated session open, listens for async
+frames, and polls read-only `STATUS`, `T4_STATUS`, and `INFO`. It does not send
+`CHANGE`, `DEP`, open, stop, close, or partial-open commands. After the live
+capture it also records the current integration DMP status path, read-shaped NHK
+selector probes, and a read-only DMP scan that includes controller, OXI/radio,
+status, position, and diagnostics registers.
+
+Use `--exhaustive` when asking a volunteer for one best-effort report. It enables
+`GET` selector probes, a broader DMP scan, and longer frame draining after each
+request. Do not use `--include-sensitive` for reports shared publicly.
+
 ### 3. Capture One MyNice Pro Action at a Time
 
 For commands that are not visible in `INFO`, capture the local NHK/T4 traffic

@@ -15,7 +15,8 @@ that cannot be validated against Home Assistant's normal trust store. The
 integration therefore keeps certificate verification disabled for this local
 socket and relies on LAN isolation plus the NHK credentials for access control.
 
-Latest release: `v0.7.0b8`
+Latest stable release: `v0.6.1`
+Latest beta release: `v0.7.0b8`
 
 ## Features
 
@@ -349,6 +350,33 @@ integration for state and position.
 The generated report redacts host, MAC address, username, source/controller ID,
 and serial numbers by default. The NHK password is never written to the report.
 Do not publish `credentials.json`.
+
+### CU_WIFI Status Probe
+
+For CU_WIFI / Robus devices where commands work but DMP status returns `Code 14`,
+use the live read-only probe:
+
+```bash
+python3 scripts/probe_cuwifi_status.py \
+  --host <cuwifi_ip> \
+  --credentials credentials.json \
+  --manual-stop \
+  --exhaustive \
+  --output cuwifi_status_probe_manual_exhaustive.json
+```
+
+Start the script first, then move the gate with the normal remote or MyNice app
+through the states you want to capture. Press `Ctrl-C` once when the actions are
+finished; the probe treats that as the end of the live capture and still writes
+the report. The probe authenticates locally, keeps one session open, listens for
+async frames, and polls read-only `STATUS`, `T4_STATUS`, and `INFO`. It does not
+send `CHANGE`, `DEP`, open, stop, close, or partial-open commands.
+
+After the live capture it also records the current integration DMP status path
+and read-shaped NHK selector probes. With `--exhaustive`, it also runs the
+broadest read-only post-live scan currently known: controller, OXI/radio,
+status, position, diagnostics, and `GET` selector candidates. Do not use
+`--include-sensitive` for reports shared publicly.
 
 ### Android
 
