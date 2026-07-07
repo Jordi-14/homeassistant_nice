@@ -11,7 +11,7 @@ Definitions:
 - **Enabled by default**: the entity is created and updated by Home Assistant.
 - **Disabled by default**: the entity is not created until manually enabled.
 
-In `v0.7.0b7`, all integration entities are enabled by default. Beta diagnostic
+In `v0.7.0b8`, all integration entities are enabled by default. Beta diagnostic
 and configuration entities are hidden by default so they can be tested by
 unhiding them without having to enable disabled entities first.
 
@@ -59,9 +59,9 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Number | Opening speed setting | `bus_t4_opening_speed` | Writes BusT4 opening speed to register `04/42` as a one-byte value. | Hidden | Enabled |
 | Number | Closing speed setting | `bus_t4_closing_speed` | Writes BusT4 closing speed to register `04/43` as a one-byte value. | Hidden | Enabled |
 | Number | Photo close time setting | `bus_t4_photo_close_time` | Writes BusT4 photo-close time to register `04/85` as a one-byte value. | Hidden | Enabled |
-| Number | Photo close mode setting | `bus_t4_photo_close_mode` | Writes BusT4 photo-close mode to register `04/86` as a one-byte value. | Hidden | Enabled |
+| Number | Photo close mode setting | `bus_t4_photo_close_mode` | Writes BusT4 photo-close mode to register `04/86` as a raw one-byte value. | Hidden | Enabled |
 | Number | Always close time setting | `bus_t4_always_close_time` | Writes BusT4 always-close time to register `04/89` as a one-byte value. | Hidden | Enabled |
-| Number | Always close mode setting | `bus_t4_always_close_mode` | Writes BusT4 always-close mode to register `04/8A` as a one-byte value. | Hidden | Enabled |
+| Number | Always close mode setting | `bus_t4_always_close_mode` | Writes BusT4 always-close mode to register `04/8A` as a raw one-byte value. | Hidden | Enabled |
 | Number | Partial open 1 position setting | `bus_t4_partial_open_1_position` | Writes BusT4 partial-open 1 encoder position to register `04/21` as a two-byte value. | Hidden | Enabled |
 | Number | Partial open 2 position setting | `bus_t4_partial_open_2_position` | Writes BusT4 partial-open 2 encoder position to register `04/22` as a two-byte value. | Hidden | Enabled |
 | Number | Partial open 3 position setting | `bus_t4_partial_open_3_position` | Writes BusT4 partial-open 3 encoder position to register `04/23` as a two-byte value. | Hidden | Enabled |

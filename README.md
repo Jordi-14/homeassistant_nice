@@ -45,7 +45,7 @@ Latest release: `v0.6.1`
 
 ### 0.7 Beta BusT4 Diagnostics
 
-The `0.7.0b7` beta branch adds hidden-by-default diagnostic and configuration
+The `0.7.0b8` beta branch adds hidden-by-default diagnostic and configuration
 entities based on the broader BusT4/OXI register map seen in
 [ngem1/esphome-nice-bidiwifi](https://github.com/ngem1/esphome-nice-bidiwifi)
 and community testing:
@@ -76,6 +76,8 @@ The BusT4 configuration entities use DMP `RUN_SET` writes. The single-byte
 switches and number entities mirror the write shape used by
 `ngem1/esphome-nice-bidiwifi`; partial-open positions and maintenance threshold
 use two-byte big-endian payloads matching the values read from those registers.
+Mode registers are exposed as raw bytes because tested controllers can report
+values outside the initially assumed small enum range.
 Treat this as beta functionality: only change values while the gate is visible
 and you can recover the original settings. The writable BusT4 entities are
 unavailable while the gate is moving.

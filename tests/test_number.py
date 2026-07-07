@@ -61,6 +61,18 @@ class TestNiceBidiNumberProperties:
         assert entity.native_value == 250
         assert entity.native_max_value == 4043
 
+    def test_mode_registers_allow_full_raw_byte_range(self) -> None:
+        coordinator = FakeCoordinator()
+        coordinator.data = make_status(state="open", always_close_mode=32)
+        entity = NiceBidiNumber(
+            coordinator,
+            config_entry(),
+            _description("bus_t4_always_close_mode"),
+        )
+
+        assert entity.native_value == 32
+        assert entity.native_max_value == 255
+
     def test_unavailable_when_value_unknown(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.data = make_status(state="open", opening_speed=None)
