@@ -75,8 +75,32 @@ def make_status(
     )
 
 
-def make_device_info() -> NiceBidiDeviceInfo:
+def make_device_info(*, nhk_status: bool = False) -> NiceBidiDeviceInfo:
     """Create static device metadata."""
+    properties = ()
+    if nhk_status:
+        properties = (
+            NiceBidiServiceCapability(
+                owner="Device",
+                owner_id="1",
+                name="DoorStatus",
+                path='Response/Devices/Device[@id="1"]/Properties/DoorStatus',
+                value_type="string",
+                permission="r",
+                values_raw="open, closed, opening, closing, stopped",
+                values=("open", "closed", "opening", "closing", "stopped"),
+            ),
+            NiceBidiServiceCapability(
+                owner="Device",
+                owner_id="1",
+                name="Obstruct",
+                path='Response/Devices/Device[@id="1"]/Properties/Obstruct',
+                value_type="bool",
+                permission="r",
+                values_raw=None,
+                values=(),
+            ),
+        )
     return NiceBidiDeviceInfo(
         interface_hw_version="HW1",
         interface_fw_version="FW1",
@@ -103,6 +127,7 @@ def make_device_info() -> NiceBidiDeviceInfo:
                 values=("open", "stop", "close"),
             ),
         ),
+        properties=properties,
     )
 
 
@@ -116,18 +141,34 @@ class FakeClient:
         self.dep_actions: list[str] = []
         self.closed = False
         self.read_status_result = make_status(state="open", position=100.0, current_position=1000)
+        self.read_nhk_status_result = make_status(
+            state="open",
+            position=None,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        )
         self.read_info_result = make_device_info()
         self.read_status_error: Exception | None = None
+        self.read_nhk_status_error: Exception | None = None
         self.read_info_error: Exception | None = None
         self.send_action_error: Exception | None = None
         self.send_dep_action_error: Exception | None = None
         self.info_reads = 0
+        self.nhk_status_reads = 0
 
     def read_status(self) -> NiceBidiStatus:
         """Return status or raise a configured error."""
         if self.read_status_error is not None:
             raise self.read_status_error
         return self.read_status_result
+
+    def read_nhk_status(self) -> NiceBidiStatus:
+        """Return NHK status or raise a configured error."""
+        self.nhk_status_reads += 1
+        if self.read_nhk_status_error is not None:
+            raise self.read_nhk_status_error
+        return self.read_nhk_status_result
 
     def read_info(self) -> NiceBidiDeviceInfo:
         """Return device info or raise a configured error."""

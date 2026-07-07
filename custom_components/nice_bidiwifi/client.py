@@ -36,6 +36,17 @@ STATUS_BY_BYTE = {
     0x05: STATE_CLOSED,
 }
 
+NHK_DOOR_STATUS = {
+    "closed": STATE_CLOSED,
+    "close": STATE_CLOSED,
+    "open": STATE_OPEN,
+    "opened": STATE_OPEN,
+    "opening": STATE_OPENING,
+    "closing": STATE_CLOSING,
+    "stopped": STATE_STOPPED,
+    "stop": STATE_STOPPED,
+}
+
 DEP_ACTION_PARTIAL_OPEN_1 = "partial_open_1"
 DEP_ACTION_PARTIAL_OPEN_2 = "partial_open_2"
 DEP_ACTION_PARTIAL_OPEN_3 = "partial_open_3"
@@ -413,6 +424,99 @@ def parse_info_xml(info_xml: str, device_id: int = 1) -> NiceBidiDeviceInfo:
     )
 
 
+def device_info_supports_nhk_status(info: NiceBidiDeviceInfo, device_id: int = 1) -> bool:
+    """Return true when INFO advertises readable NHK DoorStatus."""
+    target_device_id = str(device_id)
+    for prop in info.properties:
+        if prop.name != "DoorStatus":
+            continue
+        if prop.owner != "Device" or prop.owner_id not in {None, target_device_id}:
+            continue
+        if "r" in (prop.permission or ""):
+            return True
+    return False
+
+
+def _nhk_status_value(value: str | None) -> str | None:
+    if not value:
+        return None
+    return NHK_DOOR_STATUS.get(value.strip().casefold())
+
+
+def _nhk_bool_value(value: str | None) -> bool | None:
+    if value is None:
+        return None
+    normalized = value.strip().casefold()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _find_nhk_status_device(root: ET.Element, device_id: int) -> ET.Element | None:
+    if root.tag == "Device" and root.get("id") in {None, str(device_id)}:
+        return root
+    device = root.find(f".//Device[@id='{device_id}']")
+    if device is not None:
+        return device
+    return root.find(".//Device")
+
+
+def _find_child_text(node: ET.Element | None, path: str) -> str | None:
+    if node is None:
+        return None
+    value = node.findtext(path)
+    return value.strip() if value and value.strip() else None
+
+
+def _parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceBidiStatus | None:
+    try:
+        root = ET.fromstring(status_xml)
+    except ET.ParseError as err:
+        raise NiceBidiConnectionError(f"Invalid NHK status XML: {err}") from err
+
+    device = _find_nhk_status_device(root, device_id)
+    raw_state = _find_child_text(device, "./Properties/DoorStatus")
+    raw_obstruct = _find_child_text(device, "./Properties/Obstruct")
+    if raw_state is None:
+        raw_state = _find_child_text(root, ".//DoorStatus")
+    if raw_obstruct is None:
+        raw_obstruct = _find_child_text(root, ".//Obstruct")
+
+    state = _nhk_status_value(raw_state)
+    if raw_state is not None and state is None:
+        raise NiceBidiConnectionError(f"Unsupported NHK DoorStatus value: {raw_state}")
+    if state is None:
+        return None
+
+    obstacle = _nhk_bool_value(raw_obstruct)
+    registers = {"NHK/DoorStatus": raw_state or state}
+    if raw_obstruct is not None:
+        registers["NHK/Obstruct"] = raw_obstruct
+
+    return NiceBidiStatus(
+        state=state,
+        position=None,
+        current_position=None,
+        closed_position=None,
+        open_position=None,
+        registers=registers,
+        obstacle=obstacle,
+    )
+
+
+def _parse_nhk_status_frames(frames: list[bytes], device_id: int = 1) -> NiceBidiStatus:
+    status: NiceBidiStatus | None = None
+    for frame in frames:
+        parsed = _parse_nhk_status_xml(_xml_payload(frame), device_id)
+        if parsed is not None:
+            status = parsed
+    if status is None:
+        raise NiceBidiConnectionError("NHK STATUS response did not include DoorStatus")
+    return status
+
+
 T4_RE = re.compile(r"<T4\b(?P<attrs>[^>]*)>(?P<body>.*?)</T4>", re.DOTALL)
 
 
@@ -469,6 +573,10 @@ class NiceBidiClient:
         """Read status and position DMP registers."""
         return self._run_with_reconnect(self._read_status_locked)
 
+    def read_nhk_status(self) -> NiceBidiStatus:
+        """Read state from NHK STATUS/CHANGE properties."""
+        return self._run_with_reconnect(self._read_nhk_status_locked)
+
     def read_info(self) -> NiceBidiDeviceInfo:
         """Read static BiDi-WiFi and control-unit metadata."""
         return self._run_with_reconnect(self._read_info_locked)
@@ -497,7 +605,12 @@ class NiceBidiClient:
         except NiceBidiConnectionError as err:
             if nice_bidi_error_code(err) != "14":
                 raise
-            self.read_info()
+            info = self.read_info()
+            if device_info_supports_nhk_status(info, self.device_id):
+                try:
+                    return self.read_nhk_status()
+                except NiceBidiError:
+                    _LOGGER.debug("Nice NHK status validation failed after DMP Code 14", exc_info=True)
             return NiceBidiStatus(
                 state=None,
                 position=None,
@@ -636,7 +749,20 @@ class NiceBidiClient:
         xml, request_id = self._signed_request_with_id(request_type, body)
         return self._send_locked(xml, expected_type=request_type, expected_id=request_id)
 
+    def _signed_exchange_frames_locked(self, request_type: str, body: str = "") -> list[bytes]:
+        xml, request_id = self._signed_request_with_id(request_type, body)
+        return self._send_frames_locked(xml, expected_type=request_type, expected_id=request_id)
+
     def _send_locked(self, xml: str, expected_type: str | None, expected_id: int | None) -> bytes:
+        frames = self._send_frames_locked(xml, expected_type=expected_type, expected_id=expected_id)
+        for response in frames:
+            if self._matches_response(response, expected_type, expected_id):
+                return response
+        if frames:
+            return frames[-1]
+        raise NiceBidiConnectionError("device did not respond")
+
+    def _send_frames_locked(self, xml: str, expected_type: str | None, expected_id: int | None) -> list[bytes]:
         if not self._socket:
             raise NiceBidiConnectionError("socket is not open")
         self._socket.settimeout(self.timeout)
@@ -648,21 +774,21 @@ class NiceBidiClient:
             self.port,
         )
         self._socket.sendall(_frame(xml))
-        last_response = b""
+        frames: list[bytes] = []
         deadline = time.time() + self.timeout
         while time.time() < deadline:
             response = self._recv_frame_locked(max(0.1, deadline - time.time()))
             if not response:
                 break
-            last_response = response
+            frames.append(response)
             if self._matches_response(response, expected_type, expected_id):
                 _LOGGER.debug("Received matching Nice local response: %s", _response_summary(response))
-                return response
+                return frames
             _LOGGER.debug("Received non-matching Nice local response: %s", _response_summary(response))
-        if last_response:
-            _LOGGER.debug("Returning last Nice local response after timeout: %s", _response_summary(last_response))
-            return last_response
-        raise NiceBidiConnectionError("device did not respond")
+        if frames:
+            _LOGGER.debug("Returning last Nice local response after timeout: %s", _response_summary(frames[-1]))
+            return frames
+        return []
 
     def _recv_frame_locked(self, timeout: float) -> bytes:
         if not self._socket:
@@ -754,6 +880,13 @@ class NiceBidiClient:
             open_position=opened,
             registers={key: str(value.get("value_hex", "")) for key, value in registers.items()},
         )
+
+    def _read_nhk_status_locked(self) -> NiceBidiStatus:
+        frames = self._signed_exchange_frames_locked("STATUS")
+        for frame in frames:
+            if "<Error>" in _printable(frame):
+                raise NiceBidiConnectionError(_printable(frame))
+        return _parse_nhk_status_frames(frames, self.device_id)
 
     def _read_info_xml_locked(self) -> str:
         response = self._signed_exchange_locked("INFO")

@@ -27,6 +27,7 @@ from custom_components.nice_bidiwifi.client import (
     _xor_sha256,
     build_dep_action_frame,
     build_dmp_read_frame,
+    device_info_supports_nhk_status,
     nice_bidi_error_code,
     parse_dmp_response,
     parse_info_xml,
@@ -271,6 +272,27 @@ def test_parse_info_xml_extracts_service_and_property_capabilities() -> None:
     assert info.properties[0].path == 'Response/Devices/Device[@id="1"]/Properties/DoorStatus'
     assert info.properties[0].permission == "r"
     assert info.properties[0].values == ("open", "closed")
+    assert device_info_supports_nhk_status(info)
+
+
+def test_device_info_supports_nhk_status_checks_device_id() -> None:
+    """Test readable DoorStatus detection honors the selected device."""
+    info = parse_info_xml(
+        """
+        <Response>
+          <Devices>
+            <Device id="2">
+              <Properties>
+                <DoorStatus type="string" values="open, closed" perm="r"/>
+              </Properties>
+            </Device>
+          </Devices>
+        </Response>
+        """
+    )
+
+    assert not device_info_supports_nhk_status(info, device_id=1)
+    assert device_info_supports_nhk_status(info, device_id=2)
 
 
 def test_read_info_xml_returns_payload() -> None:
@@ -287,6 +309,59 @@ def test_read_info_xml_returns_payload() -> None:
     )
 
     assert client._read_info_xml_locked() == '<Response type="INFO" id="263"><Interface /></Response>'
+
+
+def test_read_nhk_status_parses_status_response() -> None:
+    """Test CU_WIFI-style NHK STATUS DoorStatus parsing."""
+
+    class NhkStatusClient(NiceBidiClient):
+        def _signed_exchange_frames_locked(self, request_type, body=""):
+            assert request_type == "STATUS"
+            return [
+                STX
+                + b'<Response type="STATUS" id="513"><Devices><Device id="1"><Properties>'
+                + b"<DoorStatus>closing</DoorStatus><Obstruct>0</Obstruct>"
+                + b"</Properties></Device></Devices></Response>"
+                + ETX
+            ]
+
+    status = NhkStatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+    )._read_nhk_status_locked()
+
+    assert status.state == "closing"
+    assert status.position is None
+    assert status.current_position is None
+    assert status.obstacle is False
+    assert status.registers == {
+        "NHK/DoorStatus": "closing",
+        "NHK/Obstruct": "0",
+    }
+
+
+def test_read_nhk_status_accepts_change_event_frame() -> None:
+    """Test async CHANGE frames use the same DoorStatus parser."""
+
+    class NhkStatusClient(NiceBidiClient):
+        def _signed_exchange_frames_locked(self, request_type, body=""):
+            return [
+                STX
+                + b'<Event type="CHANGE" id="41"><Devices><Device id="1"><Properties>'
+                + b"<DoorStatus>stopped</DoorStatus><Obstruct>1</Obstruct>"
+                + b"</Properties></Device></Devices></Event>"
+                + ETX
+            ]
+
+    status = NhkStatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+    )._read_nhk_status_locked()
+
+    assert status.state == "stopped"
+    assert status.obstacle is True
 
 
 def test_decrypt_t4_payloads_returns_plain_payloads() -> None:

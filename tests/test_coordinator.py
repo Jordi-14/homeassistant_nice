@@ -20,7 +20,7 @@ from custom_components.nice_bidiwifi.client import (
 )
 from custom_components.nice_bidiwifi.const import DOMAIN
 from custom_components.nice_bidiwifi.coordinator import NiceBidiDataUpdateCoordinator
-from tests.conftest import FakeClient, config_entry_data, make_status
+from tests.conftest import FakeClient, config_entry_data, make_device_info, make_status
 
 
 class FakeStore:
@@ -111,6 +111,40 @@ async def test_update_data_falls_back_to_command_only_when_dmp_status_is_unsuppo
     assert instance.last_error is None
 
     await instance._async_update_data()
+    assert client.info_reads == 1
+
+
+async def test_update_data_uses_nhk_status_when_dmp_status_is_unsupported(
+    hass: HomeAssistant,
+) -> None:
+    """Test CU_WIFI devices can use NHK DoorStatus when DMP status returns Code 14."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.read_status_error = NiceBidiConnectionError(
+        '<Response type="T4_REQUEST"><Error><Code>14</Code></Error></Response>'
+    )
+    client.read_info_result = make_device_info(nhk_status=True)
+    client.read_nhk_status_result = make_status(
+        state="closing",
+        position=None,
+        current_position=None,
+        closed_position=None,
+        open_position=None,
+    )
+    instance.client = client
+
+    result = await instance._async_update_data()
+
+    assert result.state == "closing"
+    assert result.position is None
+    assert instance.device_info is client.read_info_result
+    assert instance.status_polling_supported is True
+    assert instance.connection_state == coordinator_module.CONNECTION_STATE_CONNECTED
+    assert client.info_reads == 1
+    assert client.nhk_status_reads == 1
+
+    await instance._async_update_data()
+    assert client.nhk_status_reads == 2
     assert client.info_reads == 1
 
 

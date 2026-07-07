@@ -44,6 +44,7 @@ from .client import (
     STATE_OPEN,
     STATE_OPENING,
     STATE_STOPPED,
+    device_info_supports_nhk_status,
 )
 from .const import (
     CONF_SOURCE_ID,
@@ -126,6 +127,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.connection_state = CONNECTION_STATE_UNKNOWN
         self.device_info: NiceBidiDeviceInfo | None = None
         self.status_polling_supported = True
+        self._use_nhk_status = False
         self.last_command: str | None = None
         self.last_command_latency_ms: int | None = None
         self.last_error: str | None = None
@@ -235,6 +237,11 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 self.device_info = self.client.read_info()
             return _unknown_status()
 
+        if self._use_nhk_status:
+            if self.device_info is None:
+                self.device_info = self.client.read_info()
+            return self.client.read_nhk_status()
+
         try:
             status = self.client.read_status()
         except NiceBidiConnectionError as err:
@@ -244,6 +251,14 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 self.device_info = self.device_info or self.client.read_info()
             except NiceBidiError:
                 raise err from None
+            if self._supports_nhk_status():
+                status = self.client.read_nhk_status()
+                self._use_nhk_status = True
+                _LOGGER.info(
+                    "Nice DMP status polling is not supported by this device; "
+                    "using NHK DoorStatus polling"
+                )
+                return status
             if not self._supports_high_level_actions():
                 raise
             self.status_polling_supported = False
@@ -273,6 +288,15 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             if "w" in (service.permission or ""):
                 return True
         return False
+
+    def _supports_nhk_status(self) -> bool:
+        """Return true when INFO advertises readable NHK status properties."""
+        if self.device_info is None:
+            return False
+        return device_info_supports_nhk_status(
+            self.device_info,
+            self.config_entry.data.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID),
+        )
 
     def _store_successful_status(self, status: NiceBidiStatus) -> None:
         """Store successful status read metadata."""
