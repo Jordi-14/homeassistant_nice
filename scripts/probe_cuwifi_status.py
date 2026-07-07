@@ -40,6 +40,7 @@ INFO_CONTAINERS = {"Commands", "Events", "Properties", "Scheduled", "Services", 
 PRIORITY_READ_NAMES = {"DoorStatus", "Obstruct", "T4_allowed", "LastEvent", "Name", "Location"}
 DEFAULT_NHK_REQUEST_TYPES = ("INFO", "READ")
 LIVE_REQUEST_TYPES = ("STATUS", "T4_STATUS", "INFO")
+EXHAUSTIVE_NHK_REQUEST_TYPES = ("INFO", "READ", "GET")
 
 SENSITIVE_DATA_KEYS = {
     "device_serial",
@@ -67,12 +68,143 @@ SENSITIVE_XML_TAGS = {
     "Sign",
 }
 
+T4_MSG_TYPES = {
+    0x01: "CMD/DEP",
+    0x08: "INF/DMP",
+}
+
+T4_DEVICE_TYPES = {
+    0x00: "all devices",
+    0x04: "controller",
+    0x0A: "OXI/radio",
+}
+
+T4_DMP_OPERATIONS = {
+    0x18: "GET response continuation",
+    0x19: "GET response",
+    0x29: "SET response",
+    0x89: "GET support request",
+    0x99: "GET request",
+    0xA9: "SET request",
+}
+
+
+def _t4_dmp_operation_kind(operation: int) -> str | None:
+    if operation in {0x18, 0x19, 0x29}:
+        return "response"
+    if operation in {0x89, 0x99, 0xA9}:
+        return "request"
+    return None
+
+
+T4_AUTO_STATUS = {
+    0x01: "stopped",
+    0x02: "opening",
+    0x03: "closing",
+    0x04: "opened",
+    0x05: "closed",
+    0x06: "pre-flashing/end-time",
+    0x07: "pause",
+    0x08: "searching devices",
+    0x09: "searching positions",
+    0x10: "partially opened",
+    0x83: "opening",
+    0x84: "closing",
+}
+
+T4_STOP_REASONS = {
+    0x00: "normal",
+    0x01: "obstacle by encoder",
+    0x02: "obstacle by force",
+    0x03: "photo intervention",
+    0x04: "halt",
+    0x05: "emergency",
+    0x06: "electrical anomaly",
+    0x07: "blocked",
+    0x08: "timeout",
+}
+
+T4_MENUS = {
+    0x01: "control",
+    0x02: "current maneuver",
+    0x04: "controller",
+    0x80: "main settings",
+    0x82: "run",
+    0xC0: "status",
+}
+
+T4_CONTROL_COMMANDS = {
+    0x01: "step-by-step",
+    0x02: "stop",
+    0x03: "open",
+    0x04: "close",
+    0x05: "partial open 1",
+    0x06: "partial open 2",
+    0x07: "partial open 3",
+    0x0F: "lock",
+    0x10: "unlock",
+    0x11: "courtesy light timer",
+    0x12: "courtesy light toggle",
+}
+
 KNOWN_DMP_LABELS = {
+    (0x00, 0x00): "motor type",
+    (0x00, 0x04): "WHO / discovery",
+    (0x00, 0x08): "manufacturer",
+    (0x00, 0x09): "product",
+    (0x00, 0x0A): "hardware version",
+    (0x00, 0x0B): "firmware version",
+    (0x00, 0x0C): "description",
+    (0x00, 0x10): "info support",
+    (0x04, 0x00): "motor type",
     (0x04, 0x01): "gate state",
     (0x04, 0x11): "current encoder position",
-    (0x04, 0x18): "open endpoint encoder position",
-    (0x04, 0x19): "closed endpoint encoder position",
+    (0x04, 0x12): "max open encoder position",
+    (0x04, 0x18): "position max / open endpoint",
+    (0x04, 0x19): "position min / closed endpoint",
+    (0x04, 0x21): "partial open 1 position",
+    (0x04, 0x22): "partial open 2 position",
+    (0x04, 0x23): "partial open 3 position",
+    (0x04, 0x42): "opening speed",
+    (0x04, 0x43): "closing speed",
+    (0x04, 0x4A): "opening force",
+    (0x04, 0x4B): "closing force",
+    (0x04, 0x71): "input 1",
+    (0x04, 0x72): "input 2",
+    (0x04, 0x73): "input 3",
+    (0x04, 0x74): "input 4",
+    (0x04, 0x80): "auto close",
+    (0x04, 0x81): "pause time",
+    (0x04, 0x84): "photo close",
+    (0x04, 0x85): "photo close time",
+    (0x04, 0x86): "photo close mode",
+    (0x04, 0x88): "always close",
+    (0x04, 0x89): "always close time",
+    (0x04, 0x8A): "always close mode",
+    (0x04, 0x8C): "standby",
+    (0x04, 0x94): "pre-flash",
+    (0x04, 0x9C): "key lock",
+    (0x04, 0xB1): "maintenance threshold",
+    (0x04, 0xB2): "maintenance count",
+    (0x04, 0xB3): "total maneuver count",
+    (0x04, 0xD0): "diagnostics blackbox / stop reason",
+    (0x04, 0xD1): "diagnostics I/O",
+    (0x04, 0xD2): "diagnostics parameters",
+    (0x04, 0xD4): "alternate movement counter",
+    (0x0A, 0x04): "OXI/radio WHO",
+    (0x0A, 0x09): "OXI/radio product",
+    (0x0A, 0x0A): "OXI/radio hardware version",
+    (0x0A, 0x0B): "OXI/radio firmware version",
+    (0x0A, 0x0C): "OXI/radio description",
 }
+
+PRIMARY_DMP_TARGETS = (
+    (0x00, 0x03),  # common controller address
+    (0x00, 0x0A),  # OXI/radio address seen in community traces
+)
+
+FOCUSED_DMP_ENDPOINTS = tuple(dict.fromkeys([*range(0x00, 0x0B), 0x0A]))
+FOCUSED_DMP_DADDRS = tuple(dict.fromkeys([*range(0x00, 0x0B), 0x0A]))
 
 
 @dataclass(frozen=True)
@@ -206,6 +338,13 @@ def parse_args() -> argparse.Namespace:
         help="Seconds to keep a live authenticated session open for async events and status polling",
     )
     parser.add_argument(
+        "--manual-stop",
+        "--listen-until-interrupted",
+        dest="listen_until_interrupted",
+        action="store_true",
+        help="Keep the live capture running until Ctrl-C; the first interrupt ends live capture and continues the report",
+    )
+    parser.add_argument(
         "--listen-poll-timeout",
         type=float,
         default=1.0,
@@ -264,9 +403,14 @@ def parse_args() -> argparse.Namespace:
         help="Skip speculative read-shaped NHK property requests",
     )
     parser.add_argument(
+        "--exhaustive",
+        action="store_true",
+        help="Enable the broadest read-only post-live scan: GET selectors, broad DMP, and longer frame draining",
+    )
+    parser.add_argument(
         "--dmp-profile",
         choices=("none", "focused", "broad"),
-        default="none",
+        default="focused",
         help="Optional post-live DMP register scan size",
     )
     parser.add_argument(
@@ -289,6 +433,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, help="Write the JSON report to this path")
     parser.add_argument("--quiet", action="store_true", help="Do not print progress to stderr")
     return parser.parse_args()
+
+
+def _apply_exhaustive_defaults(args: argparse.Namespace) -> None:
+    if not args.exhaustive:
+        return
+    args.nhk_request_types = list(dict.fromkeys([*args.nhk_request_types, *EXHAUSTIVE_NHK_REQUEST_TYPES]))
+    args.dmp_profile = "broad"
+    args.max_dmp_reads = max(args.max_dmp_reads, 4096)
+    args.post_request_listen_seconds = max(args.post_request_listen_seconds, 1.0)
 
 
 def _load_credentials(path: Path | None) -> dict[str, Any]:
@@ -424,16 +577,226 @@ def _frame_kind(response: bytes) -> str:
         return "Unknown"
 
 
+def _hex_byte(value: int) -> str:
+    return f"{value:02X}"
+
+
+def _t4_address(row: int, address: int) -> str:
+    return f"{row:02X}.{address:02X}"
+
+
+def _t4_address_role(row: int, address: int) -> str | None:
+    if address == 0xFF:
+        return "broadcast"
+    if (row, address) in {(0x50, 0x90), (0x50, 0x91)}:
+        return "BiDi-WiFi hub"
+    if row == 0x00 and address == 0x03:
+        return "possible controller"
+    if row == 0x00 and address == 0x0A:
+        return "possible OXI/radio"
+    return None
+
+
+def _t4_register_label(device_type: int, register_id: int) -> str | None:
+    return KNOWN_DMP_LABELS.get((device_type, register_id)) or KNOWN_DMP_LABELS.get((0x00, register_id))
+
+
+def _data_summary(data: bytes) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "length": len(data),
+        "hex": data.hex(" "),
+    }
+    if data:
+        summary["uint_be"] = int.from_bytes(data, "big")
+        summary["uint_le"] = int.from_bytes(data, "little")
+        summary["all_zero"] = all(byte == 0x00 for byte in data)
+        summary["all_ff"] = all(byte == 0xFF for byte in data)
+        if all(32 <= byte < 127 for byte in data):
+            summary["ascii"] = data.decode("ascii")
+    return summary
+
+
+def _decode_position_data(data: bytes) -> dict[str, Any]:
+    decoded: dict[str, Any] = {}
+    if len(data) == 1:
+        decoded["position"] = data[0]
+        decoded["format"] = "1-byte"
+    elif len(data) == 2:
+        decoded["position"] = int.from_bytes(data, "big")
+        decoded["format"] = "2-byte big-endian"
+    elif len(data) >= 3:
+        decoded["prefix"] = data[0]
+        decoded["position"] = data[1]
+        decoded["fine"] = data[2]
+        decoded["format"] = "3-byte prefix/position/fine"
+    return decoded
+
+
+def _decode_dmp_value(device_type: int, register_id: int, data: bytes) -> dict[str, Any]:
+    decoded: dict[str, Any] = {}
+    if not data:
+        return decoded
+
+    if register_id == 0x04:
+        decoded["reported_device_type"] = _hex_byte(data[0])
+        decoded["reported_device_type_name"] = T4_DEVICE_TYPES.get(data[0])
+
+    if register_id == 0x01:
+        decoded["status"] = T4_AUTO_STATUS.get(data[0])
+        decoded["status_byte"] = _hex_byte(data[0])
+
+    if register_id in {0x11, 0x12, 0x18, 0x19, 0x21, 0x22, 0x23}:
+        decoded["position"] = _decode_position_data(data)
+
+    if register_id == 0xD0:
+        decoded["stop_reason"] = T4_STOP_REASONS.get(data[0])
+        decoded["stop_reason_byte"] = _hex_byte(data[0])
+        decoded["obstacle"] = data[0] in {0x01, 0x02}
+
+    if register_id == 0xD1:
+        io_byte = data[2] if len(data) >= 3 else data[0]
+        decoded["io_byte"] = _hex_byte(io_byte)
+        decoded["limit_closed"] = bool(io_byte & 0x01)
+        decoded["limit_open"] = bool(io_byte & 0x02)
+        decoded["photocell"] = bool(io_byte & 0x04)
+
+    if register_id in {0x71, 0x72, 0x73, 0x74, 0x80, 0x84, 0x88, 0x8C, 0x94, 0x9C}:
+        decoded["enabled"] = data[0] != 0
+
+    if device_type == 0x0A and register_id in {0x04, 0x09, 0x0A, 0x0B, 0x0C}:
+        decoded["radio_related"] = True
+
+    return decoded
+
+
+def _parse_t4_inf_message(message: bytes) -> dict[str, Any]:
+    parsed: dict[str, Any] = {"raw_hex": message.hex(" ")}
+    if len(message) < 3:
+        return parsed
+
+    device_type = message[0]
+    register_id = message[1]
+    operation = message[2]
+    parsed.update(
+        {
+            "device_type": _hex_byte(device_type),
+            "device_type_name": T4_DEVICE_TYPES.get(device_type),
+            "register": _hex_byte(register_id),
+            "register_label": _t4_register_label(device_type, register_id),
+            "operation": _hex_byte(operation),
+            "operation_name": T4_DMP_OPERATIONS.get(operation),
+            "operation_kind": _t4_dmp_operation_kind(operation),
+        }
+    )
+
+    data = b""
+    if len(message) >= 5:
+        if operation in {0x18, 0x19, 0x29}:
+            data_len = message[3]
+            next_data = message[4]
+            data_start = 5
+        else:
+            next_data = message[3]
+            data_len = message[4]
+            data_start = 5
+        data = message[data_start : data_start + data_len]
+        parsed["data_len"] = data_len
+        parsed["next_data"] = _hex_byte(next_data)
+        parsed["data"] = _data_summary(data)
+        parsed["value_decode"] = _decode_dmp_value(device_type, register_id, data)
+
+    return parsed
+
+
+def _parse_t4_cmd_message(message: bytes) -> dict[str, Any]:
+    parsed: dict[str, Any] = {"raw_hex": message.hex(" ")}
+    if not message:
+        return parsed
+
+    menu = message[0]
+    parsed["menu"] = _hex_byte(menu)
+    parsed["menu_name"] = T4_MENUS.get(menu)
+    if len(message) >= 2:
+        subcommand = message[1]
+        parsed["subcommand"] = _hex_byte(subcommand)
+        parsed["subcommand_name"] = T4_MENUS.get(subcommand)
+    if len(message) >= 3:
+        byte_2 = message[2]
+        parsed["byte_2"] = _hex_byte(byte_2)
+        if menu == 0x01 and len(message) >= 2 and message[1] == 0x82:
+            parsed["control_command"] = T4_CONTROL_COMMANDS.get(byte_2)
+        if byte_2 in T4_AUTO_STATUS:
+            parsed["status"] = T4_AUTO_STATUS[byte_2]
+    if len(message) >= 5:
+        parsed["possible_position"] = int.from_bytes(message[3:5], "big")
+    return parsed
+
+
+def _parse_bus_t4_payload(plain: bytes) -> dict[str, Any]:
+    parsed: dict[str, Any] = {
+        "length": len(plain),
+        "plain_hex": plain.hex(" "),
+    }
+    if len(plain) < 3:
+        return parsed
+
+    framed = plain[0] == 0x55
+    parsed["framed"] = framed
+    if framed:
+        body_size = plain[1]
+        parsed["body_size"] = body_size
+        parsed["trailing_size"] = plain[-1]
+        parsed["size_matches"] = body_size == plain[-1] == len(plain) - 3
+        body = plain[2:-1]
+    else:
+        body = plain
+
+    parsed["body_hex"] = body.hex(" ")
+    if len(body) < 8:
+        return parsed
+
+    to_row, to_address, from_row, from_address, msg_type, msg_size, crc1 = body[:7]
+    crc2 = body[-1]
+    message = body[7:-1]
+    parsed.update(
+        {
+            "to": _t4_address(to_row, to_address),
+            "to_role": _t4_address_role(to_row, to_address),
+            "from": _t4_address(from_row, from_address),
+            "from_role": _t4_address_role(from_row, from_address),
+            "message_type": _hex_byte(msg_type),
+            "message_type_name": T4_MSG_TYPES.get(msg_type),
+            "message_size": msg_size,
+            "message_length": len(message),
+            "message_size_matches": msg_size == len(message) + 1,
+            "crc1": _hex_byte(crc1),
+            "crc2": _hex_byte(crc2),
+            "message_hex": message.hex(" "),
+        }
+    )
+
+    if msg_type == 0x08:
+        parsed["inf"] = _parse_t4_inf_message(message)
+        if len(message) >= 3 and message[0] in {0x02, 0x04} and message[2] in T4_AUTO_STATUS:
+            parsed["rsp_status"] = _parse_t4_cmd_message(message)
+    elif msg_type == 0x01:
+        parsed["cmd"] = _parse_t4_cmd_message(message)
+
+    return parsed
+
+
 def _t4_payload_reports(client: ProbeClient, response: bytes) -> list[dict[str, Any]]:
     payloads: list[dict[str, Any]] = []
     for plain in client.decrypt_t4_payloads(response):
         parsed = parse_dmp_response(plain)
         parsed["value_interpretations"] = _value_interpretations(parsed)
+        bus_t4 = _parse_bus_t4_payload(plain)
         payloads.append(
             {
                 "length": len(plain),
                 "plain_hex": plain.hex(" "),
                 "dmp_parse": parsed,
+                "bus_t4_parse": bus_t4,
             }
         )
     return payloads
@@ -783,23 +1146,26 @@ def _generate_dmp_reads(profile: str, max_reads: int) -> list[DmpRead]:
     reads: dict[tuple[int, int, int, int], DmpRead] = {}
     known_registers = sorted(KNOWN_DMP_LABELS)
 
-    for group, parameter in known_registers:
-        _add_dmp_read(reads, 0x00, 0x03, group, parameter)
+    for daddr, dendpoint in PRIMARY_DMP_TARGETS:
+        for group, parameter in known_registers:
+            _add_dmp_read(reads, daddr, dendpoint, group, parameter)
 
-    for endpoint in range(0x00, 0x08):
+    for endpoint in FOCUSED_DMP_ENDPOINTS:
         for group, parameter in known_registers:
             _add_dmp_read(reads, 0x00, endpoint, group, parameter)
 
-    for daddr in range(0x00, 0x08):
-        for group, parameter in known_registers:
-            _add_dmp_read(reads, daddr, 0x03, group, parameter)
+    for daddr in FOCUSED_DMP_DADDRS:
+        for endpoint in (0x03, 0x0A):
+            for group, parameter in known_registers:
+                _add_dmp_read(reads, daddr, endpoint, group, parameter)
 
     if profile == "broad":
-        for parameter in range(0x00, 0x40):
-            _add_dmp_read(reads, 0x00, 0x03, 0x04, parameter)
-        for group in range(0x00, 0x10):
-            for parameter in range(0x00, 0x20):
-                _add_dmp_read(reads, 0x00, 0x03, group, parameter)
+        for daddr, dendpoint in PRIMARY_DMP_TARGETS:
+            for parameter in range(0x00, 0x100):
+                _add_dmp_read(reads, daddr, dendpoint, 0x04, parameter)
+            for group in range(0x00, 0x10):
+                for parameter in range(0x00, 0x40):
+                    _add_dmp_read(reads, daddr, dendpoint, group, parameter)
 
     return list(reads.values())[:max_reads]
 
@@ -865,6 +1231,7 @@ def _run_dmp_probe(
     for plain in plains:
         parsed = parse_dmp_response(plain)
         parsed["value_interpretations"] = _value_interpretations(parsed)
+        parsed["bus_t4_parse"] = _parse_bus_t4_payload(plain)
         parsed_payloads.append(parsed)
 
     result.update(
@@ -949,11 +1316,14 @@ def _listen_once(
 
 def _run_live_capture(client: ProbeClient, args: argparse.Namespace, started: float) -> dict[str, Any]:
     live_started = time.monotonic()
-    deadline = live_started + max(0.0, args.listen_seconds)
+    manual_stop = args.listen_until_interrupted
+    deadline = None if manual_stop else live_started + max(0.0, args.listen_seconds)
     result: dict[str, Any] = {
         "ok": True,
         "started_elapsed_s": round(live_started - started, 3),
-        "duration_requested_s": args.listen_seconds,
+        "duration_requested_s": None if manual_stop else args.listen_seconds,
+        "manual_stop": manual_stop,
+        "ended_by_interrupt": False,
         "listen_poll_timeout_s": args.listen_poll_timeout,
         "post_request_listen_seconds": args.post_request_listen_seconds,
         "poll_intervals_s": {
@@ -966,59 +1336,71 @@ def _run_live_capture(client: ProbeClient, args: argparse.Namespace, started: fl
         "passive_frames": [],
     }
 
-    for request_type in LIVE_REQUEST_TYPES:
-        _progress(args, f"Live capture initial {request_type}")
-        result["initial_request_traces"].append(
-            _run_signed_trace_probe(
-                client,
-                args,
-                request_type,
-                "",
-                f"live initial {request_type}",
-                started,
-                wait_timeout=args.timeout,
-            )
-        )
-
-    schedule = _poll_schedule(args, live_started)
-    last_progress_bucket = -1
-    while time.monotonic() < deadline:
-        now = time.monotonic()
-        elapsed_live = now - live_started
-        progress_bucket = int(elapsed_live // 10)
-        if progress_bucket != last_progress_bucket:
-            last_progress_bucket = progress_bucket
-            _progress(args, f"Live capture running: {min(elapsed_live, args.listen_seconds):.0f}/{args.listen_seconds:.0f}s")
-
-        due = [
-            item
-            for item in schedule.values()
-            if float(item["next_due"]) <= now
-        ]
-        if due:
-            for item in due:
-                request_type = str(item["request_type"])
-                _progress(args, f"Live capture poll {request_type}")
-                result["request_traces"].append(
-                    _run_signed_trace_probe(
-                        client,
-                        args,
-                        request_type,
-                        "",
-                        f"live poll {request_type}",
-                        started,
-                        wait_timeout=args.timeout,
-                    )
+    try:
+        for request_type in LIVE_REQUEST_TYPES:
+            _progress(args, f"Live capture initial {request_type}")
+            result["initial_request_traces"].append(
+                _run_signed_trace_probe(
+                    client,
+                    args,
+                    request_type,
+                    "",
+                    f"live initial {request_type}",
+                    started,
+                    wait_timeout=args.timeout,
                 )
-                item["next_due"] = time.monotonic() + float(item["interval"])
-            continue
+            )
 
-        next_due = min(
-            [float(item["next_due"]) for item in schedule.values()] + [deadline]
-        )
-        listen_for = min(args.listen_poll_timeout, max(0.0, next_due - time.monotonic()))
-        if listen_for > 0:
-            result["passive_frames"].extend(_listen_once(client, args, started, listen_for))
+        schedule = _poll_schedule(args, live_started)
+        last_progress_bucket = -1
+        while deadline is None or time.monotonic() < deadline:
+            now = time.monotonic()
+            elapsed_live = now - live_started
+            progress_bucket = int(elapsed_live // 10)
+            if progress_bucket != last_progress_bucket:
+                last_progress_bucket = progress_bucket
+                if manual_stop:
+                    _progress(args, f"Live capture running: {elapsed_live:.0f}s; press Ctrl-C once when finished")
+                else:
+                    _progress(
+                        args,
+                        f"Live capture running: {min(elapsed_live, args.listen_seconds):.0f}/{args.listen_seconds:.0f}s",
+                    )
+
+            due = [
+                item
+                for item in schedule.values()
+                if float(item["next_due"]) <= now
+            ]
+            if due:
+                for item in due:
+                    request_type = str(item["request_type"])
+                    _progress(args, f"Live capture poll {request_type}")
+                    result["request_traces"].append(
+                        _run_signed_trace_probe(
+                            client,
+                            args,
+                            request_type,
+                            "",
+                            f"live poll {request_type}",
+                            started,
+                            wait_timeout=args.timeout,
+                        )
+                    )
+                    item["next_due"] = time.monotonic() + float(item["interval"])
+                continue
+
+            upcoming = [float(item["next_due"]) for item in schedule.values()]
+            if deadline is not None:
+                upcoming.append(deadline)
+            listen_for = args.listen_poll_timeout
+            if upcoming:
+                listen_for = min(args.listen_poll_timeout, max(0.0, min(upcoming) - time.monotonic()))
+            if listen_for > 0:
+                result["passive_frames"].extend(_listen_once(client, args, started, listen_for))
+    except KeyboardInterrupt:
+        result["ended_by_interrupt"] = True
+        _progress(args, "Live capture stopped; continuing with post-live read-only probes")
 
     result["duration_actual_s"] = round(time.monotonic() - live_started, 3)
     return result
@@ -1043,6 +1425,21 @@ def _iter_reported_frames(report: dict[str, Any]) -> list[dict[str, Any]]:
     for probe in report.get("nhk_read_probes", []):
         frames.extend(_iter_trace_frames(probe))
     return frames
+
+
+def _iter_bus_t4_parses(report: dict[str, Any]) -> list[dict[str, Any]]:
+    parses: list[dict[str, Any]] = []
+    for frame in _iter_reported_frames(report):
+        for payload in frame.get("decrypted_t4_payloads", []):
+            bus_t4 = payload.get("bus_t4_parse")
+            if isinstance(bus_t4, dict):
+                parses.append(bus_t4)
+    for probe in report.get("dmp_register_probes", []):
+        for payload in probe.get("plain_payloads", []):
+            bus_t4 = payload.get("bus_t4_parse")
+            if isinstance(bus_t4, dict):
+                parses.append(bus_t4)
+    return parses
 
 
 def _summarize_results(report: dict[str, Any]) -> dict[str, Any]:
@@ -1096,6 +1493,54 @@ def _summarize_results(report: dict[str, Any]) -> dict[str, Any]:
     if live_status_values:
         observations.append("Live capture included leaf values that may describe status or events.")
 
+    bus_t4_parses = _iter_bus_t4_parses(report)
+    bus_t4_statuses = Counter()
+    bus_t4_registers = Counter()
+    bus_t4_from_roles = Counter()
+    bus_t4_to_roles = Counter()
+    bus_t4_message_types = Counter()
+    bus_t4_positions = Counter()
+    bus_t4_stop_reasons = Counter()
+    bus_t4_diag_io = Counter()
+    bus_t4_radio_related = 0
+    for parsed in bus_t4_parses:
+        if parsed.get("message_type_name"):
+            bus_t4_message_types[str(parsed["message_type_name"])] += 1
+        if parsed.get("from_role"):
+            bus_t4_from_roles[str(parsed["from_role"])] += 1
+        if parsed.get("to_role"):
+            bus_t4_to_roles[str(parsed["to_role"])] += 1
+        inf = parsed.get("inf") or {}
+        if inf.get("register_label"):
+            bus_t4_registers[str(inf["register_label"])] += 1
+        value_decode = inf.get("value_decode") or {}
+        if value_decode.get("status"):
+            bus_t4_statuses[str(value_decode["status"])] += 1
+        position = value_decode.get("position") or {}
+        if isinstance(position, dict) and position.get("position") is not None:
+            position_label = inf.get("register_label") or inf.get("register") or "unknown register"
+            bus_t4_positions[f"{position_label}: {position['position']}"] += 1
+        if value_decode.get("stop_reason"):
+            bus_t4_stop_reasons[str(value_decode["stop_reason"])] += 1
+        for key in ("limit_closed", "limit_open", "photocell"):
+            if value_decode.get(key):
+                bus_t4_diag_io[key] += 1
+        if value_decode.get("radio_related"):
+            bus_t4_radio_related += 1
+        cmd = parsed.get("cmd") or parsed.get("rsp_status") or {}
+        if cmd.get("status"):
+            bus_t4_statuses[str(cmd["status"])] += 1
+        if cmd.get("possible_position") is not None:
+            bus_t4_positions[f"CMD/DEP possible position: {cmd['possible_position']}"] += 1
+    if bus_t4_statuses:
+        observations.append("Decoded BusT4 payloads included gate status values.")
+    if bus_t4_positions:
+        observations.append("Decoded BusT4 payloads included possible position values.")
+    if bus_t4_stop_reasons or bus_t4_diag_io:
+        observations.append("Decoded BusT4 payloads included diagnostic values.")
+    if bus_t4_from_roles.get("possible OXI/radio") or bus_t4_to_roles.get("possible OXI/radio"):
+        observations.append("Decoded BusT4 payloads included possible OXI/radio traffic.")
+
     dmp_results = report.get("dmp_register_probes", [])
     dmp_successes = [probe for probe in dmp_results if probe.get("ok")]
     if dmp_successes:
@@ -1126,6 +1571,16 @@ def _summarize_results(report: dict[str, Any]) -> dict[str, Any]:
             "live_frame_kinds": dict(sorted(frame_kinds.items())),
             "live_event_frames": len(live_events),
             "live_decrypted_t4_payloads": len(live_t4_payloads),
+            "decoded_bus_t4_payloads": len(bus_t4_parses),
+            "decoded_bus_t4_message_types": dict(sorted(bus_t4_message_types.items())),
+            "decoded_bus_t4_from_roles": dict(sorted(bus_t4_from_roles.items())),
+            "decoded_bus_t4_to_roles": dict(sorted(bus_t4_to_roles.items())),
+            "decoded_bus_t4_registers": dict(sorted(bus_t4_registers.items())),
+            "decoded_bus_t4_statuses": dict(sorted(bus_t4_statuses.items())),
+            "decoded_bus_t4_positions": dict(sorted(bus_t4_positions.items())),
+            "decoded_bus_t4_stop_reasons": dict(sorted(bus_t4_stop_reasons.items())),
+            "decoded_bus_t4_diag_io": dict(sorted(bus_t4_diag_io.items())),
+            "decoded_bus_t4_radio_related": bus_t4_radio_related,
             "nhk_read_probes": len(nhk_results),
             "nhk_read_successes": len(nhk_successes),
             "dmp_register_probes": len(dmp_results),
@@ -1137,6 +1592,7 @@ def _summarize_results(report: dict[str, Any]) -> dict[str, Any]:
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
     """Run the read-only probe and return a JSON-serializable report."""
+    _apply_exhaustive_defaults(args)
     credentials = _credentials_from_args(args)
     client = ProbeClient(
         args.host,
@@ -1170,6 +1626,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             "timeout": args.timeout,
             "t4_timeout_ms": args.t4_timeout_ms,
             "listen_seconds": args.listen_seconds,
+            "listen_until_interrupted": args.listen_until_interrupted,
             "listen_poll_timeout": args.listen_poll_timeout,
             "post_request_listen_seconds": args.post_request_listen_seconds,
             "status_poll_interval": args.status_poll_interval,
@@ -1180,6 +1637,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             "sample_interval": args.sample_interval,
             "nhk_request_types": args.nhk_request_types,
             "skip_nhk_property_probes": args.skip_nhk_property_probes,
+            "exhaustive": args.exhaustive,
             "dmp_profile": args.dmp_profile,
             "max_dmp_reads": args.max_dmp_reads,
             "dmp_delay": args.dmp_delay,
@@ -1198,8 +1656,11 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         report["info_samples"].append(first_sample)
         inventory = first_sample.get("inventory", []) if first_sample.get("ok") else []
 
-        if not args.skip_live_capture and args.listen_seconds > 0:
-            _progress(args, f"Starting {args.listen_seconds:.0f}s live capture; move the gate during this window")
+        if not args.skip_live_capture and (args.listen_until_interrupted or args.listen_seconds > 0):
+            if args.listen_until_interrupted:
+                _progress(args, "Starting manual live capture; move the gate now, then press Ctrl-C once when finished")
+            else:
+                _progress(args, f"Starting {args.listen_seconds:.0f}s live capture; move the gate during this window")
             report["live_capture"] = _run_live_capture(client, args, started)
 
         _progress(args, "Running current integration status read")

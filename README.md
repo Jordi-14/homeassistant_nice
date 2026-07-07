@@ -269,20 +269,22 @@ use the live read-only probe:
 python3 scripts/probe_cuwifi_status.py \
   --host <cuwifi_ip> \
   --credentials credentials.json \
-  --listen-seconds 60 \
-  --output cuwifi_status_probe_live_60s.json
+  --manual-stop \
+  --exhaustive \
+  --output cuwifi_status_probe_manual_exhaustive.json
 ```
 
 Start the script first, then move the gate with the normal remote or MyNice app
-during the 60-second live window. The probe authenticates locally, keeps one
-session open, listens for async frames, and polls read-only `STATUS`,
-`T4_STATUS`, and `INFO`. It does not send `CHANGE`, `DEP`, open, stop, close, or
-partial-open commands.
+through the states you want to capture. Press `Ctrl-C` once when the actions are
+finished; the probe treats that as the end of the live capture and still writes
+the report. The probe authenticates locally, keeps one session open, listens for
+async frames, and polls read-only `STATUS`, `T4_STATUS`, and `INFO`. It does not
+send `CHANGE`, `DEP`, open, stop, close, or partial-open commands.
 
-After the live window it also records the current integration DMP status path
-and read-shaped NHK selector probes. The broad DMP sweep is still available with
-`--dmp-profile broad`, but it is opt-in because CU_WIFI devices can return only
-errors for those reads and the sweep can make the session noisy. Do not use
+After the live capture it also records the current integration DMP status path
+and read-shaped NHK selector probes. With `--exhaustive`, it also runs the
+broadest read-only post-live scan currently known: controller, OXI/radio,
+status, position, diagnostics, and `GET` selector candidates. Do not use
 `--include-sensitive` for reports shared publicly.
 
 ### Android
