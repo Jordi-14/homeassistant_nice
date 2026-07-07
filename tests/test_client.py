@@ -204,8 +204,8 @@ def test_read_status_combines_registers_into_status() -> None:
     assert status.auto_close is True
     assert status.maintenance_count == 12
     assert status.total_maneuver_count == 345
-    assert status.limit_closed is None
-    assert status.limit_open is None
+    assert status.limit_closed is True
+    assert status.limit_open is True
     assert status.diagnostics_io_byte == 3
     assert status.obstacle is True
     assert status.last_stop_reason == "obstacle_by_encoder"
