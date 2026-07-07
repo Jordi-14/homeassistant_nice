@@ -396,6 +396,21 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         await self._async_cancel_calibration()
         await self._async_send_dep_action(action)
 
+    async def async_write_dmp_register(
+        self,
+        group: int,
+        parameter: int,
+        value: int,
+        *,
+        size: int = 1,
+    ) -> None:
+        """Write a BusT4/DMP register and refresh extended status."""
+        if self.data is not None and self.data.is_moving:
+            raise HomeAssistantError("Nice DMP writes are blocked while the gate is moving")
+        await self._async_cancel_position_target()
+        await self._async_cancel_calibration()
+        await self._async_write_dmp_register(group, parameter, value, size=size)
+
     async def _async_send_action(
         self,
         action: str,
@@ -460,6 +475,42 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self._clear_position_simulation()
         if refresh:
             self._schedule_post_command_refresh()
+            await self.async_request_refresh()
+
+    async def _async_write_dmp_register(
+        self,
+        group: int,
+        parameter: int,
+        value: int,
+        *,
+        size: int = 1,
+        refresh: bool = True,
+    ) -> None:
+        """Write a BusT4/DMP register without touching target watchers."""
+        command_name = f"dmp_{group:02X}_{parameter:02X}_set"
+        started = time.monotonic()
+        try:
+            await self.hass.async_add_executor_job(
+                lambda: self.client.write_dmp_register(group, parameter, value, size=size)
+            )
+        except NiceBidiAuthError as err:
+            self.client.close()
+            self.connection_state = CONNECTION_STATE_AUTH_FAILED
+            self.last_error = str(err)
+            raise HomeAssistantError(f"Nice authentication failed: {err}") from err
+        except (NiceBidiConnectionError, OSError, ValueError) as err:
+            self.client.close()
+            self.connection_state = CONNECTION_STATE_FAILED
+            self.last_error = str(err)
+            raise HomeAssistantError(f"Nice DMP write failed: {err}") from err
+
+        self.connection_state = CONNECTION_STATE_CONNECTED
+        self.last_command = command_name
+        self.last_command_latency_ms = round((time.monotonic() - started) * 1000)
+        self.last_error = None
+        self.update_interval = IDLE_UPDATE_INTERVAL
+        self._extended_status_next_refresh_monotonic = 0.0
+        if refresh:
             await self.async_request_refresh()
 
     def _schedule_post_command_refresh(self) -> None:

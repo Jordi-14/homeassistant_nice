@@ -330,6 +330,36 @@ def build_dmp_read_frame(
     return bytes([0x55, length, *body, length])
 
 
+def build_dmp_write_frame(
+    daddr: int,
+    dendpoint: int,
+    group: int,
+    parameter: int,
+    value: bytes,
+) -> bytes:
+    """Build a DMP register write frame."""
+    if not value:
+        raise ValueError("value must contain at least one byte")
+    if len(value) > 0xFF:
+        raise ValueError("value must fit in a DMP byte-length payload")
+    args = [group, parameter, 0xA9, 0x00, len(value), *value]
+    sublen = len(args) + 1
+    marker = 0xC9 ^ sublen ^ daddr ^ dendpoint
+    body = [
+        daddr,
+        dendpoint,
+        0x50,
+        0x91,
+        0x08,
+        sublen,
+        marker,
+        *args,
+        _dmp_checksum(*args),
+    ]
+    length = len(body)
+    return bytes([0x55, length, *body, length])
+
+
 def build_dep_action_frame(
     command: int,
     *,
@@ -613,6 +643,24 @@ class NiceBidiClient:
             raise ValueError(f"action must be one of: {valid}")
         self._run_with_reconnect(lambda: self._send_dep_action_locked(action))
 
+    def write_dmp_register(
+        self,
+        group: int,
+        parameter: int,
+        value: int,
+        *,
+        size: int = 1,
+    ) -> None:
+        """Write a BusT4/DMP register."""
+        if size < 1:
+            raise ValueError("size must be at least 1")
+        if value < 0:
+            raise ValueError("value must be non-negative")
+        if value > (1 << (size * 8)) - 1:
+            raise ValueError(f"value must fit in {size} byte(s)")
+        payload = value.to_bytes(size, "big")
+        self._run_with_reconnect(lambda: self._write_dmp_register_locked(group, parameter, payload))
+
     def test_connection(self) -> NiceBidiStatus:
         """Authenticate and read status once."""
         try:
@@ -834,6 +882,21 @@ class NiceBidiClient:
             build_dep_action_frame(DEP_ACTION_COMMANDS[action]),
             0x00,
             0x03,
+            self.t4_timeout_ms,
+        )
+        if "<Error>" in _printable(response):
+            raise NiceBidiConnectionError(_printable(response))
+
+    def _write_dmp_register_locked(
+        self,
+        group: int,
+        parameter: int,
+        value: bytes,
+    ) -> None:
+        response, _ = self._t4_request_locked(
+            "DMP",
+            build_dmp_write_frame(*DMP_TARGET_CONTROLLER, group, parameter, value),
+            *DMP_TARGET_CONTROLLER,
             self.t4_timeout_ms,
         )
         if "<Error>" in _printable(response):

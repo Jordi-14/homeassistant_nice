@@ -316,6 +316,51 @@ async def test_send_dep_action_wraps_connection_errors(hass: HomeAssistant) -> N
     assert client.closed is True
 
 
+async def test_write_dmp_register_records_command_metadata(hass: HomeAssistant) -> None:
+    """Test DMP register write success handling."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance._extended_status_next_refresh_monotonic = 999999.0
+
+    await instance._async_write_dmp_register(0x04, 0x80, 1, refresh=False)
+
+    assert client.dmp_writes == [(0x04, 0x80, 1, 1)]
+    assert instance.connection_state == coordinator_module.CONNECTION_STATE_CONNECTED
+    assert instance.last_command == "dmp_04_80_set"
+    assert isinstance(instance.last_command_latency_ms, int)
+    assert instance.update_interval == coordinator_module.IDLE_UPDATE_INTERVAL
+    assert instance._extended_status_next_refresh_monotonic == 0.0
+
+
+async def test_write_dmp_register_blocks_while_gate_is_moving(hass: HomeAssistant) -> None:
+    """Test BusT4 config writes are blocked during motion."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.async_set_updated_data(make_status(state="opening"))
+
+    with pytest.raises(HomeAssistantError, match="blocked while the gate is moving"):
+        await instance.async_write_dmp_register(0x04, 0x80, 1)
+
+    assert client.dmp_writes == []
+
+
+async def test_write_dmp_register_wraps_connection_errors(hass: HomeAssistant) -> None:
+    """Test DMP register write connection error handling."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.write_dmp_register_error = NiceBidiConnectionError("offline")
+    instance.client = client
+
+    with pytest.raises(HomeAssistantError, match="DMP write failed"):
+        await instance._async_write_dmp_register(0x04, 0x80, 1, refresh=False)
+
+    assert instance.connection_state == coordinator_module.CONNECTION_STATE_FAILED
+    assert instance.last_error == "offline"
+    assert client.closed is True
+
+
 def test_encoder_position_helpers_support_forward_and_reverse_bounds(
     hass: HomeAssistant,
 ) -> None:
