@@ -43,6 +43,30 @@ Latest release: `v0.6.1`
   command latency, encoder calibration values, and device firmware/serial data.
 - Diagnostic buttons to refresh status immediately or force a local reconnect.
 
+### 0.7 Beta BusT4 Diagnostics
+
+The `0.7.0b1` beta branch adds disabled-by-default diagnostic entities based on
+the broader BusT4/OXI register map seen in
+[ngem1/esphome-nice-bidiwifi](https://github.com/ngem1/esphome-nice-bidiwifi)
+and community testing:
+
+- Controller configuration/status sensors for max open, partial-open positions,
+  opening/closing speed, opening/closing force, pause time, maintenance
+  threshold, maintenance count, total maneuver count, last stop reason, and raw
+  diagnostic bytes.
+- Binary diagnostic sensors for limit switches, photocell, obstacle detection,
+  inputs 1-4, auto close, photo close, always close, standby, pre-flash, key
+  lock, and OXI receiver detection.
+- OXI/radio metadata sensors for product, firmware, hardware, and description
+  when the radio endpoint answers locally.
+
+The new BusT4 registers are read-only and optional. Core cover state still uses
+the existing DMP status registers every normal refresh; the broader diagnostic
+scan runs at startup and then at most every 5 minutes while the gate is idle,
+with cached diagnostic values reused between scans. This beta does not write
+controller configuration registers such as speed, force, auto-close settings, or
+partial-open positions.
+
 ## Compatibility
 
 Known working setup:

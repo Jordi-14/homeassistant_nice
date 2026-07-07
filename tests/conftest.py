@@ -63,6 +63,23 @@ def make_status(
     current_position: int | None = 424,
     closed_position: int | None = 0,
     open_position: int | None = 1000,
+    max_open_position: int | None = 1010,
+    partial_open_1_position: int | None = 250,
+    opening_speed: int | None = 60,
+    closing_speed: int | None = 55,
+    opening_force: int | None = 70,
+    closing_force: int | None = 65,
+    maintenance_count: int | None = 12,
+    total_maneuver_count: int | None = 345,
+    limit_closed: bool | None = False,
+    limit_open: bool | None = True,
+    photocell: bool | None = False,
+    obstacle: bool | None = True,
+    auto_close: bool | None = True,
+    key_lock: bool | None = False,
+    last_stop_reason: str | None = "obstacle_by_encoder",
+    oxi_detected: bool | None = True,
+    oxi_product: str | None = "OXI",
 ) -> NiceBidiStatus:
     """Create a Nice status object."""
     return NiceBidiStatus(
@@ -72,6 +89,23 @@ def make_status(
         closed_position=closed_position,
         open_position=open_position,
         registers={"04/01": "02"},
+        max_open_position=max_open_position,
+        partial_open_1_position=partial_open_1_position,
+        opening_speed=opening_speed,
+        closing_speed=closing_speed,
+        opening_force=opening_force,
+        closing_force=closing_force,
+        maintenance_count=maintenance_count,
+        total_maneuver_count=total_maneuver_count,
+        limit_closed=limit_closed,
+        limit_open=limit_open,
+        photocell=photocell,
+        obstacle=obstacle,
+        auto_close=auto_close,
+        key_lock=key_lock,
+        last_stop_reason=last_stop_reason,
+        oxi_detected=oxi_detected,
+        oxi_product=oxi_product,
     )
 
 
@@ -122,9 +156,11 @@ class FakeClient:
         self.send_action_error: Exception | None = None
         self.send_dep_action_error: Exception | None = None
         self.info_reads = 0
+        self.read_status_include_extended: list[bool] = []
 
-    def read_status(self) -> NiceBidiStatus:
+    def read_status(self, *, include_extended: bool = False) -> NiceBidiStatus:
         """Return status or raise a configured error."""
+        self.read_status_include_extended.append(include_extended)
         if self.read_status_error is not None:
             raise self.read_status_error
         return self.read_status_result

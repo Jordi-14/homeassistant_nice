@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from dataclasses import fields, replace
 from datetime import UTC, datetime
 import json
 import logging
@@ -75,6 +76,7 @@ POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND = 1.0
 POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR = 0.8
 POSITION_SIMULATION_START_GRACE_SECONDS = 8.0
 POSITION_SIMULATION_TIMEOUT_PADDING_SECONDS = 30.0
+EXTENDED_STATUS_REFRESH_SECONDS = 300.0
 
 CALIBRATION_STORAGE_VERSION = 1
 CALIBRATION_TARGETS = (20, 40, 60, 80)
@@ -101,6 +103,19 @@ DEP_MOVEMENT_ACTIONS = {
     DEP_ACTION_PARTIAL_OPEN_3,
     DEP_ACTION_STEP_STEP,
 }
+CORE_STATUS_FIELD_NAMES = frozenset(
+    {
+        "state",
+        "position",
+        "current_position",
+        "closed_position",
+        "open_position",
+        "registers",
+    }
+)
+EXTENDED_STATUS_FIELD_NAMES = tuple(
+    field.name for field in fields(NiceBidiStatus) if field.name not in CORE_STATUS_FIELD_NAMES
+)
 
 
 def _unknown_status() -> NiceBidiStatus:
@@ -141,6 +156,8 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self._position_simulation_confirmed_moving = False
         self._position_simulation_target_position: float | None = None
         self._position_simulation_speed_percent_per_second: float | None = None
+        self._extended_status_cache: NiceBidiStatus | None = None
+        self._extended_status_next_refresh_monotonic = 0.0
         self._calibration_task: asyncio.Task[None] | None = None
         self.calibration_state = CALIBRATION_STATE_NOT_CALIBRATED
         self.calibration_last_error: str | None = None
@@ -236,7 +253,8 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             return _unknown_status()
 
         try:
-            status = self.client.read_status()
+            include_extended = self._should_read_extended_status()
+            status = self.client.read_status(include_extended=include_extended)
         except NiceBidiConnectionError as err:
             if nice_bidi_error_code(err) != "14":
                 raise
@@ -253,12 +271,38 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             )
             return _unknown_status()
 
+        if include_extended:
+            self._cache_extended_status(status)
+        else:
+            status = self._merge_cached_extended_status(status)
         if self.device_info is None:
             try:
                 self.device_info = self.client.read_info()
             except NiceBidiError as err:
                 _LOGGER.debug("Could not read Nice INFO metadata: %s", err)
         return status
+
+    def _should_read_extended_status(self) -> bool:
+        """Return true when the slower BusT4 diagnostic scan is due."""
+        status = self.data
+        if status is not None and status.is_moving:
+            return False
+        return time.monotonic() >= self._extended_status_next_refresh_monotonic
+
+    def _cache_extended_status(self, status: NiceBidiStatus) -> None:
+        """Store the latest broad BusT4 scan."""
+        self._extended_status_cache = status
+        self._extended_status_next_refresh_monotonic = time.monotonic() + EXTENDED_STATUS_REFRESH_SECONDS
+
+    def _merge_cached_extended_status(self, status: NiceBidiStatus) -> NiceBidiStatus:
+        """Merge cached diagnostic fields into a fresh core status read."""
+        cached = self._extended_status_cache
+        if cached is None:
+            return status
+        registers = dict(cached.registers)
+        registers.update(status.registers)
+        values = {name: getattr(cached, name) for name in EXTENDED_STATUS_FIELD_NAMES}
+        return replace(status, registers=registers, **values)
 
     def _supports_high_level_actions(self) -> bool:
         """Return true when INFO advertises writable DoorAction support."""

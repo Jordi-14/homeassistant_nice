@@ -26,12 +26,13 @@ async def test_diagnostics_redacts_sensitive_data(hass) -> None:
     assert diagnostics["entry"][CONF_SOURCE_ID] == "**REDACTED**"
     assert diagnostics["device_info"]["interface_serial"] == "**REDACTED**"
     assert diagnostics["device_info"]["device_serial"] == "**REDACTED**"
-    assert diagnostics["status"] == {
-        "state": "opening",
-        "position": 42.4,
-        "display_position": 42.4,
-        "display_position_estimated": False,
-        "position_simulation_action": None,
-        "position_simulation_speed_percent_per_second": None,
-        "is_moving": True,
-    }
+    assert diagnostics["status"]["state"] == "opening"
+    assert diagnostics["status"]["position"] == 42.4
+    assert diagnostics["status"]["current_position"] == 424
+    assert diagnostics["status"]["is_moving"] is True
+    assert diagnostics["status"]["bus_t4"]["opening_speed"] == 60
+    assert diagnostics["status"]["bus_t4"]["maintenance_count"] == 12
+    assert diagnostics["status"]["bus_t4"]["limit_open"] is True
+    assert diagnostics["status"]["bus_t4"]["obstacle"] is True
+    assert diagnostics["status"]["bus_t4"]["oxi_product"] == "OXI"
+    assert "dmp_registers" not in diagnostics["status"]

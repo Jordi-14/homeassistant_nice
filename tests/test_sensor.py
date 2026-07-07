@@ -26,6 +26,10 @@ class TestNiceBidiSensorProperties:
         assert "gate_position" in keys
         assert "position_calibration_report" in keys
         assert "control_unit_serial" in keys
+        assert "opening_speed" in keys
+        assert "maintenance_count" in keys
+        assert "last_stop_reason" in keys
+        assert "oxi_product" in keys
 
     def test_connection_state_sensor(self) -> None:
         coordinator = FakeCoordinator()
@@ -50,6 +54,16 @@ class TestNiceBidiSensorProperties:
         coordinator = FakeCoordinator()
         entity = NiceBidiSensor(coordinator, config_entry(), _description("current_encoder_position"))
         assert entity.native_value == 424
+
+    def test_extended_bus_t4_sensors_read_status(self) -> None:
+        coordinator = FakeCoordinator()
+
+        assert NiceBidiSensor(coordinator, config_entry(), _description("opening_speed")).native_value == 60
+        assert NiceBidiSensor(coordinator, config_entry(), _description("opening_force")).native_value == 70
+        assert NiceBidiSensor(coordinator, config_entry(), _description("maintenance_count")).native_value == 12
+        assert NiceBidiSensor(coordinator, config_entry(), _description("total_maneuver_count")).native_value == 345
+        assert NiceBidiSensor(coordinator, config_entry(), _description("last_stop_reason")).native_value == "obstacle_by_encoder"
+        assert NiceBidiSensor(coordinator, config_entry(), _description("oxi_product")).native_value == "OXI"
 
     def test_gate_position_sensor_reads_real_status_position(self) -> None:
         coordinator = FakeCoordinator()

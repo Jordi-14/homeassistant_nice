@@ -174,15 +174,24 @@ def test_read_status_combines_registers_into_status() -> None:
                 (0x04, 0x11): (5000).to_bytes(2, "big"),
                 (0x04, 0x18): (10000).to_bytes(2, "big"),
                 (0x04, 0x19): (0).to_bytes(2, "big"),
+                (0x04, 0x42): b"\x64",
+                (0x04, 0x4A): b"\x46",
+                (0x04, 0x80): b"\x01",
+                (0x04, 0xB2): (12).to_bytes(2, "big"),
+                (0x04, 0xB3): (345).to_bytes(2, "big"),
+                (0x04, 0xD0): b"\x01",
+                (0x04, 0xD1): b"\x00\x00\x03",
             }
             key = (plain_payload[9], plain_payload[10])
+            if key not in values:
+                return b"<Response><Error><Code>14</Code></Error></Response>", []
             return b"<Response />", [_dmp_response(*key, values[key])]
 
     status = StatusClient(
         "192.0.2.10",
         443,
         NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
-    )._read_status_locked()
+    )._read_status_locked(include_extended=True)
 
     assert status.state == "opening"
     assert status.position == 50.0
@@ -190,6 +199,15 @@ def test_read_status_combines_registers_into_status() -> None:
     assert status.closed_position == 0
     assert status.open_position == 10000
     assert status.registers["04/01"] == "02"
+    assert status.opening_speed == 100
+    assert status.opening_force == 70
+    assert status.auto_close is True
+    assert status.maintenance_count == 12
+    assert status.total_maneuver_count == 345
+    assert status.limit_closed is True
+    assert status.limit_open is True
+    assert status.obstacle is True
+    assert status.last_stop_reason == "obstacle_by_encoder"
 
 
 def test_read_info_extracts_interface_and_device_metadata() -> None:

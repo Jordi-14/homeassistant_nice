@@ -71,6 +71,41 @@ async def test_update_data_reads_status_and_caches_device_info(
 
     await instance._async_update_data()
     assert client.info_reads == 1
+    assert client.read_status_include_extended == [True, False]
+
+
+async def test_update_data_reuses_cached_extended_status_between_broad_reads(
+    hass: HomeAssistant,
+) -> None:
+    """Test broad BusT4 diagnostics are cached between slower refreshes."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+
+    first = await instance._async_update_data()
+    assert first.opening_speed == 60
+
+    client.read_status_result = make_status(
+        state="open",
+        position=100.0,
+        current_position=1000,
+        opening_speed=None,
+        opening_force=None,
+        auto_close=None,
+        limit_open=None,
+        oxi_detected=None,
+        oxi_product=None,
+        last_stop_reason=None,
+    )
+
+    second = await instance._async_update_data()
+
+    assert client.read_status_include_extended == [True, False]
+    assert second.position == 100.0
+    assert second.opening_speed == 60
+    assert second.auto_close is True
+    assert second.limit_open is True
+    assert second.oxi_product == "OXI"
 
 
 async def test_update_data_ignores_device_info_read_errors(
