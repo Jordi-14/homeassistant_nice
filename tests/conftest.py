@@ -263,6 +263,10 @@ class FakeCoordinator:
         """Return active simulated movement speed."""
         return None
 
+    def async_add_listener(self, update_callback, context=None):
+        """Return a no-op listener remover for registered CoordinatorEntity tests."""
+        return lambda: None
+
     async def async_send_action(self, action: str) -> None:
         """Record a cover action."""
         self.calls.append(("action", action))

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
+from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN, SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
@@ -17,7 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_entity_name, bidi_unique_id
+from .entity import bidi_device_info, bidi_entity_name, bidi_suggested_entity_id, bidi_unique_id
 from .runtime import get_coordinator
 
 
@@ -433,6 +433,7 @@ class NiceBidiSensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SensorEnt
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
         self._attr_name = bidi_entity_name(entry, description.name)
+        self.entity_id = bidi_suggested_entity_id(SENSOR_DOMAIN, entry, description.name)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 
