@@ -15,8 +15,7 @@ that cannot be validated against Home Assistant's normal trust store. The
 integration therefore keeps certificate verification disabled for this local
 socket and relies on LAN isolation plus the NHK credentials for access control.
 
-Latest stable release: `v0.6.1`
-Latest beta release: `v0.7.0b8`
+Latest stable release: `v0.7.0`
 
 ## Features
 
@@ -44,10 +43,10 @@ Latest beta release: `v0.7.0b8`
   command latency, encoder calibration values, and device firmware/serial data.
 - Diagnostic buttons to refresh status immediately or force a local reconnect.
 
-### 0.7 Beta BusT4 Diagnostics
+### 0.7 BusT4 Diagnostics
 
-The `0.7.0b8` beta branch adds hidden-by-default diagnostic and configuration
-entities based on the broader BusT4/OXI register map seen in
+The `0.7.0` release adds diagnostic and configuration entities based on the
+broader BusT4/OXI register map seen in
 [ngem1/esphome-nice-bidiwifi](https://github.com/ngem1/esphome-nice-bidiwifi)
 and community testing:
 
@@ -60,18 +59,18 @@ and community testing:
   pre-flash, key lock, and OXI receiver detection.
 - OXI/radio metadata sensors for product, firmware, hardware, and description
   when the radio endpoint answers locally.
-- Hidden-by-default writable BusT4 configuration entities for auto close, photo
-  close, always close, standby, pre-flash, key lock, opening/closing
-  speed/force, pause time, photo/always-close timing and modes, partial-open
-  positions, and maintenance threshold.
+- Writable BusT4 configuration entities for auto close, photo close, always
+  close, standby, pre-flash, key lock, opening/closing speed/force, pause time,
+  photo/always-close timing and modes, partial-open positions, and maintenance
+  threshold.
 
 The new BusT4 registers are read-only and optional. Core cover state still uses
 the existing DMP status registers every normal refresh; the broader diagnostic
 scan runs at startup and then at most every 5 minutes while the gate is idle,
-with cached diagnostic values reused between scans. This beta does not write
-controller configuration registers such as speed, force, auto-close settings, or
-partial-open positions unless one of the hidden BusT4 configuration entities is
-changed manually.
+with cached diagnostic values reused between scans. The integration does not
+write controller configuration registers such as speed, force, auto-close
+settings, or partial-open positions unless one of the BusT4 configuration
+entities is changed manually.
 
 The BusT4 configuration entities use DMP `RUN_SET` writes. The single-byte
 switches and number entities mirror the write shape used by
@@ -79,9 +78,9 @@ switches and number entities mirror the write shape used by
 use two-byte big-endian payloads matching the values read from those registers.
 Mode registers are exposed as raw bytes because tested controllers can report
 values outside the initially assumed small enum range.
-Treat this as beta functionality: only change values while the gate is visible
-and you can recover the original settings. The writable BusT4 entities are
-unavailable while the gate is moving.
+Treat this as advanced functionality: only change values while the gate is
+visible and you can recover the original settings. The writable BusT4 entities
+are unavailable while the gate is moving.
 
 The `04/D1` diagnostics byte is also exposed raw for comparison. Its decoded
 limit-switch and photocell bits are experimental: on the tested NewRobus
