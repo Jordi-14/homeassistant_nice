@@ -23,7 +23,7 @@ from .client import (
     DEP_ACTION_UNLOCK,
 )
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_entity_name, bidi_suggested_entity_id, bidi_unique_id
+from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
 from .runtime import get_coordinator
 
 PARALLEL_UPDATES = 1
@@ -133,7 +133,7 @@ async def async_setup_entry(
 class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEntity):
     """Nice diagnostic button."""
 
-    _attr_has_entity_name = False
+    _attr_has_entity_name = True
 
     entity_description: NiceBidiButtonEntityDescription
 
@@ -148,7 +148,7 @@ class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEnt
         self._entry = entry
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self._attr_name = bidi_entity_name(entry, description.name)
+        self._attr_name = description.name
         self.entity_id = bidi_suggested_entity_id(BUTTON_DOMAIN, entry, description.name)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         self._attr_entity_registry_visible_default = description.entity_registry_visible_default

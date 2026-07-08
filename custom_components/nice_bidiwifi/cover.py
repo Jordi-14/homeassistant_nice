@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_STOPPED, NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_entity_name, bidi_suggested_entity_id, bidi_unique_id
+from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
 from .runtime import get_coordinator
 
 PARALLEL_UPDATES = 1
@@ -32,14 +32,14 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
     """Nice gate cover."""
 
     _attr_device_class = CoverDeviceClass.GATE
-    _attr_has_entity_name = False
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator: NiceBidiDataUpdateCoordinator, entry: ConfigEntry) -> None:
         """Initialize the cover."""
         super().__init__(coordinator)
         self._entry = entry
         self._attr_unique_id = bidi_unique_id(entry, "cover")
-        self._attr_name = bidi_entity_name(entry)
+        self._attr_name = None
         self.entity_id = bidi_suggested_entity_id(COVER_DOMAIN, entry)
 
     @property

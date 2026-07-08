@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_entity_name, bidi_suggested_entity_id, bidi_unique_id
+from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
 from .runtime import get_coordinator
 
 
@@ -157,7 +157,7 @@ async def async_setup_entry(
 class NiceBidiBinarySensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], BinarySensorEntity):
     """Nice BusT4 binary diagnostic sensor."""
 
-    _attr_has_entity_name = False
+    _attr_has_entity_name = True
 
     entity_description: NiceBidiBinarySensorEntityDescription
 
@@ -172,7 +172,7 @@ class NiceBidiBinarySensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Bin
         self._entry = entry
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self._attr_name = bidi_entity_name(entry, description.name)
+        self._attr_name = description.name
         self.entity_id = bidi_suggested_entity_id(BINARY_SENSOR_DOMAIN, entry, description.name)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         self._attr_entity_registry_visible_default = description.entity_registry_visible_default
