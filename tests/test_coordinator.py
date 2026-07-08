@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from itertools import count
 from typing import Any
 
 import pytest
@@ -601,6 +602,11 @@ def test_position_bounds_validation_and_endpoint_helpers() -> None:
             make_status(closed_position=10, open_position=10)
         )
 
+    assert NiceBidiDataUpdateCoordinator._has_encoder_calibration_data(open_status)
+    assert not NiceBidiDataUpdateCoordinator._has_encoder_calibration_data(
+        make_status(position=100.0, current_position=None, closed_position=None, open_position=None)
+    )
+
 
 def test_calibrated_stop_raw_interpolates_valid_samples(
     hass: HomeAssistant,
@@ -627,6 +633,146 @@ def test_calibrated_stop_raw_interpolates_valid_samples(
     )
 
     assert stop_raw == 225
+
+
+def test_time_calibrated_stop_delay_uses_full_travel_speed(hass: HomeAssistant) -> None:
+    """Test time-based calibration can calculate set-position stop delays."""
+    instance = _coordinator(hass)
+    instance.calibration_profile = {
+        "mode": "time",
+        "travel_speed": {
+            "open": {
+                "speed_percent_per_second": 5.0,
+            },
+            "close": {
+                "speed_percent_per_second": 4.0,
+            },
+        },
+    }
+
+    assert instance._calibrated_stop_delay_seconds(20.0, 70, "open") == 10.0
+    assert instance._calibrated_stop_delay_seconds(70.0, 20, "close") == 12.5
+
+    instance.calibration_profile = {
+        "travel_speed": {
+            "open": {
+                "speed_percent_per_second": 5.0,
+            }
+        }
+    }
+    assert instance._calibrated_stop_delay_seconds(20.0, 70, "open") is None
+
+
+async def test_time_based_calibration_builds_full_travel_profile(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test calibration can fall back to timing when encoder data is missing."""
+    instance = _coordinator(hass)
+    actions: list[str] = []
+    statuses = iter(
+        [
+            make_status(state="closed", position=0.0, current_position=None, closed_position=None, open_position=None),
+            make_status(state="closed", position=0.0, current_position=None, closed_position=None, open_position=None),
+            make_status(state="opening", position=None, current_position=None, closed_position=None, open_position=None),
+            make_status(state="open", position=100.0, current_position=None, closed_position=None, open_position=None),
+            make_status(state="open", position=100.0, current_position=None, closed_position=None, open_position=None),
+            make_status(state="closing", position=None, current_position=None, closed_position=None, open_position=None),
+            make_status(state="closed", position=0.0, current_position=None, closed_position=None, open_position=None),
+        ]
+    )
+    clock = count(0)
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    async def fake_read_motion_status() -> Any:
+        return next(statuses)
+
+    async def fake_send_action(action: str, **_kwargs: Any) -> None:
+        actions.append(action)
+
+    monkeypatch.setattr(coordinator_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(coordinator_module.time, "monotonic", lambda: next(clock))
+    instance._async_read_motion_status = fake_read_motion_status
+    instance._async_send_action = fake_send_action
+
+    profile = await instance._async_build_time_position_calibration(
+        datetime.now(coordinator_module.UTC),
+        make_status(state="closed", position=0.0, current_position=None, closed_position=None, open_position=None),
+    )
+
+    assert profile["mode"] == "time"
+    assert profile["version"] == 6
+    assert actions == ["open", "close"]
+    assert profile["travel_speed"]["open"]["mode"] == "time"
+    assert profile["travel_speed"]["open"]["speed_percent_per_second"] > 0
+    assert profile["travel_speed"]["close"]["speed_percent_per_second"] > 0
+
+
+async def test_timed_set_position_ignores_stale_position_until_delay(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test time-calibrated set-position does not stop on stale endpoint position."""
+    instance = _coordinator(hass)
+    actions: list[str] = []
+    reads = 0
+    clock = count(0)
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    async def fake_read_motion_status() -> Any:
+        nonlocal reads
+        reads += 1
+        return make_status(
+            state="opening",
+            position=100.0,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        )
+
+    async def fake_send_action(action: str, **_kwargs: Any) -> None:
+        actions.append(action)
+
+    monkeypatch.setattr(coordinator_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(coordinator_module.time, "monotonic", lambda: next(clock))
+    instance._async_read_motion_status = fake_read_motion_status
+    instance._async_send_action = fake_send_action
+
+    await instance._async_stop_at_position(50, "open", stop_delay_seconds=2.0)
+
+    assert actions == ["stop"]
+    assert reads == 2
+
+
+async def test_position_calibration_falls_back_to_time_profile_without_encoder(
+    hass: HomeAssistant,
+) -> None:
+    """Test the main calibration builder chooses time mode without encoder bounds."""
+    instance = _coordinator(hass)
+
+    async def fake_read_motion_status() -> Any:
+        return make_status(
+            state="closed",
+            position=0.0,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        )
+
+    async def fake_time_calibration(_started_at: datetime, status: Any) -> dict[str, Any]:
+        assert status.current_position is None
+        return {"mode": "time", "travel_speed": {}}
+
+    instance._async_read_motion_status = fake_read_motion_status
+    instance._async_build_time_position_calibration = fake_time_calibration
+
+    profile = await instance._async_build_position_calibration()
+
+    assert profile["mode"] == "time"
 
 
 async def test_load_calibration_handles_empty_stored_profile(
@@ -809,6 +955,60 @@ def test_calibration_report_summary_attributes_and_formatting(
     assert "Full-travel speed:" in formatted
     assert "Calibration points:" in formatted
     assert "Event log:" in formatted
+
+
+def test_time_calibration_report_summary_attributes_and_formatting(
+    hass: HomeAssistant,
+) -> None:
+    """Test report generation for time-based calibration profiles."""
+    instance = _coordinator(hass)
+    instance.calibration_state = coordinator_module.CALIBRATION_STATE_CALIBRATED
+    profile = {
+        "version": 6,
+        "mode": "time",
+        "updated_at": "2026-07-08T10:05:00+00:00",
+        "poll_seconds": 0.5,
+        "settle_seconds": 2.0,
+        "command_pause_seconds": 0.5,
+        "max_attempts": 1,
+        "stability_attempts": 1,
+        "target_tolerance_percent": 2.0,
+        "bounds": {"mode": "time"},
+        "travel_speed": {
+            "open": {
+                "mode": "time",
+                "speed_percent_per_second": 4.0,
+                "duration_ms": 25000,
+                "start_percent": 0.0,
+                "end_percent": 100.0,
+            },
+            "close": {
+                "mode": "time",
+                "speed_percent_per_second": 5.0,
+                "duration_ms": 20000,
+                "start_percent": 100.0,
+                "end_percent": 0.0,
+            },
+        },
+        "samples": {"open": [], "close": []},
+        "events": [],
+    }
+
+    report = instance._build_calibration_report(profile)
+    instance.calibration_report = report
+
+    assert report["quality"] == "time_based"
+    assert report["profile_mode"] == "time"
+    assert report["point_count"] == 0
+    assert instance.calibration_report_summary.startswith("time_based:")
+
+    attrs = instance.calibration_report_attributes
+    assert attrs["profile_mode"] == "time"
+    assert attrs["travel_speed"]["close"]["speed_percent_per_second"] == 5.0
+
+    formatted = instance._format_calibration_report(report)
+    assert "Profile mode: time" in formatted
+    assert "Full-travel speed:" in formatted
 
 
 def test_live_calibration_report_and_event_recording(

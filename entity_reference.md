@@ -86,7 +86,7 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Button | Unlock | `unlock` | Sends the controller unlock action. | Hidden | Enabled | Pair for the advanced lock action. |
 | Button | Refresh status | `refresh_status` | Requests an immediate coordinator refresh. | Hidden | Enabled | Troubleshooting button, not a normal dashboard control. |
 | Button | Reconnect | `reconnect` | Forces the local connection to reconnect. | Hidden | Enabled | Troubleshooting button, not a normal dashboard control. |
-| Button | Calibrate positions | `calibrate_positions` | Runs the position calibration routine for intermediate set-position accuracy. | Hidden | Disabled | Moves the gate repeatedly; users should enable it deliberately. |
+| Button | Calibrate positions | `calibrate_positions` | Runs the position calibration routine for intermediate set-position accuracy or time-based travel measurement. | Hidden | Disabled | Moves the gate repeatedly; users should enable it deliberately. |
 | Binary sensor | Closed limit switch | `limit_closed` | Experimental decoded closed-limit bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |
 | Binary sensor | Open limit switch | `limit_open` | Experimental decoded open-limit bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |
 | Binary sensor | Photocell | `photocell` | Experimental decoded photocell bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |

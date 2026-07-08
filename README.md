@@ -28,13 +28,17 @@ Latest stable release: `v0.7.0`
   courtesy light timer, lock, and unlock.
 - Coarse set-position support by moving in the required direction and sending
   stop once the target percentage is reached or crossed.
-- Optional position calibration that moves through 20/40/60/80% targets, learns
-  direction-specific stop correction, and interpolates between calibrated points.
-- Calibration measures one full opening and one full closing at the start and
-  uses 80% of the measured direction speed for display animation. Without
-  calibration, display animation falls back to 1% per second.
-- Detailed calibration quality report with per-target attempts, final errors,
-  corrected stop thresholds, command latency, movement timing, and event logs.
+- Optional position calibration. Devices with encoder data move through
+  20/40/60/80% targets, learn direction-specific stop correction, and
+  interpolate between calibrated points. Devices without encoder data fall back
+  to time-based full-travel calibration for better display animation and
+  approximate set-position timing.
+- Calibration measures one full opening and one full closing and uses 80% of
+  the measured direction speed for display animation. Without calibration,
+  display animation falls back to 1% per second.
+- Detailed calibration quality report with per-target attempts when encoder
+  data is available, full-travel timing, command latency, movement timing, and
+  event logs.
 - Real state from DMP register `04/01` when the controller exposes that path.
 - Real position from DMP registers `04/11`, `04/18`, and `04/19` when encoder
   bounds are available.
@@ -541,7 +545,10 @@ The calibration button is a hidden-by-default diagnostic button. Unhide it
 only when the gate is visible, the path is clear, and you are ready for the gate
 to move repeatedly for several minutes.
 
-When you press the calibration button, the integration:
+When you press the calibration button, the integration first checks whether the
+device exposes raw encoder position data.
+
+With encoder data available, the integration:
 
 1. Moves fully closed first so the first opening test starts from a known
    physical position.
@@ -569,6 +576,19 @@ non-outlier attempt. If the gate is still moving after the settle timeout,
 calibration sends another `stop` command and records that try as invalid instead
 of learning from a moving position. Later intermediate position requests use the
 calibrated table and interpolate between neighboring points when possible.
+
+Without encoder data, the integration uses a lower-confidence time-based
+calibration:
+
+1. Moves fully closed first.
+2. Measures one full opening from closed to open.
+3. Measures one full closing from open to closed.
+4. Stores direction-specific full-travel durations and speeds.
+
+This time-based profile improves display animation and can provide approximate
+set-position timing by moving for the calculated duration and sending `stop`.
+It does not learn precise per-target stop corrections because the integration
+cannot verify the final raw position after each stop.
 
 During calibration it polls every 0.5 seconds and waits 0.5 seconds after a
 stop or fully reached endpoint before sending the next movement command.

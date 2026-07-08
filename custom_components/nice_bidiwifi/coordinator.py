@@ -863,41 +863,63 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
 
         action = "open" if target > current else "close"
         stop_raw = self._calibrated_stop_raw(target, action, status)
+        stop_delay_seconds = None
+        if stop_raw is None:
+            stop_delay_seconds = self._calibrated_stop_delay_seconds(current, target, action)
         await self._async_cancel_position_target()
         await self._async_send_action(action, refresh=False, simulation_target_position=target)
         self._position_target_task = self.hass.async_create_task(
-            self._async_stop_at_position(target, action, stop_raw),
+            self._async_stop_at_position(target, action, stop_raw, stop_delay_seconds=stop_delay_seconds),
             name=f"{DOMAIN} stop at {target}%",
         )
 
-    async def _async_stop_at_position(self, target: int, action: str, stop_raw: int | None = None) -> None:
+    async def _async_stop_at_position(
+        self,
+        target: int,
+        action: str,
+        stop_raw: int | None = None,
+        *,
+        stop_delay_seconds: float | None = None,
+    ) -> None:
         """Poll live position and stop after crossing the target."""
         moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
         terminal_states = {STATE_OPEN, STATE_CLOSED, STATE_STOPPED}
         task = asyncio.current_task()
         started_moving = False
+        movement_started_monotonic: float | None = None
+        timing_started_monotonic = time.monotonic()
         movement_start_deadline = time.monotonic() + 8.0
         try:
             while True:
                 await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
                 status = await self._async_read_motion_status()
 
+                if status.state == moving_state:
+                    started_moving = True
+                    if movement_started_monotonic is None:
+                        movement_started_monotonic = time.monotonic()
+
                 position = status.position
-                if position is None:
-                    continue
-                if stop_raw is not None and status.current_position is not None:
-                    if self._raw_reached(action, status, status.current_position, stop_raw):
-                        await self._async_send_action("stop")
-                        return
-                else:
-                    if action == "open" and position >= target:
-                        await self._async_send_action("stop")
-                        return
-                    if action == "close" and position <= target:
+                if position is not None:
+                    if stop_raw is not None and status.current_position is not None:
+                        if self._raw_reached(action, status, status.current_position, stop_raw):
+                            await self._async_send_action("stop")
+                            return
+                    elif stop_delay_seconds is None:
+                        if action == "open" and position >= target:
+                            await self._async_send_action("stop")
+                            return
+                        if action == "close" and position <= target:
+                            await self._async_send_action("stop")
+                            return
+                if stop_delay_seconds is not None:
+                    timing_anchor = movement_started_monotonic or timing_started_monotonic
+                    if time.monotonic() - timing_anchor >= stop_delay_seconds and (
+                        started_moving or time.monotonic() > movement_start_deadline
+                    ):
                         await self._async_send_action("stop")
                         return
                 if status.state == moving_state:
-                    started_moving = True
                     continue
                 if started_moving and (status.state in terminal_states or status.state != moving_state):
                     return
@@ -987,6 +1009,18 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         started_at = datetime.now(UTC)
         self._add_calibration_event("run", "Reading initial status")
         start_status = await self._async_read_motion_status()
+        if not self._has_encoder_calibration_data(start_status):
+            self._add_calibration_event(
+                "run",
+                "Encoder position data unavailable; using time-based calibration",
+                state=start_status.state,
+                position=start_status.position,
+                current_raw=start_status.current_position,
+                closed_raw=start_status.closed_position,
+                open_raw=start_status.open_position,
+            )
+            return await self._async_build_time_position_calibration(started_at, start_status)
+
         self._validate_position_bounds(start_status)
         self._add_calibration_event(
             "run",
@@ -1059,6 +1093,165 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 "close": sorted(closing_samples, key=lambda sample: sample["target_percent"]),
             },
         }
+
+    async def _async_build_time_position_calibration(
+        self,
+        started_at: datetime,
+        start_status: NiceBidiStatus,
+    ) -> CalibrationProfile:
+        """Build a time-based calibration profile for devices without encoders."""
+        self._add_calibration_event(
+            "run",
+            "Initial time-calibration status read",
+            state=start_status.state,
+            position=start_status.position,
+        )
+        self._add_calibration_event("speed", "Moving fully closed before time calibration")
+        closed_status = await self._async_move_to_end_without_encoder("close")
+        self._add_calibration_event("speed", "Measuring timed full opening")
+        opening_travel = await self._async_measure_full_travel_time("open")
+        self._add_calibration_event("speed", "Measuring timed full closing")
+        closing_travel = await self._async_measure_full_travel_time("close")
+        updated_at = datetime.now(UTC)
+
+        return {
+            "version": 6,
+            "mode": "time",
+            "created_at": started_at.isoformat(),
+            "updated_at": updated_at.isoformat(),
+            "poll_seconds": POSITION_TARGET_POLL_SECONDS,
+            "settle_seconds": CALIBRATION_SETTLE_SECONDS,
+            "command_pause_seconds": CALIBRATION_COMMAND_PAUSE_SECONDS,
+            "max_attempts": 1,
+            "stability_attempts": 1,
+            "target_tolerance_percent": CALIBRATION_TARGET_TOLERANCE_PERCENT,
+            "targets": [],
+            "bounds": {
+                "mode": "time",
+                "initial_state": start_status.state,
+                "initial_position": start_status.position,
+                "closed_state": closed_status.state,
+                "final_state": closing_travel.get("end_state"),
+            },
+            "travel_speed": {
+                "open": opening_travel,
+                "close": closing_travel,
+            },
+            "samples": {
+                "open": [],
+                "close": [],
+            },
+        }
+
+    async def _async_move_to_end_without_encoder(self, action: str) -> NiceBidiStatus:
+        """Move fully open or closed using only state/endpoint status."""
+        status = await self._async_read_motion_status()
+        if self._is_at_endpoint(status, action):
+            self._add_calibration_event(
+                "endpoint",
+                f"Already at {action} endpoint",
+                action=action,
+                current_percent=status.position,
+                state=status.state,
+                mode="time",
+            )
+            return status
+
+        self._add_calibration_event(
+            "endpoint",
+            f"Moving to {action} endpoint",
+            action=action,
+            current_percent=status.position,
+            state=status.state,
+            mode="time",
+        )
+        await self._async_send_action(action, refresh=False, simulate=False)
+        started = time.monotonic()
+        moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
+        started_moving = False
+        movement_start_deadline = started + 8.0
+        while time.monotonic() - started < CALIBRATION_MOVEMENT_TIMEOUT_SECONDS:
+            await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
+            status = await self._async_read_motion_status()
+            if self._is_at_endpoint(status, action):
+                self._add_calibration_event(
+                    "endpoint",
+                    f"Reached {action} endpoint",
+                    action=action,
+                    current_percent=status.position,
+                    state=status.state,
+                    duration_ms=round((time.monotonic() - started) * 1000),
+                    mode="time",
+                )
+                await self._async_pause_before_next_calibration_command()
+                return status
+            if status.state == moving_state:
+                started_moving = True
+            if status.state == STATE_STOPPED and (started_moving or time.monotonic() > movement_start_deadline):
+                raise HomeAssistantError(f"Position calibration stopped before reaching {action} endpoint")
+
+        raise HomeAssistantError(f"Timed out moving to {action} endpoint during position calibration")
+
+    async def _async_measure_full_travel_time(self, action: str) -> dict[str, Any]:
+        """Measure full travel duration when encoder position is unavailable."""
+        start_status = await self._async_read_motion_status()
+        if self._is_at_endpoint(start_status, action):
+            raise HomeAssistantError(f"Nice gate is already at {action} endpoint")
+
+        start_percent = 0.0 if action == "open" else 100.0
+        end_percent = 100.0 if action == "open" else 0.0
+        started = time.monotonic()
+        self._add_calibration_event(
+            "speed",
+            f"Timed full {action} speed measurement started",
+            action=action,
+            start_percent=start_status.position if start_status.position is not None else start_percent,
+            state=start_status.state,
+        )
+        await self._async_send_action(action, refresh=False, simulate=False)
+        moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
+        movement_started_at: float | None = None
+        movement_start_deadline = started + POSITION_SIMULATION_START_GRACE_SECONDS
+
+        while time.monotonic() - started < CALIBRATION_MOVEMENT_TIMEOUT_SECONDS:
+            await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
+            status = await self._async_read_motion_status()
+            if status.state == moving_state and movement_started_at is None:
+                movement_started_at = time.monotonic()
+            if self._is_at_endpoint(status, action):
+                finished = time.monotonic()
+                measured_from = movement_started_at if movement_started_at is not None else started
+                duration_ms = max(1, round((finished - measured_from) * 1000))
+                duration_seconds = duration_ms / 1000
+                speed_percent_per_second = 100.0 / duration_seconds
+                result = {
+                    "action": action,
+                    "mode": "time",
+                    "start_percent": start_percent,
+                    "end_percent": end_percent,
+                    "end_state": status.state,
+                    "duration_ms": duration_ms,
+                    "movement_start_delay_ms": (
+                        round((movement_started_at - started) * 1000)
+                        if movement_started_at is not None
+                        else None
+                    ),
+                    "distance_percent": abs(end_percent - start_percent),
+                    "speed_percent_per_second": round(speed_percent_per_second, 2),
+                }
+                self._add_calibration_event(
+                    "speed",
+                    f"Timed full {action} speed measurement completed",
+                    **result,
+                )
+                await self._async_pause_before_next_calibration_command()
+                return result
+            if status.state == STATE_STOPPED and (
+                movement_started_at is not None or time.monotonic() > movement_start_deadline
+            ):
+                raise HomeAssistantError(f"Position calibration stopped during full {action}")
+
+        raise HomeAssistantError(f"Timed out measuring full {action} speed")
 
     async def _async_calibrate_target_from_endpoint(
         self,
@@ -1756,6 +1949,16 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         stop_percent = self._interpolate_stop_percent(float(target), points)
         return self._raw_for_percent(status, stop_percent)
 
+    def _calibrated_stop_delay_seconds(self, current: float, target: int, action: str) -> float | None:
+        """Return a time-based stop delay for devices without encoder data."""
+        profile = self.calibration_profile
+        if profile is None or profile.get("mode") != "time":
+            return None
+        speed = self._calibrated_travel_speed_percent_per_second(action)
+        if speed is None or speed <= 0:
+            return None
+        return abs(float(target) - float(current)) / speed
+
     def _position_simulation_speed(self, action: str) -> float:
         """Return display animation speed in percent per second."""
         calibrated_speed = self._calibrated_travel_speed_percent_per_second(action)
@@ -1827,6 +2030,17 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 return max(0.0, min(100.0, stop))
             previous_target, previous_stop = next_target, next_stop
         return max(0.0, min(100.0, points[-1][1]))
+
+    @staticmethod
+    def _has_encoder_calibration_data(status: NiceBidiStatus) -> bool:
+        """Return true when a status can support encoder-based calibration."""
+        return (
+            status.current_position is not None
+            and status.position is not None
+            and status.closed_position is not None
+            and status.open_position is not None
+            and status.closed_position != status.open_position
+        )
 
     @staticmethod
     def _validate_position_bounds(status: NiceBidiStatus) -> None:
