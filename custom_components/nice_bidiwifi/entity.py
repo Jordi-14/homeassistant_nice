@@ -32,6 +32,11 @@ def bidi_suggested_object_id(entry: ConfigEntry, suffix: str | None = None) -> s
     return f"{object_id}_{suffix_object_id}"
 
 
+def bidi_entity_id(platform: str, entry: ConfigEntry, suffix: str | None = None) -> str:
+    """Build the initial entity ID suggestion from the configured gate name."""
+    return f"{platform}.{bidi_suggested_object_id(entry, suffix)}"
+
+
 def bidi_device_info(entry: ConfigEntry, info: NiceBidiDeviceInfo | None = None) -> DeviceInfo:
     """Build Home Assistant device info from config and optional INFO metadata."""
     target_mac = entry.data[CONF_TARGET_MAC]

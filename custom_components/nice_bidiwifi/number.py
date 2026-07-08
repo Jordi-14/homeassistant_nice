@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from homeassistant.components.number import NumberEntity, NumberEntityDescription, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfTime
+from homeassistant.const import PERCENTAGE, Platform, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -15,7 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_suggested_object_id, bidi_unique_id
+from .entity import bidi_device_info, bidi_entity_id, bidi_unique_id
 from .runtime import get_coordinator
 
 
@@ -250,7 +250,7 @@ class NiceBidiNumber(CoordinatorEntity[NiceBidiDataUpdateCoordinator], NumberEnt
         self._entry = entry
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self._attr_suggested_object_id = bidi_suggested_object_id(entry, description.name)
+        self.entity_id = bidi_entity_id(Platform.NUMBER, entry, description.name)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 

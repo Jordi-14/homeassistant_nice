@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity, BinarySensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -14,7 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_suggested_object_id, bidi_unique_id
+from .entity import bidi_device_info, bidi_entity_id, bidi_unique_id
 from .runtime import get_coordinator
 
 
@@ -172,7 +173,7 @@ class NiceBidiBinarySensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Bin
         self._entry = entry
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self._attr_suggested_object_id = bidi_suggested_object_id(entry, description.name)
+        self.entity_id = bidi_entity_id(Platform.BINARY_SENSOR, entry, description.name)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 
