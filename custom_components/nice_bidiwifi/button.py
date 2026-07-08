@@ -65,24 +65,28 @@ BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
     NiceBidiButtonEntityDescription(
         key="courtesy_light",
         name="Courtesy light",
+        entity_registry_visible_default=False,
         icon="mdi:lightbulb",
         press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_COURTESY_LIGHT),
     ),
     NiceBidiButtonEntityDescription(
         key="courtesy_light_timer",
         name="Courtesy light timer",
+        entity_registry_visible_default=False,
         icon="mdi:timer-outline",
         press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_COURTESY_LIGHT_TIMER),
     ),
     NiceBidiButtonEntityDescription(
         key="lock",
         name="Lock",
+        entity_registry_visible_default=False,
         icon="mdi:lock",
         press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_LOCK),
     ),
     NiceBidiButtonEntityDescription(
         key="unlock",
         name="Unlock",
+        entity_registry_visible_default=False,
         icon="mdi:lock-open-variant",
         press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_UNLOCK),
     ),
@@ -90,6 +94,7 @@ BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
         key="refresh_status",
         name="Refresh status",
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
         icon="mdi:refresh",
         press_fn=lambda coordinator: coordinator.async_request_refresh(),
         available_when_offline=True,
@@ -98,6 +103,7 @@ BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
         key="reconnect",
         name="Reconnect",
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
         icon="mdi:connection",
         press_fn=lambda coordinator: coordinator.async_reconnect(),
         available_when_offline=True,
@@ -107,6 +113,7 @@ BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
         name="Calibrate positions",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
         icon="mdi:map-marker-path",
         press_fn=lambda coordinator: coordinator.async_start_position_calibration(),
     ),
@@ -142,6 +149,7 @@ class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEnt
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
+        self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 
     @property
     def device_info(self):

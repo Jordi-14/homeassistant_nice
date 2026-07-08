@@ -15,7 +15,7 @@ that cannot be validated against Home Assistant's normal trust store. The
 integration therefore keeps certificate verification disabled for this local
 socket and relies on LAN isolation plus the NHK credentials for access control.
 
-Latest stable release: `v0.6.1`
+Latest stable release: `v0.7.0`
 
 ## Features
 
@@ -42,6 +42,96 @@ Latest stable release: `v0.6.1`
 - Diagnostic sensors for connection state, last update/error, reconnect count,
   command latency, encoder calibration values, and device firmware/serial data.
 - Diagnostic buttons to refresh status immediately or force a local reconnect.
+
+### 0.7 BusT4 Diagnostics
+
+The `0.7.0` release adds diagnostic and configuration entities based on the
+broader BusT4/OXI register map seen in
+[ngem1/esphome-nice-bidiwifi](https://github.com/ngem1/esphome-nice-bidiwifi)
+and community testing:
+
+- Controller configuration/status sensors for max open, partial-open positions,
+  opening/closing speed, opening/closing force, pause time, maintenance
+  threshold, maintenance count, total maneuver count, last stop reason, and raw
+  diagnostic bytes.
+- Binary diagnostic sensors for limit switches, photocell, obstacle detection,
+  input 1-4 enabled flags, auto close, photo close, always close, standby,
+  pre-flash, key lock, and OXI receiver detection.
+- OXI/radio metadata sensors for product, firmware, hardware, and description
+  when the radio endpoint answers locally.
+- Writable BusT4 configuration entities for auto close, photo close, always
+  close, standby, pre-flash, key lock, opening/closing speed/force, pause time,
+  photo/always-close timing and modes, partial-open positions, and maintenance
+  threshold.
+
+The new BusT4 registers are read-only and optional. Core cover state still uses
+the existing DMP status registers every normal refresh; the broader diagnostic
+scan runs at startup and then at most every 5 minutes while the gate is idle,
+with cached diagnostic values reused between scans. The integration does not
+write controller configuration registers such as speed, force, auto-close
+settings, or partial-open positions unless one of the BusT4 configuration
+entities is changed manually.
+
+The BusT4 configuration entities use DMP `RUN_SET` writes. The single-byte
+switches and number entities mirror the write shape used by
+`ngem1/esphome-nice-bidiwifi`; partial-open positions and maintenance threshold
+use two-byte big-endian payloads matching the values read from those registers.
+Mode registers are exposed as raw bytes because tested controllers can report
+values outside the initially assumed small enum range.
+Treat this as advanced functionality: only change values while the gate is
+visible and you can recover the original settings. The writable BusT4 entities
+are unavailable while the gate is moving.
+
+The `04/D1` diagnostics byte is also exposed raw for comparison. Its decoded
+limit-switch and photocell bits are experimental: on the tested NewRobus
+`FG01h`, the byte stayed `0x40` when fully closed, half-open, and fully open, so
+those decoded entities should not be trusted for that exact gate. They are kept
+because the same byte may still be meaningful on other BusT4 controllers.
+
+### Which Entities Should I Use?
+
+For a normal dashboard, start with the `cover` entity. It is the primary Home
+Assistant entity for open, close, stop, current position, and set-position when
+position data is available. The separate gate `switch` is a simpler duplicate
+control for users who prefer an on/off style entity: `on` means the gate is not
+closed, turning it on opens, and turning it off closes.
+
+`Hidden` in Home Assistant does not mean broken or unavailable. In this
+integration it usually means the entity is diagnostic, advanced, or not normally
+needed on dashboards. Hidden entities are still created and updated unless they
+are explicitly disabled in Home Assistant's entity registry.
+
+Good dashboard candidates:
+
+| Entity | Use it for |
+| --- | --- |
+| Gate cover | Daily open, stop, close, and position control. |
+| Gate position | Showing the latest real position percentage separately from the cover card. |
+| Step-step | Mimicking a normal remote-control button that cycles through the controller's configured step-step behavior. |
+| Partial open 1/2/3 | Pedestrian, delivery, or vehicle-width openings, depending on how the controller positions are configured. |
+| Courtesy light / timer | Only when the control unit has a courtesy light output wired and configured. |
+| Connection state / last successful update | Basic health checks for the local BiDi-WiFi connection. |
+
+Advanced controls and settings:
+
+| Entity group | What it does | Notes |
+| --- | --- | --- |
+| Auto close and pause time | Closes automatically after the gate opens and the pause time expires. | Check the current values before changing them. |
+| Photo close and photo close time | Closes after the photocell has been interrupted and cleared. | Behavior depends on the control unit and photocell wiring. |
+| Always close and always close time | Lets the controller recover by closing after power return or an open-state check. | Use only if you want that recovery behavior. |
+| Opening/closing speed and force | Changes motor movement characteristics. | Safety-sensitive; do not increase force to hide mechanical friction. |
+| Partial-open position settings | Changes the encoder targets used by Partial open 1/2/3. | Values are raw encoder positions between closed and open. |
+| Maintenance threshold | Changes the maneuver count threshold used for maintenance warnings. | Does not reset the maintenance count. |
+| Standby, pre-flash, and key lock | Changes controller features around energy saving, warning flash, and local key/button lock. | These are installer-style controller settings. |
+| Photo close mode and always close mode | Writes raw controller bytes that the integration does not decode. | Strongly recommended: do not change these unless you already know the exact byte your controller expects. A wrong raw mode byte may leave the feature misconfigured. |
+
+Entities ending in `setting` are writable BusT4 configuration entities. The
+matching entities without `setting` are read-only views of the current
+controller values. Before changing a writable setting, note the original value
+and make the change only while the gate is visible and safe to operate.
+The mode setting entities are a special case: they are exposed only so existing
+controller values can be inspected and restored, not because their byte values
+are understood by the integration.
 
 ## Compatibility
 
@@ -422,7 +512,7 @@ do not calibrate; normal open/close control works without it. Calibration only
 helps if you want Home Assistant's position slider or set-position service to
 land closer to intermediate positions such as 20%, 40%, 60%, or 80%.
 
-The calibration button is a disabled-by-default diagnostic button. Enable it
+The calibration button is a hidden-by-default diagnostic button. Unhide it
 only when the gate is visible, the path is clear, and you are ready for the gate
 to move repeatedly for several minutes.
 
@@ -459,7 +549,7 @@ During calibration it polls every 0.5 seconds and waits 0.5 seconds after a
 stop or fully reached endpoint before sending the next movement command.
 
 Calibration writes detailed Home Assistant log lines with the prefix
-`Nice calibration:`. It also exposes a disabled-by-default diagnostic
+`Nice calibration:`. It also exposes a hidden-by-default diagnostic
 sensor named `Position calibration report` with recorder-safe summary
 attributes. When calibration finishes or fails, the full detailed report is
 written to Home Assistant logs in chunks with the prefix
@@ -506,32 +596,46 @@ by the Home Assistant frontend, not by this integration.
 
 ## Helper Entities
 
-Enabled by default:
+Home Assistant tracks visibility and enabled state separately:
 
-- `cover`: open, close, stop, current position, and set-position slider with optional calibration.
+- Visible entities appear normally when the integration is first added.
+- Hidden entities are created and updated, but Home Assistant hides them from
+  default views until you unhide them.
+- Disabled entities are not created until manually enabled.
+
+Existing Home Assistant entity registry settings are preserved across upgrades,
+so entities created by older versions may keep their previous hidden or disabled
+state. For a new installation, the defaults are split by expected use.
+
+Visible by default:
+
+- `cover`: open, close, stop, current position, and set-position slider with
+  optional calibration.
 - `switch`: open/close gate toggle.
-- `button`: partial open 1, partial open 2, partial open 3, step-step, courtesy light, courtesy light timer, lock, and unlock.
+- `button`: partial open 1, partial open 2, partial open 3, and step-step.
+- `switch`: auto close, photo close, and always close settings.
+- `number`: pause time, photo close time, always close time, opening/closing
+  force, opening/closing speed, and partial-open position settings.
 - `sensor`: connection state.
-- `sensor`: position calibration state.
-- `sensor`: position calibration quality.
-- `button`: refresh status.
-- `button`: reconnect.
+- `sensor`: gate position.
 
-Disabled by default, but available from the entity registry:
+Hidden by default:
 
-- Position calibration button.
-- Position calibration report.
-- Last position calibration.
-- Position calibration error.
-- Last successful update.
-- Last error.
-- Reconnect count.
-- Last command.
-- Last command latency.
-- Gate position percentage from the latest real BiDi-WiFi status update.
-- Current, closed, and open encoder positions.
-- BiDi-WiFi firmware, hardware, and serial.
-- Control-unit firmware, hardware, serial, and product detail.
+- Optional action buttons such as courtesy light, lock, unlock, refresh status,
+  and reconnect.
+- Advanced BusT4 settings such as standby, pre-flash, key lock, maintenance
+  threshold, raw mode bytes, and read-only setting mirrors.
+- Diagnostic/support sensors such as last update, last error, reconnect count,
+  encoder values, calibration state, firmware, hardware, and serial metadata.
+- Experimental/raw entities such as the decoded `04/D1` bits, raw diagnostic
+  bytes, input flags, debug command sensors, and optional OXI metadata.
+
+Some hidden entities are disabled by default when they are raw, experimental,
+verbose, or safety-sensitive enough that they should be enabled deliberately
+from the entity registry.
+
+See [entity_reference.md](entity_reference.md) for the full entity list,
+purposes, visibility defaults, and enabled defaults.
 
 ## Future Work
 

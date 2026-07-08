@@ -63,6 +63,35 @@ def make_status(
     current_position: int | None = 424,
     closed_position: int | None = 0,
     open_position: int | None = 1000,
+    max_open_position: int | None = 1010,
+    partial_open_1_position: int | None = 250,
+    partial_open_2_position: int | None = 500,
+    partial_open_3_position: int | None = 750,
+    opening_speed: int | None = 60,
+    closing_speed: int | None = 55,
+    opening_force: int | None = 70,
+    closing_force: int | None = 65,
+    pause_time: int | None = 30,
+    photo_close_time: int | None = 5,
+    photo_close_mode: int | None = 1,
+    always_close_time: int | None = 10,
+    always_close_mode: int | None = 2,
+    maintenance_threshold: int | None = 7000,
+    maintenance_count: int | None = 12,
+    total_maneuver_count: int | None = 345,
+    limit_closed: bool | None = False,
+    limit_open: bool | None = True,
+    photocell: bool | None = False,
+    obstacle: bool | None = True,
+    auto_close: bool | None = True,
+    photo_close: bool | None = False,
+    always_close: bool | None = False,
+    standby: bool | None = False,
+    pre_flash: bool | None = False,
+    key_lock: bool | None = False,
+    last_stop_reason: str | None = "obstacle_by_encoder",
+    oxi_detected: bool | None = True,
+    oxi_product: str | None = "OXI",
 ) -> NiceBidiStatus:
     """Create a Nice status object."""
     return NiceBidiStatus(
@@ -72,6 +101,35 @@ def make_status(
         closed_position=closed_position,
         open_position=open_position,
         registers={"04/01": "02"},
+        max_open_position=max_open_position,
+        partial_open_1_position=partial_open_1_position,
+        partial_open_2_position=partial_open_2_position,
+        partial_open_3_position=partial_open_3_position,
+        opening_speed=opening_speed,
+        closing_speed=closing_speed,
+        opening_force=opening_force,
+        closing_force=closing_force,
+        pause_time=pause_time,
+        photo_close_time=photo_close_time,
+        photo_close_mode=photo_close_mode,
+        always_close_time=always_close_time,
+        always_close_mode=always_close_mode,
+        maintenance_threshold=maintenance_threshold,
+        maintenance_count=maintenance_count,
+        total_maneuver_count=total_maneuver_count,
+        limit_closed=limit_closed,
+        limit_open=limit_open,
+        photocell=photocell,
+        obstacle=obstacle,
+        auto_close=auto_close,
+        photo_close=photo_close,
+        always_close=always_close,
+        standby=standby,
+        pre_flash=pre_flash,
+        key_lock=key_lock,
+        last_stop_reason=last_stop_reason,
+        oxi_detected=oxi_detected,
+        oxi_product=oxi_product,
     )
 
 
@@ -121,10 +179,14 @@ class FakeClient:
         self.read_info_error: Exception | None = None
         self.send_action_error: Exception | None = None
         self.send_dep_action_error: Exception | None = None
+        self.write_dmp_register_error: Exception | None = None
         self.info_reads = 0
+        self.read_status_include_extended: list[bool] = []
+        self.dmp_writes: list[tuple[int, int, int, int]] = []
 
-    def read_status(self) -> NiceBidiStatus:
+    def read_status(self, *, include_extended: bool = False) -> NiceBidiStatus:
         """Return status or raise a configured error."""
+        self.read_status_include_extended.append(include_extended)
         if self.read_status_error is not None:
             raise self.read_status_error
         return self.read_status_result
@@ -147,6 +209,12 @@ class FakeClient:
         if self.send_dep_action_error is not None:
             raise self.send_dep_action_error
         self.dep_actions.append(action)
+
+    def write_dmp_register(self, group: int, parameter: int, value: int, *, size: int = 1) -> None:
+        """Record a DMP write or raise a configured error."""
+        if self.write_dmp_register_error is not None:
+            raise self.write_dmp_register_error
+        self.dmp_writes.append((group, parameter, value, size))
 
     def close(self) -> None:
         """Record that the client was closed."""
@@ -218,3 +286,14 @@ class FakeCoordinator:
     async def async_start_position_calibration(self) -> None:
         """Record a calibration request."""
         self.calls.append(("calibrate", None))
+
+    async def async_write_dmp_register(
+        self,
+        group: int,
+        parameter: int,
+        value: int,
+        *,
+        size: int = 1,
+    ) -> None:
+        """Record a DMP write."""
+        self.calls.append(("dmp_write", (group, parameter, value, size)))
