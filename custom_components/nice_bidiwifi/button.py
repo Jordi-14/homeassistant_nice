@@ -7,7 +7,6 @@ from dataclasses import dataclass
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -24,7 +23,7 @@ from .client import (
     DEP_ACTION_UNLOCK,
 )
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_entity_id, bidi_unique_id
+from .entity import bidi_device_info, bidi_entity_name, bidi_unique_id
 from .runtime import get_coordinator
 
 PARALLEL_UPDATES = 1
@@ -134,7 +133,7 @@ async def async_setup_entry(
 class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEntity):
     """Nice diagnostic button."""
 
-    _attr_has_entity_name = True
+    _attr_has_entity_name = False
 
     entity_description: NiceBidiButtonEntityDescription
 
@@ -149,7 +148,7 @@ class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEnt
         self._entry = entry
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self.entity_id = bidi_entity_id(Platform.BUTTON, entry, description.name)
+        self._attr_name = bidi_entity_name(entry, description.name)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 

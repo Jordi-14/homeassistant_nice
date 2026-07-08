@@ -6,14 +6,13 @@ from typing import Any
 
 from homeassistant.components.cover import ATTR_POSITION, CoverDeviceClass, CoverEntity, CoverEntityFeature
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_STOPPED, NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_entity_id, bidi_unique_id
+from .entity import bidi_device_info, bidi_entity_name, bidi_unique_id
 from .runtime import get_coordinator
 
 PARALLEL_UPDATES = 1
@@ -33,15 +32,14 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
     """Nice gate cover."""
 
     _attr_device_class = CoverDeviceClass.GATE
-    _attr_has_entity_name = True
-    _attr_name = None
+    _attr_has_entity_name = False
 
     def __init__(self, coordinator: NiceBidiDataUpdateCoordinator, entry: ConfigEntry) -> None:
         """Initialize the cover."""
         super().__init__(coordinator)
         self._entry = entry
         self._attr_unique_id = bidi_unique_id(entry, "cover")
-        self.entity_id = bidi_entity_id(Platform.COVER, entry)
+        self._attr_name = bidi_entity_name(entry)
 
     @property
     def supported_features(self) -> CoverEntityFeature:

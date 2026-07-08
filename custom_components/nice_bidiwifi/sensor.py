@@ -9,7 +9,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, Platform
+from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -17,7 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_entity_id, bidi_unique_id
+from .entity import bidi_device_info, bidi_entity_name, bidi_unique_id
 from .runtime import get_coordinator
 
 
@@ -417,7 +417,7 @@ async def async_setup_entry(
 class NiceBidiSensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SensorEntity):
     """Nice diagnostic sensor."""
 
-    _attr_has_entity_name = True
+    _attr_has_entity_name = False
 
     entity_description: NiceBidiSensorEntityDescription
 
@@ -432,7 +432,7 @@ class NiceBidiSensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SensorEnt
         self._entry = entry
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self.entity_id = bidi_entity_id(Platform.SENSOR, entry, description.name)
+        self._attr_name = bidi_entity_name(entry, description.name)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 
