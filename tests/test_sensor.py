@@ -65,7 +65,7 @@ class TestNiceBidiSensorProperties:
         assert NiceBidiSensor(coordinator, config_entry(), _description("last_stop_reason")).native_value == "obstacle_by_encoder"
         assert NiceBidiSensor(coordinator, config_entry(), _description("oxi_product")).native_value == "OXI"
 
-    def test_gate_position_sensor_reads_real_status_position(self) -> None:
+    def test_gate_position_sensor_reads_display_position(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.data = make_status(position=42.4)
 
@@ -82,7 +82,7 @@ class TestNiceBidiSensorProperties:
         simulated_coordinator.data = coordinator.data
         entity = NiceBidiSensor(simulated_coordinator, config_entry(), _description("gate_position"))
 
-        assert entity.native_value == 42.4
+        assert entity.native_value == 75.9
         assert entity.native_unit_of_measurement == PERCENTAGE
         assert entity.entity_description.entity_registry_enabled_default is True
         assert entity.entity_description.entity_registry_visible_default is True

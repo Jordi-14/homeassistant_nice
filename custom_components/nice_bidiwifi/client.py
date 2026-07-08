@@ -267,6 +267,16 @@ class NiceBidiServiceCapability:
     values: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class _CuwifiLiveStatus:
+    """State or position decoded from a CU_WIFI live T4 event."""
+
+    state: str | None
+    position: float | None
+    payload_hex: str
+    payload_kind: str
+
+
 def _sha256(*values: bytes) -> bytes:
     digest = hashlib.sha256()
     for value in values:
@@ -481,6 +491,15 @@ def _status_from_register(register: dict[str, Any] | None) -> str | None:
     return STATUS_BY_BYTE.get(first_byte)
 
 
+def _endpoint_position_from_state(state: str | None) -> float | None:
+    """Return a known endpoint position from a terminal state."""
+    if state == STATE_CLOSED:
+        return 0.0
+    if state == STATE_OPEN:
+        return 100.0
+    return None
+
+
 def _make_context() -> ssl.SSLContext:
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     # BiDi-WiFi exposes a local TLS endpoint with a device certificate that
@@ -661,12 +680,49 @@ def _parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceBidiStatus
 
     return NiceBidiStatus(
         state=state,
-        position=None,
+        position=_endpoint_position_from_state(state),
         current_position=None,
         closed_position=None,
         open_position=None,
         registers=registers,
         obstacle=obstacle,
+    )
+
+
+def _merge_cuwifi_live_status(
+    status: NiceBidiStatus | None,
+    live_status: _CuwifiLiveStatus,
+) -> NiceBidiStatus:
+    """Merge one CU_WIFI live T4 status into an NHK status snapshot."""
+    if status is None:
+        status = NiceBidiStatus(
+            state=None,
+            position=None,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+            registers={},
+        )
+    registers = dict(status.registers)
+    if live_status.state is not None:
+        registers["NHK/T4Status"] = live_status.state
+        registers["NHK/T4StatusPayload"] = live_status.payload_hex
+    if live_status.position is not None:
+        registers["NHK/T4InstantPosition"] = str(round(live_status.position))
+        registers["NHK/T4InstantPositionPayload"] = live_status.payload_hex
+    registers["NHK/T4PayloadKind"] = live_status.payload_kind
+
+    position = live_status.position
+    if position is None:
+        position = _endpoint_position_from_state(live_status.state)
+    if position is None:
+        position = status.position
+
+    return replace(
+        status,
+        state=live_status.state or status.state,
+        position=position,
+        registers=registers,
     )
 
 
@@ -676,12 +732,17 @@ def _parse_nhk_status_frames(frames: list[bytes], device_id: int = 1) -> NiceBid
         parsed = _parse_nhk_status_xml(_xml_payload(frame), device_id)
         if parsed is not None:
             status = parsed
+        for plain in _decrypt_t4_payloads_from_frame(frame):
+            live_status = _parse_cuwifi_live_status_payload(plain)
+            if live_status is not None:
+                status = _merge_cuwifi_live_status(status, live_status)
     if status is None:
-        raise NiceBidiConnectionError("NHK STATUS response did not include DoorStatus")
+        raise NiceBidiConnectionError("NHK STATUS response did not include DoorStatus or CU_WIFI T4 status")
     return status
 
 
-def _parse_cuwifi_instant_position_payload(plain: bytes) -> tuple[int, str] | None:
+def _cuwifi_t4_message(plain: bytes) -> bytes | None:
+    """Return the inner controller-originated CU_WIFI T4 message."""
     if len(plain) < 12:
         return None
 
@@ -708,16 +769,62 @@ def _parse_cuwifi_instant_position_payload(plain: bytes) -> tuple[int, str] | No
         return None
     if message_type != 0x01:
         return None
-    if len(message) < 5 or message[:2] != b"\x04\x40":
+
+    return message
+
+
+def _parse_cuwifi_live_status_payload(plain: bytes) -> _CuwifiLiveStatus | None:
+    """Parse CU_WIFI live T4 status and coarse instant-position payloads."""
+    message = _cuwifi_t4_message(plain)
+    if not message or len(message) < 3 or message[0] != 0x04:
         return None
 
-    position = int.from_bytes(message[3:5], "big")
-    if not 0 <= position <= 100:
-        return None
-    return position, message.hex(" ")
+    payload_hex = message.hex(" ")
+    if message[1] == 0x40 and len(message) >= 5:
+        state = STATUS_BY_BYTE.get(message[2])
+        position_value = int.from_bytes(message[3:5], "big")
+        position = float(position_value) if 0 <= position_value <= 100 else None
+        if state is None and position is None:
+            return None
+        return _CuwifiLiveStatus(
+            state=state,
+            position=position,
+            payload_hex=payload_hex,
+            payload_kind="04/40",
+        )
+
+    if message[1] == 0x02:
+        state = STATUS_BY_BYTE.get(message[2])
+        if state is None:
+            return None
+        return _CuwifiLiveStatus(
+            state=state,
+            position=_endpoint_position_from_state(state),
+            payload_hex=payload_hex,
+            payload_kind="04/02",
+        )
+
+    return None
 
 
 T4_RE = re.compile(r"<T4\b(?P<attrs>[^>]*)>(?P<body>.*?)</T4>", re.DOTALL)
+
+
+def _decrypt_t4_payloads_from_frame(frame: bytes) -> list[bytes]:
+    """Return decrypted T4 payloads from one NHK XML frame."""
+    text = _printable(frame)
+    payloads: list[bytes] = []
+    for match in T4_RE.finditer(text):
+        key_value = _attr(match.group("attrs"), "key")
+        if not key_value:
+            continue
+        try:
+            key = base64.b64decode(key_value)
+            encrypted = base64.b64decode(match.group("body").strip())
+        except ValueError:
+            continue
+        payloads.append(_xor_sha256(encrypted, key))
+    return payloads
 
 
 def _response_summary(response: bytes) -> str:
@@ -1246,16 +1353,7 @@ class NiceBidiClient:
         for frame in frames:
             if "<Error>" in _printable(frame):
                 raise NiceBidiConnectionError(_printable(frame))
-        status = _parse_nhk_status_frames(frames, self.device_id)
-        instant_position = self._cuwifi_instant_position_from_frames(frames)
-        if instant_position is None:
-            return status
-
-        position, payload_hex = instant_position
-        registers = dict(status.registers)
-        registers["NHK/T4InstantPosition"] = str(position)
-        registers["NHK/T4InstantPositionPayload"] = payload_hex
-        return replace(status, position=float(position), registers=registers)
+        return _parse_nhk_status_frames(frames, self.device_id)
 
     def _read_info_xml_locked(self) -> str:
         response = self._signed_exchange_locked("INFO")
@@ -1300,25 +1398,4 @@ class NiceBidiClient:
         return response, plains
 
     def _decrypt_t4_payloads(self, response: bytes) -> list[bytes]:
-        text = _printable(response)
-        payloads: list[bytes] = []
-        for match in T4_RE.finditer(text):
-            key_value = _attr(match.group("attrs"), "key")
-            if not key_value:
-                continue
-            try:
-                key = base64.b64decode(key_value)
-                encrypted = base64.b64decode(match.group("body").strip())
-            except ValueError:
-                continue
-            payloads.append(_xor_sha256(encrypted, key))
-        return payloads
-
-    def _cuwifi_instant_position_from_frames(self, frames: list[bytes]) -> tuple[int, str] | None:
-        latest: tuple[int, str] | None = None
-        for frame in frames:
-            for plain in self._decrypt_t4_payloads(frame):
-                parsed = _parse_cuwifi_instant_position_payload(plain)
-                if parsed is not None:
-                    latest = parsed
-        return latest
+        return _decrypt_t4_payloads_from_frame(response)

@@ -17,9 +17,10 @@ your controller expects; the integration exposes those bytes but does not decode
 their meaning.
 
 It was originally tested with BiDi-WiFi devices. Some devices reporting
-`interface_product: CU_WIFI` may also work in basic command-only mode when they
-expose the same local NHK/T4 command surface. Full status and position support
-depends on the local services and DMP registers exposed by the device.
+`interface_product: CU_WIFI` expose enough of the same local NHK/T4 command
+surface for open, stop, and close. Beta builds also include experimental
+CU_WIFI status support from live NHK/T4 events; CU_WIFI position may be coarser
+and less frequent than encoder-derived BiDi-WiFi position.
 
 Known working BiDi-WiFi firmware is `2.6.4`. Updating BiDi-WiFi firmware may
 break the local protocol used by this integration.

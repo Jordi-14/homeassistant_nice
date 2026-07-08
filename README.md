@@ -35,8 +35,12 @@ Latest stable release: `v0.7.0`
   calibration, display animation falls back to 1% per second.
 - Detailed calibration quality report with per-target attempts, final errors,
   corrected stop thresholds, command latency, movement timing, and event logs.
-- Real state from DMP register `04/01`.
-- Real position from DMP registers `04/11`, `04/18`, and `04/19`.
+- Real state from DMP register `04/01` when the controller exposes that path.
+- Real position from DMP registers `04/11`, `04/18`, and `04/19` when encoder
+  bounds are available.
+- Experimental CU_WIFI status support from live NHK `STATUS` / `CHANGE` plus
+  live T4 `04/40` and `04/02` events, with cached/estimated display position
+  used when CU_WIFI only reports sparse coarse percentages.
 - Faster polling while the gate is moving, slower polling while idle.
 - Automatic reconnect after BiDi reboot, HA restart, and transient TLS EOFs.
 - Diagnostic sensors for connection state, last update/error, reconnect count,
@@ -106,7 +110,7 @@ Good dashboard candidates:
 | Entity | Use it for |
 | --- | --- |
 | Gate cover | Daily open, stop, close, and position control. |
-| Gate position | Showing the latest real position percentage separately from the cover card. |
+| Gate position | Showing the same displayed position used by the cover card. It is real when fresh position data is available and cached/estimated when the cover marks `display_position_estimated`. |
 | Step-step | Mimicking a normal remote-control button that cycles through the controller's configured step-step behavior. |
 | Partial open 1/2/3 | Pedestrian, delivery, or vehicle-width openings, depending on how the controller positions are configured. |
 | Courtesy light / timer | Only when the control unit has a courtesy light output wired and configured. |
@@ -145,10 +149,11 @@ Known working setup:
 
 This integration was originally tested with BiDi-WiFi devices and depends on
 the local NHK/T4/DMP protocol surface, which is not publicly documented by
-Nice. Some devices reporting `interface_product: CU_WIFI` may also work in
-basic command-only mode when they expose the same local NHK/T4 command surface.
-Full status and position support depends on the local services and DMP
-registers exposed by the device.
+Nice. Some devices reporting `interface_product: CU_WIFI` expose enough of the
+same local NHK/T4 command surface for open, stop, and close. Newer beta builds
+also include experimental CU_WIFI status support from live NHK and T4 events,
+but CU_WIFI position may be coarser and less frequent than the encoder-derived
+DMP position available on the originally tested BiDi-WiFi setup.
 
 If you rely on this integration, we recommend not updating the BiDi-WiFi
 firmware beyond `2.6.4` unless you are prepared to retest local control and
@@ -377,6 +382,10 @@ broadest read-only post-live scan currently known: controller, OXI/radio,
 status, position, diagnostics, and `GET` selector candidates. Do not use
 `--include-sensitive` for reports shared publicly.
 
+This probe is still useful when a CU_WIFI beta mostly works but state,
+position, or obstruction behavior does not match the physical gate. It captures
+the live NHK/T4 frames the integration relies on for the CU_WIFI fallback path.
+
 ### Android
 
 The Android app stores the same local NHK credentials, but modern Android
@@ -502,10 +511,26 @@ the socket, marks the cover unavailable, and retries later instead of hammering
 the device.
 
 The cover exposes Home Assistant's position support. For intermediate targets,
-the integration sends `open` or `close`, polls the real encoder-derived
-position, and sends `stop` after the position reaches or crosses the requested
-percentage. This is intentionally coarse and should not be treated as millimeter
-precision.
+the integration sends `open` or `close`, polls the best available position, and
+sends `stop` after the position reaches or crosses the requested percentage.
+On the validated BiDi-WiFi/NewRobus path this uses real encoder-derived DMP
+position. On CU_WIFI devices that only expose live T4 percentages, the same UI
+uses the coarse live value, then keeps a cached or simulated display position
+between sparse updates. This is intentionally coarse and should not be treated
+as millimeter precision.
+
+The cover attributes separate the raw source from the user-facing display:
+
+- `real_position` is the latest real percentage from the device, if available.
+- `display_position` is what Home Assistant shows in the cover and the
+  `Gate position` sensor.
+- `display_position_estimated` is `true` when the displayed percentage is
+  currently simulated or held from the last known value.
+
+Home Assistant covers do not have a separate visual state for "stopped
+mid-travel". A stopped half-open gate normally appears as open with a
+percentage, for example `Open - 18%`, while both open and close actions remain
+available.
 
 Calibration is not required. If you only want to open, stop, and close the gate,
 do not calibrate; normal open/close control works without it. Calibration only
@@ -557,7 +582,7 @@ written to Home Assistant logs in chunks with the prefix
 max/average error, failed points, all attempts per target, command latency,
 movement duration, and the event log.
 
-Position is calculated as:
+For the validated BiDi-WiFi/NewRobus encoder path, position is calculated as:
 
 ```text
 (04/11 - 04/19) / (04/18 - 04/19) * 100
@@ -576,6 +601,15 @@ State values:
 - `04/01 = 03 ff 00 00` -> closing
 - `04/01 = 04 ff 00 00` -> open
 - `04/01 = 05 ff 00 00` -> closed
+
+For CU_WIFI devices that do not answer the normal DMP status reads, the beta
+fallback can also use live T4 events:
+
+- NHK `DoorStatus` from live `STATUS` / `CHANGE` frames for movement state.
+- T4 `04/40` frames for coarse percentage and sometimes stopped state.
+- T4 `04/02` frames for movement or endpoint state.
+
+Those CU_WIFI values are expected to be less smooth than the real encoder path.
 
 ## Dashboard Slider
 

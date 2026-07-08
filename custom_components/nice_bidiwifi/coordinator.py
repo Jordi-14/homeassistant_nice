@@ -72,6 +72,7 @@ CONNECTION_STATE_UNKNOWN = "unknown"
 POSITION_TARGET_POLL_SECONDS = 0.5
 POSITION_TARGET_TOLERANCE = 1.0
 POST_COMMAND_REFRESH_DELAY_SECONDS = 2.0
+RECENT_STOP_STATUS_OVERRIDE_SECONDS = 20.0
 POSITION_SIMULATION_TICK_SECONDS = 1.0
 POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND = 1.0
 POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR = 0.8
@@ -147,6 +148,9 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.last_command_latency_ms: int | None = None
         self.last_error: str | None = None
         self.last_successful_update: datetime | None = None
+        self._recent_stop_command_monotonic: float | None = None
+        self._recent_stop_started_from_motion = False
+        self._last_known_position: float | None = None
         self._position_target_task: asyncio.Task[None] | None = None
         self._post_command_refresh_task: asyncio.Task[None] | None = None
         self._position_simulation_task: asyncio.Task[None] | None = None
@@ -244,6 +248,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             self._clear_position_simulation()
             raise UpdateFailed(str(err)) from err
 
+        status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
         return status
 
@@ -347,6 +352,8 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.connection_state = CONNECTION_STATE_CONNECTED
         self.last_error = None
         self.last_successful_update = datetime.now(UTC)
+        if status.position is not None:
+            self._last_known_position = status.position
         self.update_interval = MOVING_UPDATE_INTERVAL if status.is_moving else IDLE_UPDATE_INTERVAL
         self._sync_position_simulation_from_status(status)
 
@@ -445,6 +452,10 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
     ) -> None:
         """Send an open, close, or stop command without touching target watchers."""
         started = time.monotonic()
+        stop_started_from_motion = action == "stop" and (
+            self._position_simulation_action is not None
+            or (self.data is not None and self.data.is_moving)
+        )
         try:
             await self.hass.async_add_executor_job(self.client.send_action, action)
         except NiceBidiAuthError as err:
@@ -464,6 +475,12 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.last_command = action
         self.last_command_latency_ms = round((time.monotonic() - started) * 1000)
         self.last_error = None
+        if action == "stop":
+            self._recent_stop_command_monotonic = time.monotonic()
+            self._recent_stop_started_from_motion = stop_started_from_motion
+        else:
+            self._recent_stop_command_monotonic = None
+            self._recent_stop_started_from_motion = False
         self.update_interval = MOVING_UPDATE_INTERVAL if action in {"open", "close"} else IDLE_UPDATE_INTERVAL
         if action in {"open", "close"} and simulate:
             self._start_position_simulation(action, target_position=simulation_target_position)
@@ -495,6 +512,9 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.last_command = action
         self.last_command_latency_ms = round((time.monotonic() - started) * 1000)
         self.last_error = None
+        if action in DEP_MOVEMENT_ACTIONS:
+            self._recent_stop_command_monotonic = None
+            self._recent_stop_started_from_motion = False
         self.update_interval = MOVING_UPDATE_INTERVAL if action in DEP_MOVEMENT_ACTIONS else IDLE_UPDATE_INTERVAL
         self._clear_position_simulation()
         if refresh:
@@ -559,6 +579,37 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             if self._post_command_refresh_task is task:
                 self._post_command_refresh_task = None
 
+    def _apply_recent_stop_status_hint(self, status: NiceBidiStatus) -> NiceBidiStatus:
+        """Mask short-lived stale CU_WIFI states after a local stop command."""
+        stopped_at = self._recent_stop_command_monotonic
+        if stopped_at is None:
+            return status
+        if time.monotonic() - stopped_at > RECENT_STOP_STATUS_OVERRIDE_SECONDS:
+            self._recent_stop_command_monotonic = None
+            self._recent_stop_started_from_motion = False
+            return status
+        if not self._recent_stop_started_from_motion or status.state == STATE_STOPPED:
+            return status
+        if status.state not in {STATE_OPEN, STATE_CLOSED, STATE_OPENING, STATE_CLOSING}:
+            return status
+
+        registers = dict(status.registers)
+        registers["NHK/RecentStopOverride"] = status.state
+        position = self._last_known_position
+        return replace(status, state=STATE_STOPPED, position=position, registers=registers)
+
+    def _normalize_status_for_display(self, status: NiceBidiStatus) -> NiceBidiStatus:
+        """Align sparse status updates with the cover behavior users expect."""
+        if (
+            status.state == STATE_STOPPED
+            and status.position is None
+            and self._last_known_position is not None
+        ):
+            registers = dict(status.registers)
+            registers["NHK/LastKnownPositionFallback"] = str(round(self._last_known_position, 1))
+            return replace(status, position=self._last_known_position, registers=registers)
+        return status
+
     @property
     def display_position(self) -> float | None:
         """Return the position HA should display, using simulation while active."""
@@ -566,12 +617,17 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         if simulated is not None:
             return round(simulated, 1)
         status = self.data
-        return status.position if status else None
+        if status is None:
+            return None
+        return status.position if status.position is not None else self._last_known_position
 
     @property
     def display_position_estimated(self) -> bool:
         """Return true when the displayed position is currently estimated."""
-        return self._current_simulated_position() is not None
+        if self._current_simulated_position() is not None:
+            return True
+        status = self.data
+        return bool(status is not None and status.position is None and self._last_known_position is not None)
 
     @property
     def position_simulation_action(self) -> str | None:
@@ -590,8 +646,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         """Start or restart optimistic position animation after a movement command."""
         anchor = self._current_simulated_position()
         if anchor is None:
-            status = self.data
-            anchor = status.position if status and status.position is not None else None
+            anchor = self.display_position
         if anchor is None:
             return
 
@@ -761,13 +816,14 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         await self._async_cancel_post_command_refresh()
         target = max(0, min(100, target_position))
         status = self.data
-        if status is None or status.position is None:
+        current = self.display_position
+        if status is None or current is None:
             await self.async_request_refresh()
             status = self.data
-        if status is None or status.position is None:
+            current = self.display_position
+        if status is None or current is None:
             raise HomeAssistantError("Nice position is not available")
 
-        current = status.position
         if target <= 0:
             await self.async_send_action("close")
             return
@@ -1620,6 +1676,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             self.update_interval = ERROR_UPDATE_INTERVAL
             raise
 
+        status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
         self.async_set_updated_data(status)
         return status

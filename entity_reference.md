@@ -8,6 +8,13 @@ open, stop, close, current position, and set-position support when position data
 is available. The gate `switch` is a simpler on/off duplicate for users who want
 that style of control.
 
+The cover and `Gate position` sensor use the same displayed position. On
+controllers with real encoder DMP status this is normally the real percentage.
+On CU_WIFI devices with sparse live T4 percentages it may temporarily be a
+cached or simulated display value. Check the cover attributes `real_position`,
+`display_position`, and `display_position_estimated` when you need to know
+whether the displayed percentage is fresh or estimated.
+
 `Hidden` does not mean broken. It means Home Assistant creates and updates the
 entity, but hides it from default views because it is diagnostic, advanced, or
 not normally useful on a dashboard.
@@ -22,7 +29,7 @@ Quick recommendations:
 | Need | Use | Notes |
 | --- | --- | --- |
 | Daily open/close/stop | Gate cover | Best default dashboard entity. |
-| Separate position display | Gate position | Real percentage from the latest DMP status registers. |
+| Separate position display | Gate position | Same displayed percentage as the cover card; real when available, cached/estimated when marked by the cover attributes. |
 | Remote-control style action | Step-step | Follows the controller's configured step-step cycle. |
 | Pedestrian or partial opening | Partial open 1/2/3 | Uses the configured partial-open encoder positions. |
 | Local connection health | Connection state, last successful update, reconnect count | Useful for troubleshooting Wi-Fi or local API issues. |
@@ -61,7 +68,7 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 
 | Platform | Entity | Key | Purpose | Visibility default | Enabled default | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Cover | Gate cover | `cover` | Main gate entity with open, stop, close, and set-position support when position is available. | Visible | Enabled | Primary daily-use entity. |
+| Cover | Gate cover | `cover` | Main gate entity with open, stop, close, displayed position, and set-position support when position is available. | Visible | Enabled | Primary daily-use entity. |
 | Switch | Gate switch | `cover_switch` | Simple on/off gate control: turn on opens, turn off closes, on means not closed. | Visible | Enabled | Useful for simple automations, but visually duplicates the cover. |
 | Switch | Auto close setting | `bus_t4_auto_close` | Writes BusT4 auto-close on/off to register `04/80`. | Visible | Enabled | Advanced but decoded enough to expose intentionally. |
 | Switch | Photo close setting | `bus_t4_photo_close` | Writes BusT4 photo-close on/off to register `04/84`. | Visible | Enabled | Advanced but decoded enough to expose intentionally. |
@@ -119,7 +126,7 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Sensor | Position calibration error | `position_calibration_error` | Last calibration error, or `none`. | Hidden | Enabled | Useful only when calibration is used. |
 | Sensor | Position calibration quality | `position_calibration_quality` | Quality grade for the current position calibration data. | Hidden | Enabled | Useful only when calibration is used. |
 | Sensor | Position calibration report | `position_calibration_report` | Short calibration report with additional recorder-safe attributes. | Hidden | Disabled | Verbose troubleshooting entity. |
-| Sensor | Gate position | `gate_position` | Real gate position percentage from live DMP status registers. | Visible | Enabled | Useful dashboard/automation sensor separate from the cover card. |
+| Sensor | Gate position | `gate_position` | Displayed gate position percentage from the coordinator. | Visible | Enabled | Matches the cover card position; use cover attributes to distinguish real from cached/simulated values. |
 | Sensor | Current encoder position | `current_encoder_position` | Current raw encoder position from the controller. | Hidden | Enabled | Useful advanced diagnostic; based on core status data. |
 | Sensor | Closed encoder position | `closed_encoder_position` | Raw encoder value for the closed endpoint. | Hidden | Enabled | Useful advanced diagnostic; based on core status data. |
 | Sensor | Open encoder position | `open_encoder_position` | Raw encoder value for the open endpoint. | Hidden | Enabled | Useful advanced diagnostic; based on core status data. |

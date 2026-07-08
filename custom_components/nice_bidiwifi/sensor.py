@@ -140,7 +140,7 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         icon="mdi:gate",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).position if _status(coordinator) else None,
+        value_fn=lambda coordinator: coordinator.display_position,
     ),
     NiceBidiSensorEntityDescription(
         key="current_encoder_position",

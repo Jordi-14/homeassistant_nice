@@ -45,8 +45,7 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
     def supported_features(self) -> CoverEntityFeature:
         """Return supported cover features."""
         features = CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.STOP
-        status = self.status
-        if status is not None and status.position is not None:
+        if self.status is not None and self.coordinator.display_position is not None:
             features |= CoverEntityFeature.SET_POSITION
         return features
 

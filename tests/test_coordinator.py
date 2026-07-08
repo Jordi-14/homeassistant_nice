@@ -274,6 +274,113 @@ async def test_send_action_records_command_metadata(hass: HomeAssistant) -> None
     await instance._async_cancel_position_simulation()
 
 
+async def test_recent_stop_command_masks_stale_open_status(hass: HomeAssistant) -> None:
+    """Test stale CU_WIFI endpoint status is held as stopped after a local stop."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.async_set_updated_data(make_status(state="closing", position=55.0, current_position=None))
+    instance._last_known_position = 55.0
+
+    await instance._async_send_action("stop", refresh=False)
+
+    client.read_status_result = make_status(state="open", position=100.0, current_position=None)
+    result = await instance._async_update_data()
+
+    assert result.state == "stopped"
+    assert result.position == 55.0
+    assert result.registers["NHK/RecentStopOverride"] == "open"
+
+
+async def test_recent_stop_command_masks_stale_closed_status(hass: HomeAssistant) -> None:
+    """Test a stale CU_WIFI closed endpoint is held as stopped after a local stop."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.async_set_updated_data(make_status(state="closing", position=35.0, current_position=None))
+    instance._last_known_position = 35.0
+
+    await instance._async_send_action("stop", refresh=False)
+
+    client.read_status_result = make_status(state="closed", position=0.0, current_position=None)
+    result = await instance._async_update_data()
+
+    assert result.state == "stopped"
+    assert result.position == 35.0
+    assert result.registers["NHK/RecentStopOverride"] == "closed"
+
+
+async def test_movement_command_clears_recent_stop_hint(hass: HomeAssistant) -> None:
+    """Test movement commands clear the local stop-state override."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.async_set_updated_data(make_status(state="closing", position=55.0, current_position=None))
+
+    await instance._async_send_action("stop", refresh=False)
+    await instance._async_send_action("open", refresh=False)
+
+    client.read_status_result = make_status(state="opening", position=60.0, current_position=None)
+    result = await instance._async_update_data()
+
+    assert result.state == "opening"
+    assert "NHK/RecentStopOverride" not in result.registers
+
+    await instance._async_cancel_position_simulation()
+
+
+async def test_display_position_uses_last_known_sparse_position(hass: HomeAssistant) -> None:
+    """Test sparse CU_WIFI position updates keep the last displayed position."""
+    instance = _coordinator(hass)
+    instance._store_successful_status(make_status(state="stopped", position=42.0))
+    instance.async_set_updated_data(make_status(state="closing", position=None, current_position=None))
+
+    assert instance.display_position == 42.0
+    assert instance.display_position_estimated is True
+
+
+async def test_stopped_status_uses_last_known_position(hass: HomeAssistant) -> None:
+    """Test stopped CU_WIFI status without position behaves like a mid-travel stop."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.read_status_result = make_status(state="stopped", position=None, current_position=None)
+    instance.client = client
+    instance._last_known_position = 44.0
+
+    result = await instance._async_update_data()
+
+    assert result.state == "stopped"
+    assert result.position == 44.0
+    assert result.registers["NHK/LastKnownPositionFallback"] == "44.0"
+
+
+async def test_set_position_uses_display_position_when_status_position_is_sparse(
+    hass: HomeAssistant,
+) -> None:
+    """Test set-position commands can start from cached CU_WIFI display position."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.async_set_updated_data(make_status(state="stopped", position=None, current_position=None))
+    instance._last_known_position = 55.0
+    refreshes = 0
+
+    async def fake_request_refresh() -> None:
+        nonlocal refreshes
+        refreshes += 1
+
+    instance.async_request_refresh = fake_request_refresh
+
+    await instance.async_set_position(100)
+
+    assert client.actions == ["open"]
+    assert refreshes == 1
+    assert instance.position_simulation_action == "open"
+
+    await instance._async_cancel_position_simulation()
+    await instance._async_cancel_post_command_refresh()
+
+
 async def test_position_simulation_uses_calibrated_travel_speed(
     hass: HomeAssistant,
 ) -> None:
