@@ -27,6 +27,7 @@ from custom_components.nice_bidiwifi.client import (
     _xor_sha256,
     build_dep_action_frame,
     build_dmp_read_frame,
+    build_dmp_write_frame,
     device_info_supports_nhk_status,
     nice_bidi_error_code,
     parse_dmp_response,
@@ -132,6 +133,19 @@ def test_parse_dmp_response_extracts_register_value() -> None:
     assert parsed["value_uint_be"] == 0x1234
 
 
+def test_build_dmp_write_frame_builds_single_byte_set() -> None:
+    """Test DMP SET frame construction."""
+    plain = build_dmp_write_frame(0x00, 0x03, 0x04, 0x80, b"\x01")
+
+    assert plain == bytes.fromhex("55 0e 00 03 50 91 08 07 cd 04 80 a9 00 01 01 2d 0e")
+
+
+def test_build_dmp_write_frame_rejects_empty_value() -> None:
+    """Test DMP SET frame validation."""
+    with pytest.raises(ValueError, match="at least one byte"):
+        build_dmp_write_frame(0x00, 0x03, 0x04, 0x80, b"")
+
+
 def test_build_dep_action_frame_matches_captured_partial_open_1() -> None:
     """Test DEP action frame construction."""
     frame = build_dep_action_frame(DEP_ACTION_COMMANDS[DEP_ACTION_PARTIAL_OPEN_1])
@@ -189,15 +203,24 @@ def test_read_status_combines_registers_into_status() -> None:
                 (0x04, 0x11): (5000).to_bytes(2, "big"),
                 (0x04, 0x18): (10000).to_bytes(2, "big"),
                 (0x04, 0x19): (0).to_bytes(2, "big"),
+                (0x04, 0x42): b"\x64",
+                (0x04, 0x4A): b"\x46",
+                (0x04, 0x80): b"\x01",
+                (0x04, 0xB2): (12).to_bytes(2, "big"),
+                (0x04, 0xB3): (345).to_bytes(2, "big"),
+                (0x04, 0xD0): b"\x01",
+                (0x04, 0xD1): b"\x00\x00\x03",
             }
             key = (plain_payload[9], plain_payload[10])
+            if key not in values:
+                return b"<Response><Error><Code>14</Code></Error></Response>", []
             return b"<Response />", [_dmp_response(*key, values[key])]
 
     status = StatusClient(
         "192.0.2.10",
         443,
         NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
-    )._read_status_locked()
+    )._read_status_locked(include_extended=True)
 
     assert status.state == "opening"
     assert status.position == 50.0
@@ -205,6 +228,16 @@ def test_read_status_combines_registers_into_status() -> None:
     assert status.closed_position == 0
     assert status.open_position == 10000
     assert status.registers["04/01"] == "02"
+    assert status.opening_speed == 100
+    assert status.opening_force == 70
+    assert status.auto_close is True
+    assert status.maintenance_count == 12
+    assert status.total_maneuver_count == 345
+    assert status.limit_closed is True
+    assert status.limit_open is True
+    assert status.diagnostics_io_byte == 3
+    assert status.obstacle is True
+    assert status.last_stop_reason == "obstacle_by_encoder"
 
 
 def test_read_info_extracts_interface_and_device_metadata() -> None:
@@ -708,6 +741,38 @@ def test_send_dep_action_locked_sends_dep_frame() -> None:
     assert client.request == (
         "DEP",
         bytes.fromhex("55 0c 00 03 50 91 01 05 c6 01 82 05 64 e2 0c"),
+        0x00,
+        0x03,
+        200,
+    )
+
+
+def test_write_dmp_register_sends_expected_t4_request() -> None:
+    """Test low-level DMP register writes."""
+
+    class WriteClient(NiceBidiClient):
+        def __init__(self):
+            super().__init__(
+                "192.0.2.10",
+                443,
+                NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+            )
+            self.request = None
+
+        def _ensure_connected_locked(self):
+            return None
+
+        def _t4_request_locked(self, protocol, plain_payload, daddr, dendpoint, tout_ms):
+            self.request = (protocol, plain_payload, daddr, dendpoint, tout_ms)
+            return b"<Response />", []
+
+    client = WriteClient()
+
+    client.write_dmp_register(0x04, 0xB1, 7000, size=2)
+
+    assert client.request == (
+        "DMP",
+        build_dmp_write_frame(0x00, 0x03, 0x04, 0xB1, bytes.fromhex("1b 58")),
         0x00,
         0x03,
         200,

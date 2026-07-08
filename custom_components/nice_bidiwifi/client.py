@@ -34,6 +34,9 @@ STATUS_BY_BYTE = {
     0x03: STATE_CLOSING,
     0x04: STATE_OPEN,
     0x05: STATE_CLOSED,
+    0x10: "partially_open",
+    0x83: STATE_OPENING,
+    0x84: STATE_CLOSING,
 }
 
 NHK_DOOR_STATUS = {
@@ -47,8 +50,69 @@ NHK_DOOR_STATUS = {
     "stop": STATE_STOPPED,
 }
 
+STOP_REASON_BY_BYTE = {
+    0x00: "normal",
+    0x01: "obstacle_by_encoder",
+    0x02: "obstacle_by_force",
+    0x03: "photo_intervention",
+    0x04: "halt",
+    0x05: "emergency",
+    0x06: "electrical_anomaly",
+    0x07: "blocked",
+    0x08: "timeout",
+}
+
 DMP_TARGET_CONTROLLER = (0x00, 0x03)
+DMP_TARGET_OXI = (0x00, 0x0A)
 NHK_STATUS_POST_RESPONSE_LISTEN_SECONDS = 0.75
+
+CORE_STATUS_REGISTERS = (
+    (0x04, 0x01),
+    (0x04, 0x11),
+    (0x04, 0x18),
+    (0x04, 0x19),
+)
+
+EXTENDED_CONTROLLER_REGISTERS = (
+    (0x04, 0x12),
+    (0x04, 0x21),
+    (0x04, 0x22),
+    (0x04, 0x23),
+    (0x04, 0x42),
+    (0x04, 0x43),
+    (0x04, 0x4A),
+    (0x04, 0x4B),
+    (0x04, 0x71),
+    (0x04, 0x72),
+    (0x04, 0x73),
+    (0x04, 0x74),
+    (0x04, 0x80),
+    (0x04, 0x81),
+    (0x04, 0x84),
+    (0x04, 0x85),
+    (0x04, 0x86),
+    (0x04, 0x88),
+    (0x04, 0x89),
+    (0x04, 0x8A),
+    (0x04, 0x8C),
+    (0x04, 0x94),
+    (0x04, 0x9C),
+    (0x04, 0xB1),
+    (0x04, 0xB2),
+    (0x04, 0xB3),
+    (0x04, 0xD0),
+    (0x04, 0xD1),
+    (0x04, 0xD2),
+    (0x04, 0xD4),
+)
+
+OXI_INFO_REGISTERS = (
+    (0x0A, 0x04),
+    (0x0A, 0x09),
+    (0x0A, 0x0A),
+    (0x0A, 0x0B),
+    (0x0A, 0x0C),
+)
 
 DEP_ACTION_PARTIAL_OPEN_1 = "partial_open_1"
 DEP_ACTION_PARTIAL_OPEN_2 = "partial_open_2"
@@ -121,7 +185,46 @@ class NiceBidiStatus:
     closed_position: int | None
     open_position: int | None
     registers: dict[str, str]
+    max_open_position: int | None = None
+    partial_open_1_position: int | None = None
+    partial_open_2_position: int | None = None
+    partial_open_3_position: int | None = None
+    opening_speed: int | None = None
+    closing_speed: int | None = None
+    opening_force: int | None = None
+    closing_force: int | None = None
+    pause_time: int | None = None
+    photo_close_time: int | None = None
+    photo_close_mode: int | None = None
+    always_close_time: int | None = None
+    always_close_mode: int | None = None
+    maintenance_threshold: int | None = None
+    maintenance_count: int | None = None
+    total_maneuver_count: int | None = None
+    alternate_movement_count: int | None = None
+    input_1: bool | None = None
+    input_2: bool | None = None
+    input_3: bool | None = None
+    input_4: bool | None = None
+    auto_close: bool | None = None
+    photo_close: bool | None = None
+    always_close: bool | None = None
+    standby: bool | None = None
+    pre_flash: bool | None = None
+    key_lock: bool | None = None
+    limit_closed: bool | None = None
+    limit_open: bool | None = None
+    photocell: bool | None = None
     obstacle: bool | None = None
+    diagnostics_io_byte: int | None = None
+    last_stop_reason: str | None = None
+    last_stop_reason_code: int | None = None
+    diagnostics_parameters: str | None = None
+    oxi_detected: bool | None = None
+    oxi_product: str | None = None
+    oxi_hardware_version: str | None = None
+    oxi_firmware_version: str | None = None
+    oxi_description: str | None = None
 
     @property
     def is_moving(self) -> bool:
@@ -240,6 +343,36 @@ def build_dmp_read_frame(
     return bytes([0x55, length, *body, length])
 
 
+def build_dmp_write_frame(
+    daddr: int,
+    dendpoint: int,
+    group: int,
+    parameter: int,
+    value: bytes,
+) -> bytes:
+    """Build a DMP register write frame."""
+    if not value:
+        raise ValueError("value must contain at least one byte")
+    if len(value) > 0xFF:
+        raise ValueError("value must fit in a DMP byte-length payload")
+    args = [group, parameter, 0xA9, 0x00, len(value), *value]
+    sublen = len(args) + 1
+    marker = 0xC9 ^ sublen ^ daddr ^ dendpoint
+    body = [
+        daddr,
+        dendpoint,
+        0x50,
+        0x91,
+        0x08,
+        sublen,
+        marker,
+        *args,
+        _dmp_checksum(*args),
+    ]
+    length = len(body)
+    return bytes([0x55, length, *body, length])
+
+
 def build_dep_action_frame(
     command: int,
     *,
@@ -306,6 +439,33 @@ def _dmp_uint(register: dict[str, Any] | None) -> int | None:
     if not value or all(byte == 0xFF for byte in value):
         return None
     return int.from_bytes(value, "big")
+
+
+def _dmp_bytes(register: dict[str, Any] | None) -> bytes | None:
+    if not register:
+        return None
+    value_hex = register.get("value_hex")
+    if not value_hex:
+        return None
+    try:
+        return bytes.fromhex(value_hex)
+    except ValueError:
+        return None
+
+
+def _dmp_bool(register: dict[str, Any] | None) -> bool | None:
+    value = _dmp_bytes(register)
+    if not value or all(byte == 0xFF for byte in value):
+        return None
+    return value[0] != 0
+
+
+def _dmp_ascii(register: dict[str, Any] | None) -> str | None:
+    value = _dmp_bytes(register)
+    if not value:
+        return None
+    text = bytes(byte for byte in value if byte).decode("ascii", errors="ignore").strip()
+    return text or None
 
 
 def _status_from_register(register: dict[str, Any] | None) -> str | None:
@@ -609,9 +769,9 @@ class NiceBidiClient:
         with self._lock:
             self._close_locked()
 
-    def read_status(self) -> NiceBidiStatus:
+    def read_status(self, *, include_extended: bool = False) -> NiceBidiStatus:
         """Read status and position DMP registers."""
-        return self._run_with_reconnect(self._read_status_locked)
+        return self._run_with_reconnect(lambda: self._read_status_locked(include_extended=include_extended))
 
     def read_nhk_status(self) -> NiceBidiStatus:
         """Read state from NHK STATUS/CHANGE properties."""
@@ -637,6 +797,24 @@ class NiceBidiClient:
             valid = ", ".join(sorted(DEP_ACTION_COMMANDS))
             raise ValueError(f"action must be one of: {valid}")
         self._run_with_reconnect(lambda: self._send_dep_action_locked(action))
+
+    def write_dmp_register(
+        self,
+        group: int,
+        parameter: int,
+        value: int,
+        *,
+        size: int = 1,
+    ) -> None:
+        """Write a BusT4/DMP register."""
+        if size < 1:
+            raise ValueError("size must be at least 1")
+        if value < 0:
+            raise ValueError("value must be non-negative")
+        if value > (1 << (size * 8)) - 1:
+            raise ValueError(f"value must fit in {size} byte(s)")
+        payload = value.to_bytes(size, "big")
+        self._run_with_reconnect(lambda: self._write_dmp_register_locked(group, parameter, payload))
 
     def test_connection(self) -> NiceBidiStatus:
         """Authenticate and read status once."""
@@ -906,22 +1084,88 @@ class NiceBidiClient:
         if "<Error>" in _printable(response):
             raise NiceBidiConnectionError(_printable(response))
 
-    def _read_status_locked(self) -> NiceBidiStatus:
-        registers: dict[str, dict[str, Any]] = {}
-        for group, parameter in ((0x04, 0x01), (0x04, 0x11), (0x04, 0x18), (0x04, 0x19)):
-            response, plains = self._t4_request_locked(
-                "DMP",
-                build_dmp_read_frame(0x00, 0x03, group, parameter),
-                0x00,
-                0x03,
-                self.t4_timeout_ms,
-            )
-            if "<Error>" in _printable(response):
+    def _write_dmp_register_locked(
+        self,
+        group: int,
+        parameter: int,
+        value: bytes,
+    ) -> None:
+        response, _ = self._t4_request_locked(
+            "DMP",
+            build_dmp_write_frame(*DMP_TARGET_CONTROLLER, group, parameter, value),
+            *DMP_TARGET_CONTROLLER,
+            self.t4_timeout_ms,
+        )
+        if "<Error>" in _printable(response):
+            raise NiceBidiConnectionError(_printable(response))
+
+    def _read_dmp_register_locked(
+        self,
+        registers: dict[str, dict[str, Any]],
+        daddr: int,
+        dendpoint: int,
+        group: int,
+        parameter: int,
+        *,
+        required: bool,
+    ) -> None:
+        response, plains = self._t4_request_locked(
+            "DMP",
+            build_dmp_read_frame(daddr, dendpoint, group, parameter),
+            daddr,
+            dendpoint,
+            self.t4_timeout_ms,
+        )
+        if "<Error>" in _printable(response):
+            if required:
                 raise NiceBidiConnectionError(_printable(response))
-            for plain in plains:
-                parsed = parse_dmp_response(plain)
-                key = f"{parsed.get('group')}/{parsed.get('parameter')}"
-                registers[key] = parsed
+            _LOGGER.debug(
+                "Optional Nice DMP register read failed daddr=%02X dendpoint=%02X register=%02X/%02X: %s",
+                daddr,
+                dendpoint,
+                group,
+                parameter,
+                _response_summary(response),
+            )
+            return
+        for plain in plains:
+            parsed = parse_dmp_response(plain)
+            parsed_group = parsed.get("group")
+            parsed_parameter = parsed.get("parameter")
+            if parsed_group is None or parsed_parameter is None:
+                continue
+            key = f"{parsed_group}/{parsed_parameter}"
+            if (daddr, dendpoint) != DMP_TARGET_CONTROLLER:
+                key = f"{key}@{daddr:02X}.{dendpoint:02X}"
+            registers[key] = parsed
+
+    def _read_status_locked(self, *, include_extended: bool = False) -> NiceBidiStatus:
+        registers: dict[str, dict[str, Any]] = {}
+        for group, parameter in CORE_STATUS_REGISTERS:
+            self._read_dmp_register_locked(
+                registers,
+                *DMP_TARGET_CONTROLLER,
+                group,
+                parameter,
+                required=True,
+            )
+        if include_extended:
+            for group, parameter in EXTENDED_CONTROLLER_REGISTERS:
+                self._read_dmp_register_locked(
+                    registers,
+                    *DMP_TARGET_CONTROLLER,
+                    group,
+                    parameter,
+                    required=False,
+                )
+            for group, parameter in OXI_INFO_REGISTERS:
+                self._read_dmp_register_locked(
+                    registers,
+                    *DMP_TARGET_OXI,
+                    group,
+                    parameter,
+                    required=False,
+                )
 
         state_register = registers.get("04/01")
         state = _status_from_register(state_register)
@@ -936,6 +1180,15 @@ class NiceBidiClient:
         elif state == STATE_OPEN:
             position = 100.0
 
+        diagnostics_io = _dmp_bytes(registers.get("04/D1"))
+        io_byte = diagnostics_io[2] if diagnostics_io and len(diagnostics_io) >= 3 else diagnostics_io[0] if diagnostics_io else None
+        stop_reason_code = None
+        stop_reason_value = _dmp_bytes(registers.get("04/D0"))
+        if stop_reason_value:
+            stop_reason_code = stop_reason_value[0]
+        total_maneuver_count = _dmp_uint(registers.get("04/B3"))
+        alternate_movement_count = _dmp_uint(registers.get("04/D4"))
+
         return NiceBidiStatus(
             state=state,
             position=round(position, 1) if position is not None else None,
@@ -943,6 +1196,46 @@ class NiceBidiClient:
             closed_position=closed,
             open_position=opened,
             registers={key: str(value.get("value_hex", "")) for key, value in registers.items()},
+            max_open_position=_dmp_uint(registers.get("04/12")),
+            partial_open_1_position=_dmp_uint(registers.get("04/21")),
+            partial_open_2_position=_dmp_uint(registers.get("04/22")),
+            partial_open_3_position=_dmp_uint(registers.get("04/23")),
+            opening_speed=_dmp_uint(registers.get("04/42")),
+            closing_speed=_dmp_uint(registers.get("04/43")),
+            opening_force=_dmp_uint(registers.get("04/4A")),
+            closing_force=_dmp_uint(registers.get("04/4B")),
+            pause_time=_dmp_uint(registers.get("04/81")),
+            photo_close_time=_dmp_uint(registers.get("04/85")),
+            photo_close_mode=_dmp_uint(registers.get("04/86")),
+            always_close_time=_dmp_uint(registers.get("04/89")),
+            always_close_mode=_dmp_uint(registers.get("04/8A")),
+            maintenance_threshold=_dmp_uint(registers.get("04/B1")),
+            maintenance_count=_dmp_uint(registers.get("04/B2")),
+            total_maneuver_count=total_maneuver_count if total_maneuver_count is not None else alternate_movement_count,
+            alternate_movement_count=alternate_movement_count,
+            input_1=_dmp_bool(registers.get("04/71")),
+            input_2=_dmp_bool(registers.get("04/72")),
+            input_3=_dmp_bool(registers.get("04/73")),
+            input_4=_dmp_bool(registers.get("04/74")),
+            auto_close=_dmp_bool(registers.get("04/80")),
+            photo_close=_dmp_bool(registers.get("04/84")),
+            always_close=_dmp_bool(registers.get("04/88")),
+            standby=_dmp_bool(registers.get("04/8C")),
+            pre_flash=_dmp_bool(registers.get("04/94")),
+            key_lock=_dmp_bool(registers.get("04/9C")),
+            limit_closed=bool(io_byte & 0x01) if io_byte is not None else None,
+            limit_open=bool(io_byte & 0x02) if io_byte is not None else None,
+            photocell=bool(io_byte & 0x04) if io_byte is not None else None,
+            obstacle=stop_reason_code in {0x01, 0x02} if stop_reason_code is not None else None,
+            diagnostics_io_byte=io_byte,
+            last_stop_reason=STOP_REASON_BY_BYTE.get(stop_reason_code) if stop_reason_code is not None else None,
+            last_stop_reason_code=stop_reason_code,
+            diagnostics_parameters=str(registers.get("04/D2", {}).get("value_hex") or "") or None,
+            oxi_detected=any(key.startswith("0A/") for key in registers),
+            oxi_product=_dmp_ascii(registers.get("0A/09@00.0A")),
+            oxi_hardware_version=_dmp_ascii(registers.get("0A/0A@00.0A")),
+            oxi_firmware_version=_dmp_ascii(registers.get("0A/0B@00.0A")),
+            oxi_description=_dmp_ascii(registers.get("0A/0C@00.0A")),
         )
 
     def _read_nhk_status_locked(self) -> NiceBidiStatus:
