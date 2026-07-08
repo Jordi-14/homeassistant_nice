@@ -710,6 +710,121 @@ async def test_time_based_calibration_builds_full_travel_profile(
     assert profile["travel_speed"]["close"]["speed_percent_per_second"] > 0
 
 
+async def test_time_full_travel_accepts_plausible_stopped_endpoint(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test time calibration can accept CU_WIFI stopped-at-endpoint reports."""
+    instance = _coordinator(hass)
+    actions: list[str] = []
+    now = 0.0
+    reads = 0
+
+    async def fake_sleep(delay: float) -> None:
+        nonlocal now
+        now += delay
+
+    def fake_monotonic() -> float:
+        return now
+
+    async def fake_read_motion_status() -> Any:
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            return make_status(
+                state="open",
+                position=100.0,
+                current_position=None,
+                closed_position=None,
+                open_position=None,
+            )
+        if now < 20.0:
+            return make_status(
+                state="closing",
+                position=None,
+                current_position=None,
+                closed_position=None,
+                open_position=None,
+            )
+        return make_status(
+            state="stopped",
+            position=None,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        )
+
+    async def fake_send_action(action: str, **_kwargs: Any) -> None:
+        actions.append(action)
+
+    monkeypatch.setattr(coordinator_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(coordinator_module.time, "monotonic", fake_monotonic)
+    instance._async_read_motion_status = fake_read_motion_status
+    instance._async_send_action = fake_send_action
+
+    result = await instance._async_measure_full_travel_time("close", expected_duration_ms=20000)
+
+    assert actions == ["close"]
+    assert result["end_state"] == "stopped"
+    assert result["endpoint_inferred_from_stopped"] is True
+    assert result["stopped_duration_ratio"] >= coordinator_module.CALIBRATION_STOPPED_ENDPOINT_MIN_DURATION_RATIO
+
+
+async def test_time_full_travel_rejects_early_stopped_endpoint(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test time calibration still rejects early stopped reports."""
+    instance = _coordinator(hass)
+    now = 0.0
+    reads = 0
+
+    async def fake_sleep(delay: float) -> None:
+        nonlocal now
+        now += delay
+
+    def fake_monotonic() -> float:
+        return now
+
+    async def fake_read_motion_status() -> Any:
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            return make_status(
+                state="open",
+                position=100.0,
+                current_position=None,
+                closed_position=None,
+                open_position=None,
+            )
+        if now < 5.0:
+            return make_status(
+                state="closing",
+                position=None,
+                current_position=None,
+                closed_position=None,
+                open_position=None,
+            )
+        return make_status(
+            state="stopped",
+            position=None,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        )
+
+    async def fake_send_action(_action: str, **_kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(coordinator_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(coordinator_module.time, "monotonic", fake_monotonic)
+    instance._async_read_motion_status = fake_read_motion_status
+    instance._async_send_action = fake_send_action
+
+    with pytest.raises(HomeAssistantError, match="Position calibration stopped during full close"):
+        await instance._async_measure_full_travel_time("close", expected_duration_ms=20000)
+
+
 async def test_timed_set_position_ignores_stale_position_until_delay(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,

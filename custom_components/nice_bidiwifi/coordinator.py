@@ -93,6 +93,8 @@ CALIBRATION_STABILITY_ATTEMPTS = 2
 CALIBRATION_TARGET_TOLERANCE_PERCENT = 2.0
 CALIBRATION_OUTLIER_ERROR_PERCENT = 15.0
 CALIBRATION_REPORT_LOG_CHUNK_SIZE = 6000
+CALIBRATION_STOPPED_ENDPOINT_GRACE_SECONDS = 3.0
+CALIBRATION_STOPPED_ENDPOINT_MIN_DURATION_RATIO = 0.65
 
 CALIBRATION_STATE_CALIBRATED = "calibrated"
 CALIBRATION_STATE_CANCELLED = "cancelled"
@@ -1111,7 +1113,10 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self._add_calibration_event("speed", "Measuring timed full opening")
         opening_travel = await self._async_measure_full_travel_time("open")
         self._add_calibration_event("speed", "Measuring timed full closing")
-        closing_travel = await self._async_measure_full_travel_time("close")
+        closing_travel = await self._async_measure_full_travel_time(
+            "close",
+            expected_duration_ms=opening_travel.get("duration_ms"),
+        )
         updated_at = datetime.now(UTC)
 
         return {
@@ -1188,11 +1193,39 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             if status.state == moving_state:
                 started_moving = True
             if status.state == STATE_STOPPED and (started_moving or time.monotonic() > movement_start_deadline):
+                stopped_at = time.monotonic()
+                self._add_calibration_event(
+                    "endpoint",
+                    f"{action} endpoint reported stopped before endpoint confirmation",
+                    action=action,
+                    current_percent=status.position,
+                    state=status.state,
+                    duration_ms=round((stopped_at - started) * 1000),
+                    mode="time",
+                )
+                confirmed = await self._async_wait_for_endpoint_after_stopped(action)
+                if confirmed is not None:
+                    self._add_calibration_event(
+                        "endpoint",
+                        f"Reached {action} endpoint after stopped confirmation",
+                        action=action,
+                        current_percent=confirmed.position,
+                        state=confirmed.state,
+                        duration_ms=round((stopped_at - started) * 1000),
+                        mode="time",
+                    )
+                    await self._async_pause_before_next_calibration_command()
+                    return confirmed
                 raise HomeAssistantError(f"Position calibration stopped before reaching {action} endpoint")
 
         raise HomeAssistantError(f"Timed out moving to {action} endpoint during position calibration")
 
-    async def _async_measure_full_travel_time(self, action: str) -> dict[str, Any]:
+    async def _async_measure_full_travel_time(
+        self,
+        action: str,
+        *,
+        expected_duration_ms: int | None = None,
+    ) -> dict[str, Any]:
         """Measure full travel duration when encoder position is unavailable."""
         start_status = await self._async_read_motion_status()
         if self._is_at_endpoint(start_status, action):
@@ -1213,6 +1246,41 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         movement_started_at: float | None = None
         movement_start_deadline = started + POSITION_SIMULATION_START_GRACE_SECONDS
 
+        def build_result(
+            status: NiceBidiStatus,
+            finished: float,
+            *,
+            endpoint_confirmed_after_stopped: bool = False,
+            endpoint_inferred_from_stopped: bool = False,
+            stopped_duration_ratio: float | None = None,
+        ) -> dict[str, Any]:
+            measured_from = movement_started_at if movement_started_at is not None else started
+            duration_ms = max(1, round((finished - measured_from) * 1000))
+            duration_seconds = duration_ms / 1000
+            speed_percent_per_second = 100.0 / duration_seconds
+            result: dict[str, Any] = {
+                "action": action,
+                "mode": "time",
+                "start_percent": start_percent,
+                "end_percent": end_percent,
+                "end_state": status.state,
+                "duration_ms": duration_ms,
+                "movement_start_delay_ms": (
+                    round((movement_started_at - started) * 1000)
+                    if movement_started_at is not None
+                    else None
+                ),
+                "distance_percent": abs(end_percent - start_percent),
+                "speed_percent_per_second": round(speed_percent_per_second, 2),
+            }
+            if endpoint_confirmed_after_stopped:
+                result["endpoint_confirmed_after_stopped"] = True
+            if endpoint_inferred_from_stopped:
+                result["endpoint_inferred_from_stopped"] = True
+            if stopped_duration_ratio is not None:
+                result["stopped_duration_ratio"] = round(stopped_duration_ratio, 2)
+            return result
+
         while time.monotonic() - started < CALIBRATION_MOVEMENT_TIMEOUT_SECONDS:
             await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
             status = await self._async_read_motion_status()
@@ -1220,25 +1288,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
                 movement_started_at = time.monotonic()
             if self._is_at_endpoint(status, action):
                 finished = time.monotonic()
-                measured_from = movement_started_at if movement_started_at is not None else started
-                duration_ms = max(1, round((finished - measured_from) * 1000))
-                duration_seconds = duration_ms / 1000
-                speed_percent_per_second = 100.0 / duration_seconds
-                result = {
-                    "action": action,
-                    "mode": "time",
-                    "start_percent": start_percent,
-                    "end_percent": end_percent,
-                    "end_state": status.state,
-                    "duration_ms": duration_ms,
-                    "movement_start_delay_ms": (
-                        round((movement_started_at - started) * 1000)
-                        if movement_started_at is not None
-                        else None
-                    ),
-                    "distance_percent": abs(end_percent - start_percent),
-                    "speed_percent_per_second": round(speed_percent_per_second, 2),
-                }
+                result = build_result(status, finished)
                 self._add_calibration_event(
                     "speed",
                     f"Timed full {action} speed measurement completed",
@@ -1249,9 +1299,72 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
             if status.state == STATE_STOPPED and (
                 movement_started_at is not None or time.monotonic() > movement_start_deadline
             ):
+                stopped_at = time.monotonic()
+                measured_from = movement_started_at if movement_started_at is not None else started
+                duration_ms = max(1, round((stopped_at - measured_from) * 1000))
+                duration_ratio = (
+                    duration_ms / expected_duration_ms
+                    if isinstance(expected_duration_ms, (int, float)) and expected_duration_ms > 0
+                    else None
+                )
+                self._add_calibration_event(
+                    "speed",
+                    f"Timed full {action} reported stopped before endpoint confirmation",
+                    action=action,
+                    current_percent=status.position,
+                    state=status.state,
+                    duration_ms=duration_ms,
+                    expected_duration_ms=expected_duration_ms,
+                    stopped_duration_ratio=round(duration_ratio, 2) if duration_ratio is not None else None,
+                )
+                confirmed = await self._async_wait_for_endpoint_after_stopped(action)
+                if confirmed is not None:
+                    result = build_result(
+                        confirmed,
+                        stopped_at,
+                        endpoint_confirmed_after_stopped=True,
+                        stopped_duration_ratio=duration_ratio,
+                    )
+                    self._add_calibration_event(
+                        "speed",
+                        f"Timed full {action} speed measurement completed after stopped confirmation",
+                        **result,
+                    )
+                    await self._async_pause_before_next_calibration_command()
+                    return result
+                if (
+                    duration_ratio is not None
+                    and duration_ratio >= CALIBRATION_STOPPED_ENDPOINT_MIN_DURATION_RATIO
+                ):
+                    result = build_result(
+                        status,
+                        stopped_at,
+                        endpoint_inferred_from_stopped=True,
+                        stopped_duration_ratio=duration_ratio,
+                    )
+                    self._add_calibration_event(
+                        "speed",
+                        f"Timed full {action} speed measurement accepted stopped endpoint",
+                        **result,
+                    )
+                    await self._async_pause_before_next_calibration_command()
+                    return result
                 raise HomeAssistantError(f"Position calibration stopped during full {action}")
 
         raise HomeAssistantError(f"Timed out measuring full {action} speed")
+
+    async def _async_wait_for_endpoint_after_stopped(self, action: str) -> NiceBidiStatus | None:
+        """Wait briefly for an endpoint update after a stopped report."""
+        started = time.monotonic()
+        moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
+        while time.monotonic() - started < CALIBRATION_STOPPED_ENDPOINT_GRACE_SECONDS:
+            await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
+            status = await self._async_read_motion_status()
+            if self._is_at_endpoint(status, action):
+                return status
+            if status.state == moving_state:
+                return None
+        return None
 
     async def _async_calibrate_target_from_endpoint(
         self,
