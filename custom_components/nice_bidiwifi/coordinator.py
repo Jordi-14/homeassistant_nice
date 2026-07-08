@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from dataclasses import fields, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 import logging
 import time
@@ -72,6 +72,7 @@ CONNECTION_STATE_UNKNOWN = "unknown"
 POSITION_TARGET_POLL_SECONDS = 0.5
 POSITION_TARGET_TOLERANCE = 1.0
 POST_COMMAND_REFRESH_DELAY_SECONDS = 2.0
+POST_COMMAND_FAST_POLL_SECONDS = 60.0
 RECENT_STOP_STATUS_OVERRIDE_SECONDS = 20.0
 POSITION_SIMULATION_TICK_SECONDS = 1.0
 POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND = 1.0
@@ -150,6 +151,7 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.last_successful_update: datetime | None = None
         self._recent_stop_command_monotonic: float | None = None
         self._recent_stop_started_from_motion = False
+        self._post_command_fast_poll_until_monotonic: float | None = None
         self._last_known_position: float | None = None
         self._position_target_task: asyncio.Task[None] | None = None
         self._post_command_refresh_task: asyncio.Task[None] | None = None
@@ -354,8 +356,29 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.last_successful_update = datetime.now(UTC)
         if status.position is not None:
             self._last_known_position = status.position
-        self.update_interval = MOVING_UPDATE_INTERVAL if status.is_moving else IDLE_UPDATE_INTERVAL
+        self.update_interval = self._update_interval_for_status(status)
         self._sync_position_simulation_from_status(status)
+
+    def _extend_post_command_fast_poll_window(self) -> None:
+        """Poll quickly for a short window after any command."""
+        self._post_command_fast_poll_until_monotonic = time.monotonic() + POST_COMMAND_FAST_POLL_SECONDS
+
+    def _post_command_fast_poll_active(self) -> bool:
+        """Return true while the post-command fast polling window is active."""
+        until = self._post_command_fast_poll_until_monotonic
+        if until is None:
+            return False
+        if time.monotonic() <= until:
+            return True
+        self._post_command_fast_poll_until_monotonic = None
+        return False
+
+    def _update_interval_for_status(self, status: NiceBidiStatus) -> timedelta:
+        """Return the coordinator interval for the latest status."""
+        post_command_fast_poll_active = self._post_command_fast_poll_active()
+        if status.is_moving or post_command_fast_poll_active:
+            return MOVING_UPDATE_INTERVAL
+        return IDLE_UPDATE_INTERVAL
 
     async def _async_cancel_position_target(self) -> None:
         """Cancel a pending target-position watcher."""
@@ -475,13 +498,14 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.last_command = action
         self.last_command_latency_ms = round((time.monotonic() - started) * 1000)
         self.last_error = None
+        self._extend_post_command_fast_poll_window()
         if action == "stop":
             self._recent_stop_command_monotonic = time.monotonic()
             self._recent_stop_started_from_motion = stop_started_from_motion
         else:
             self._recent_stop_command_monotonic = None
             self._recent_stop_started_from_motion = False
-        self.update_interval = MOVING_UPDATE_INTERVAL if action in {"open", "close"} else IDLE_UPDATE_INTERVAL
+        self.update_interval = MOVING_UPDATE_INTERVAL
         if action in {"open", "close"} and simulate:
             self._start_position_simulation(action, target_position=simulation_target_position)
         elif action == "stop":
@@ -512,10 +536,11 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.last_command = action
         self.last_command_latency_ms = round((time.monotonic() - started) * 1000)
         self.last_error = None
+        self._extend_post_command_fast_poll_window()
         if action in DEP_MOVEMENT_ACTIONS:
             self._recent_stop_command_monotonic = None
             self._recent_stop_started_from_motion = False
-        self.update_interval = MOVING_UPDATE_INTERVAL if action in DEP_MOVEMENT_ACTIONS else IDLE_UPDATE_INTERVAL
+        self.update_interval = MOVING_UPDATE_INTERVAL
         self._clear_position_simulation()
         if refresh:
             self._schedule_post_command_refresh()
@@ -552,7 +577,8 @@ class NiceBidiDataUpdateCoordinator(DataUpdateCoordinator[NiceBidiStatus]):
         self.last_command = command_name
         self.last_command_latency_ms = round((time.monotonic() - started) * 1000)
         self.last_error = None
-        self.update_interval = IDLE_UPDATE_INTERVAL
+        self._extend_post_command_fast_poll_window()
+        self.update_interval = MOVING_UPDATE_INTERVAL
         self._extended_status_next_refresh_monotonic = 0.0
         if refresh:
             await self.async_request_refresh()

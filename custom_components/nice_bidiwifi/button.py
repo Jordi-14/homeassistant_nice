@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
+from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN, ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
@@ -23,7 +23,7 @@ from .client import (
     DEP_ACTION_UNLOCK,
 )
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_unique_id
+from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
 from .runtime import get_coordinator
 
 PARALLEL_UPDATES = 1
@@ -148,6 +148,8 @@ class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEnt
         self._entry = entry
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
+        self._attr_name = description.name
+        self.entity_id = bidi_suggested_entity_id(BUTTON_DOMAIN, entry, description.name)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 

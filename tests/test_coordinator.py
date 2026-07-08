@@ -453,8 +453,8 @@ async def test_send_dep_action_records_command_metadata(hass: HomeAssistant) -> 
     assert instance.display_position_estimated is False
 
 
-async def test_send_dep_action_uses_idle_interval_for_non_movement_actions(hass: HomeAssistant) -> None:
-    """Test non-movement DEP actions do not switch to moving polling."""
+async def test_send_dep_action_uses_fast_poll_for_non_movement_actions(hass: HomeAssistant) -> None:
+    """Test non-movement DEP actions still trigger post-command fast polling."""
     instance = _coordinator(hass)
     client = FakeClient()
     instance.client = client
@@ -462,7 +462,49 @@ async def test_send_dep_action_uses_idle_interval_for_non_movement_actions(hass:
     await instance._async_send_dep_action(DEP_ACTION_COURTESY_LIGHT, refresh=False)
 
     assert client.dep_actions == [DEP_ACTION_COURTESY_LIGHT]
+    assert instance.update_interval == coordinator_module.MOVING_UPDATE_INTERVAL
+
+
+async def test_post_command_fast_poll_window_keeps_idle_status_fast(hass: HomeAssistant) -> None:
+    """Test idle status continues fast polling shortly after a command."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+
+    await instance._async_send_action("stop", refresh=False)
+
+    client.read_status_result = make_status(state="open", position=100.0)
+    await instance._async_update_data()
+
+    assert instance.update_interval == coordinator_module.MOVING_UPDATE_INTERVAL
+
+
+async def test_expired_post_command_fast_poll_window_returns_to_idle(hass: HomeAssistant) -> None:
+    """Test idle status returns to idle polling after the command window."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance._post_command_fast_poll_until_monotonic = 0.0
+
+    client.read_status_result = make_status(state="open", position=100.0)
+    await instance._async_update_data()
+
     assert instance.update_interval == coordinator_module.IDLE_UPDATE_INTERVAL
+    assert instance._post_command_fast_poll_until_monotonic is None
+
+
+async def test_moving_status_stays_fast_after_command_window_expires(hass: HomeAssistant) -> None:
+    """Test motion keeps fast polling after the command window expires."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance._post_command_fast_poll_until_monotonic = 0.0
+
+    client.read_status_result = make_status(state="opening", position=None)
+    await instance._async_update_data()
+
+    assert instance.update_interval == coordinator_module.MOVING_UPDATE_INTERVAL
+    assert instance._post_command_fast_poll_until_monotonic is None
 
 
 async def test_send_dep_action_wraps_connection_errors(hass: HomeAssistant) -> None:
@@ -493,7 +535,7 @@ async def test_write_dmp_register_records_command_metadata(hass: HomeAssistant) 
     assert instance.connection_state == coordinator_module.CONNECTION_STATE_CONNECTED
     assert instance.last_command == "dmp_04_80_set"
     assert isinstance(instance.last_command_latency_ms, int)
-    assert instance.update_interval == coordinator_module.IDLE_UPDATE_INTERVAL
+    assert instance.update_interval == coordinator_module.MOVING_UPDATE_INTERVAL
     assert instance._extended_status_next_refresh_monotonic == 0.0
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.util import slugify
 
 from .client import NiceBidiDeviceInfo
 from .const import CONF_DEVICE_ID, CONF_TARGET_MAC, DEFAULT_DEVICE_ID, DOMAIN
@@ -16,6 +17,20 @@ def bidi_unique_id(entry: ConfigEntry, suffix: str) -> str:
     device_id = entry.data.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID)
     normalized_mac = target_mac.lower().replace(":", "")
     return f"{normalized_mac}_{device_id}_{suffix}"
+
+
+def bidi_entity_name(entry: ConfigEntry, suffix: str | None = None) -> str:
+    """Build a full entity name from the configured gate name."""
+    name = str(entry.data.get(CONF_NAME) or entry.title or DOMAIN)
+    if suffix is None:
+        return name
+    return f"{name} {suffix}"
+
+
+def bidi_suggested_entity_id(domain: str, entry: ConfigEntry, suffix: str | None = None) -> str:
+    """Build a registry-managed entity ID suggestion from the configured gate name."""
+    object_id = slugify(bidi_entity_name(entry, suffix)) or DOMAIN
+    return f"{domain}.{object_id}"
 
 
 def bidi_device_info(entry: ConfigEntry, info: NiceBidiDeviceInfo | None = None) -> DeviceInfo:
