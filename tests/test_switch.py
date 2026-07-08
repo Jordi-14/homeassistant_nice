@@ -95,7 +95,7 @@ class TestNiceBidiConfigSwitchProperties:
 
         assert entity.unique_id == "aabbccddeeff_1_bus_t4_auto_close"
         assert entity.entity_description.entity_registry_enabled_default is True
-        assert entity.entity_description.entity_registry_visible_default is False
+        assert entity.entity_description.entity_registry_visible_default is True
         assert entity.is_on is True
         assert entity.available is True
 

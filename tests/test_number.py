@@ -34,7 +34,7 @@ class TestNiceBidiNumberProperties:
 
         assert entity.unique_id == "aabbccddeeff_1_bus_t4_opening_speed"
         assert entity.entity_description.entity_registry_enabled_default is True
-        assert entity.entity_description.entity_registry_visible_default is False
+        assert entity.entity_description.entity_registry_visible_default is True
         assert entity.native_value == 60
         assert entity.native_unit_of_measurement == PERCENTAGE
         assert entity.native_min_value == 1

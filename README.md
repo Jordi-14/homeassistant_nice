@@ -604,42 +604,36 @@ Home Assistant tracks visibility and enabled state separately:
   default views until you unhide them.
 - Disabled entities are not created until manually enabled.
 
-In `v0.7.0b8`, all integration entities are enabled by default. The beta BusT4
-diagnostic and configuration entities are hidden by default so they can be
-tested without enabling each entity first. Existing Home Assistant entity
-registry settings are preserved across upgrades, so entities created by older
-versions may keep their previous hidden or disabled state.
+Existing Home Assistant entity registry settings are preserved across upgrades,
+so entities created by older versions may keep their previous hidden or disabled
+state. For a new installation, the defaults are split by expected use.
 
 Visible by default:
 
-- `cover`: open, close, stop, current position, and set-position slider with optional calibration.
+- `cover`: open, close, stop, current position, and set-position slider with
+  optional calibration.
 - `switch`: open/close gate toggle.
-- `button`: partial open 1, partial open 2, partial open 3, step-step, courtesy light, courtesy light timer, lock, and unlock.
+- `button`: partial open 1, partial open 2, partial open 3, and step-step.
+- `switch`: auto close, photo close, and always close settings.
+- `number`: pause time, photo close time, always close time, opening/closing
+  force, opening/closing speed, and partial-open position settings.
 - `sensor`: connection state.
-- `sensor`: position calibration state.
-- `sensor`: position calibration quality.
-- `button`: refresh status.
-- `button`: reconnect.
+- `sensor`: gate position.
 
 Hidden by default:
 
-- Position calibration button.
-- Position calibration report.
-- Last position calibration.
-- Position calibration error.
-- Last successful update.
-- Last error.
-- Reconnect count.
-- Last command.
-- Last command latency.
-- Gate position percentage from the latest real BiDi-WiFi status update.
-- Current, closed, and open encoder positions.
-- BiDi-WiFi firmware, hardware, and serial.
-- Control-unit firmware, hardware, serial, and product detail.
-- BusT4 configuration/status entities for auto close, photo close, always
-  close, standby, pre-flash, key lock, speed, force, pause time, partial-open
-  positions, maintenance threshold, counters, stop reason, raw diagnostics, and
-  OXI/radio metadata.
+- Optional action buttons such as courtesy light, lock, unlock, refresh status,
+  and reconnect.
+- Advanced BusT4 settings such as standby, pre-flash, key lock, maintenance
+  threshold, raw mode bytes, and read-only setting mirrors.
+- Diagnostic/support sensors such as last update, last error, reconnect count,
+  encoder values, calibration state, firmware, hardware, and serial metadata.
+- Experimental/raw entities such as the decoded `04/D1` bits, raw diagnostic
+  bytes, input flags, debug command sensors, and optional OXI metadata.
+
+Some hidden entities are disabled by default when they are raw, experimental,
+verbose, or safety-sensitive enough that they should be enabled deliberately
+from the entity registry.
 
 See [entity_reference.md](entity_reference.md) for the full entity list,
 purposes, visibility defaults, and enabled defaults.

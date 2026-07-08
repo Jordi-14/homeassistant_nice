@@ -8,9 +8,10 @@ NHK/T4 services over TCP 443 and user-supplied credentials extracted from the
 normal MyNice app data.
 
 For normal dashboards, use the cover entity first. Advanced BusT4 diagnostics
-and configuration entities are hidden by default: hidden means advanced or
-diagnostic, not unavailable. Writable entities ending in `setting` change
-controller configuration registers, so note original values before testing them.
+and configuration entities may be hidden or disabled by default: hidden means
+advanced or diagnostic, not unavailable. Writable entities ending in `setting`
+change controller configuration registers, so note original values before
+testing them.
 Do not change raw mode setting entities unless you already know the exact byte
 your controller expects; the integration exposes those bytes but does not decode
 their meaning.
