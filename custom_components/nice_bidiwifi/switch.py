@@ -15,7 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_STOPPED, NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_unique_id
+from .entity import bidi_device_info, bidi_suggested_object_id, bidi_unique_id
 from .runtime import get_coordinator
 
 PARALLEL_UPDATES = 1
@@ -112,6 +112,7 @@ class NiceBidiCoverSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Swit
         super().__init__(coordinator)
         self._entry = entry
         self._attr_unique_id = bidi_unique_id(entry, "cover_switch")
+        self._attr_suggested_object_id = bidi_suggested_object_id(entry)
 
     @property
     def device_info(self):
@@ -171,6 +172,7 @@ class NiceBidiConfigSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Swi
         self._entry = entry
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
+        self._attr_suggested_object_id = bidi_suggested_object_id(entry, description.name)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 

@@ -15,7 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_unique_id
+from .entity import bidi_device_info, bidi_suggested_object_id, bidi_unique_id
 from .runtime import get_coordinator
 
 
@@ -250,6 +250,7 @@ class NiceBidiNumber(CoordinatorEntity[NiceBidiDataUpdateCoordinator], NumberEnt
         self._entry = entry
         self.entity_description = description
         self._attr_unique_id = bidi_unique_id(entry, description.key)
+        self._attr_suggested_object_id = bidi_suggested_object_id(entry, description.name)
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 
