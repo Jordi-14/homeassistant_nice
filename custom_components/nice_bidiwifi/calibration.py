@@ -35,6 +35,7 @@ from .calibration_constants import (
     CALIBRATION_STORAGE_VERSION,
     CALIBRATION_TARGET_TOLERANCE_PERCENT,
     CALIBRATION_TARGETS,
+    CALIBRATION_TIME_FULL_TRAVEL_ATTEMPTS,
 )
 from .calibration_report import (
     build_calibration_report,
@@ -299,13 +300,34 @@ class NiceBidiCalibrationMixin:
         )
         self._add_calibration_event("speed", "Moving fully closed before time calibration")
         closed_status = await self._async_move_to_end_without_encoder("close")
-        self._add_calibration_event("speed", "Measuring timed full opening")
-        opening_travel = await self._async_measure_full_travel_time("open")
-        self._add_calibration_event("speed", "Measuring timed full closing")
-        closing_travel = await self._async_measure_full_travel_time(
-            "close",
-            expected_duration_ms=opening_travel.get("duration_ms"),
-        )
+        opening_samples = []
+        closing_samples = []
+        for attempt in range(1, CALIBRATION_TIME_FULL_TRAVEL_ATTEMPTS + 1):
+            self._add_calibration_event(
+                "speed",
+                f"Measuring timed full opening {attempt}/{CALIBRATION_TIME_FULL_TRAVEL_ATTEMPTS}",
+            )
+            opening_samples.append(
+                await self._async_measure_full_travel_time(
+                    "open",
+                    attempt=attempt,
+                )
+            )
+            expected_close_duration_ms = self._median_time_travel_duration_ms(opening_samples)
+            self._add_calibration_event(
+                "speed",
+                f"Measuring timed full closing {attempt}/{CALIBRATION_TIME_FULL_TRAVEL_ATTEMPTS}",
+            )
+            closing_samples.append(
+                await self._async_measure_full_travel_time(
+                    "close",
+                    attempt=attempt,
+                    expected_duration_ms=expected_close_duration_ms,
+                )
+            )
+
+        opening_travel = self._select_time_travel_sample("open", opening_samples)
+        closing_travel = self._select_time_travel_sample("close", closing_samples)
         updated_at = datetime.now(UTC)
 
         return {
@@ -316,7 +338,7 @@ class NiceBidiCalibrationMixin:
             "poll_seconds": POSITION_TARGET_POLL_SECONDS,
             "settle_seconds": CALIBRATION_SETTLE_SECONDS,
             "command_pause_seconds": CALIBRATION_COMMAND_PAUSE_SECONDS,
-            "max_attempts": 1,
+            "max_attempts": CALIBRATION_TIME_FULL_TRAVEL_ATTEMPTS,
             "stability_attempts": 1,
             "target_tolerance_percent": CALIBRATION_TARGET_TOLERANCE_PERCENT,
             "targets": [],
@@ -326,6 +348,7 @@ class NiceBidiCalibrationMixin:
                 "initial_position": start_status.position,
                 "closed_state": closed_status.state,
                 "final_state": closing_travel.get("end_state"),
+                "full_travel_attempts": CALIBRATION_TIME_FULL_TRAVEL_ATTEMPTS,
             },
             "travel_speed": {
                 "open": opening_travel,
@@ -413,6 +436,7 @@ class NiceBidiCalibrationMixin:
         self,
         action: str,
         *,
+        attempt: int | None = None,
         expected_duration_ms: int | None = None,
     ) -> dict[str, Any]:
         """Measure full travel duration when encoder position is unavailable."""
@@ -427,6 +451,7 @@ class NiceBidiCalibrationMixin:
             "speed",
             f"Timed full {action} speed measurement started",
             action=action,
+            attempt=attempt,
             start_percent=start_status.position if start_status.position is not None else start_percent,
             state=start_status.state,
         )
@@ -462,6 +487,8 @@ class NiceBidiCalibrationMixin:
                 "distance_percent": abs(end_percent - start_percent),
                 "speed_percent_per_second": round(speed_percent_per_second, 2),
             }
+            if attempt is not None:
+                result["attempt"] = attempt
             if endpoint_confirmed_after_stopped:
                 result["endpoint_confirmed_after_stopped"] = True
             if endpoint_inferred_from_stopped:
@@ -500,6 +527,7 @@ class NiceBidiCalibrationMixin:
                     "speed",
                     f"Timed full {action} reported stopped before endpoint confirmation",
                     action=action,
+                    attempt=attempt,
                     current_percent=status.position,
                     state=status.state,
                     duration_ms=duration_ms,
@@ -541,6 +569,46 @@ class NiceBidiCalibrationMixin:
                 raise HomeAssistantError(f"Position calibration stopped during full {action}")
 
         raise HomeAssistantError(f"Timed out measuring full {action} speed")
+
+    @staticmethod
+    def _median_time_travel_duration_ms(samples: list[dict[str, Any]]) -> int | None:
+        """Return the median duration from time-based full-travel samples."""
+        durations = [
+            sample["duration_ms"]
+            for sample in samples
+            if isinstance(sample.get("duration_ms"), int) and sample["duration_ms"] > 0
+        ]
+        if not durations:
+            return None
+        sorted_durations = sorted(durations)
+        return sorted_durations[len(sorted_durations) // 2]
+
+    @staticmethod
+    def _select_time_travel_sample(action: str, samples: list[dict[str, Any]]) -> dict[str, Any]:
+        """Select the median duration sample for one time-calibrated direction."""
+        valid_samples = [
+            sample
+            for sample in samples
+            if isinstance(sample.get("duration_ms"), int) and sample["duration_ms"] > 0
+        ]
+        if not valid_samples:
+            raise HomeAssistantError(f"Position calibration produced no timed {action} samples")
+
+        selected = sorted(valid_samples, key=lambda sample: sample["duration_ms"])[len(valid_samples) // 2]
+        result = dict(selected)
+        result.update(
+            {
+                "selection_strategy": "median_duration",
+                "selected_attempt": selected.get("attempt"),
+                "measurement_count": len(valid_samples),
+                "duration_samples_ms": [sample["duration_ms"] for sample in valid_samples],
+                "speed_samples_percent_per_second": [
+                    sample.get("speed_percent_per_second") for sample in valid_samples
+                ],
+                "samples": valid_samples,
+            }
+        )
+        return result
 
     async def _async_wait_for_endpoint_after_stopped(self, action: str) -> NiceBidiStatus | None:
         """Wait briefly for an endpoint update after a stopped report."""

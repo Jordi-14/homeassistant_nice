@@ -460,8 +460,8 @@ def test_read_nhk_status_parses_cuwifi_instant_position_event() -> None:
     assert status.registers["NHK/T4InstantPositionPayload"] == "04 40 00 00 4c ff ff"
 
 
-def test_read_nhk_status_uses_cuwifi_t4_stopped_status() -> None:
-    """Test CU_WIFI 04/40 status can override stale NHK DoorStatus."""
+def test_read_nhk_status_keeps_moving_state_for_intermediate_cuwifi_stopped_position() -> None:
+    """Test CU_WIFI 04/40 stopped state does not override moving DoorStatus."""
 
     class NhkStatusClient(NiceBidiClient):
         def _signed_exchange_frames_locked(
@@ -486,11 +486,12 @@ def test_read_nhk_status_uses_cuwifi_t4_stopped_status() -> None:
         NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
     )._read_nhk_status_locked()
 
-    assert status.state == "stopped"
+    assert status.state == "closing"
     assert status.position == 76.0
     assert status.obstacle is False
     assert status.registers["NHK/DoorStatus"] == "closing"
     assert status.registers["NHK/T4Status"] == "stopped"
+    assert status.registers["NHK/T4StatusIgnored"] == "stopped_with_intermediate_position"
     assert status.registers["NHK/T4InstantPosition"] == "76"
     assert status.registers["NHK/T4PayloadKind"] == "04/40"
 

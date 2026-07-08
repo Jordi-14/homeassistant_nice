@@ -27,6 +27,7 @@ STATE_OPENING = "opening"
 STATE_CLOSING = "closing"
 STATE_OPEN = "open"
 STATE_CLOSED = "closed"
+CUWIFI_INTERMEDIATE_POSITION_TOLERANCE = 1.0
 
 STATUS_BY_BYTE = {
     0x01: STATE_STOPPED,
@@ -718,9 +719,22 @@ def _merge_cuwifi_live_status(
     if position is None:
         position = status.position
 
+    state = live_status.state or status.state
+    if (
+        live_status.payload_kind == "04/40"
+        and live_status.state == STATE_STOPPED
+        and live_status.position is not None
+        and CUWIFI_INTERMEDIATE_POSITION_TOLERANCE
+        < live_status.position
+        < 100.0 - CUWIFI_INTERMEDIATE_POSITION_TOLERANCE
+        and status.state in {STATE_OPENING, STATE_CLOSING}
+    ):
+        registers["NHK/T4StatusIgnored"] = "stopped_with_intermediate_position"
+        state = status.state
+
     return replace(
         status,
-        state=live_status.state or status.state,
+        state=state,
         position=position,
         registers=registers,
     )

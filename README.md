@@ -33,9 +33,10 @@ Latest stable release: `v0.7.0`
   interpolate between calibrated points. Devices without encoder data fall back
   to time-based full-travel calibration for better display animation and
   approximate set-position timing.
-- Calibration measures one full opening and one full closing and uses 80% of
-  the measured direction speed for display animation. Without calibration,
-  display animation falls back to 1% per second.
+- Calibration measures three full openings and three full closings without
+  encoder data, selects the median measured duration for each direction, and
+  uses 80% of the selected direction speed for display animation. Without
+  calibration, display animation falls back to 1% per second.
 - Detailed calibration quality report with per-target attempts when encoder
   data is available, full-travel timing, command latency, movement timing, and
   event logs.
@@ -581,9 +582,11 @@ Without encoder data, the integration uses a lower-confidence time-based
 calibration:
 
 1. Moves fully closed first.
-2. Measures one full opening from closed to open.
-3. Measures one full closing from open to closed.
-4. Stores direction-specific full-travel durations and speeds.
+2. Measures three full openings from closed to open.
+3. Measures three full closings from open to closed.
+4. Stores every timing sample and selects the median duration for each
+   direction.
+5. Stores direction-specific full-travel durations and speeds.
 
 This time-based profile improves display animation and can provide approximate
 set-position timing by moving for the calculated duration and sending `stop`.
@@ -626,7 +629,10 @@ For CU_WIFI devices that do not answer the normal DMP status reads, the beta
 fallback can also use live T4 events:
 
 - NHK `DoorStatus` from live `STATUS` / `CHANGE` frames for movement state.
-- T4 `04/40` frames for coarse percentage and sometimes stopped state.
+- T4 `04/40` frames for coarse percentage. If one reports `stopped` while
+  NHK `DoorStatus` still says the gate is moving and the percentage is not near
+  an endpoint, the integration keeps the movement state and only uses the
+  position.
 - T4 `04/02` frames for movement or endpoint state.
 
 Those CU_WIFI values are expected to be less smooth than the real encoder path.

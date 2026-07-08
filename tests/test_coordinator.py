@@ -670,17 +670,21 @@ async def test_time_based_calibration_builds_full_travel_profile(
     """Test calibration can fall back to timing when encoder data is missing."""
     instance = _coordinator(hass)
     actions: list[str] = []
-    statuses = iter(
-        [
-            make_status(state="closed", position=0.0, current_position=None, closed_position=None, open_position=None),
-            make_status(state="closed", position=0.0, current_position=None, closed_position=None, open_position=None),
-            make_status(state="opening", position=None, current_position=None, closed_position=None, open_position=None),
-            make_status(state="open", position=100.0, current_position=None, closed_position=None, open_position=None),
-            make_status(state="open", position=100.0, current_position=None, closed_position=None, open_position=None),
-            make_status(state="closing", position=None, current_position=None, closed_position=None, open_position=None),
-            make_status(state="closed", position=0.0, current_position=None, closed_position=None, open_position=None),
-        ]
-    )
+    status_samples = [
+        make_status(state="closed", position=0.0, current_position=None, closed_position=None, open_position=None),
+    ]
+    for _attempt in range(3):
+        status_samples.extend(
+            [
+                make_status(state="closed", position=0.0, current_position=None, closed_position=None, open_position=None),
+                make_status(state="opening", position=None, current_position=None, closed_position=None, open_position=None),
+                make_status(state="open", position=100.0, current_position=None, closed_position=None, open_position=None),
+                make_status(state="open", position=100.0, current_position=None, closed_position=None, open_position=None),
+                make_status(state="closing", position=None, current_position=None, closed_position=None, open_position=None),
+                make_status(state="closed", position=0.0, current_position=None, closed_position=None, open_position=None),
+            ]
+        )
+    statuses = iter(status_samples)
     clock = count(0)
 
     async def fake_sleep(_delay: float) -> None:
@@ -704,10 +708,35 @@ async def test_time_based_calibration_builds_full_travel_profile(
 
     assert profile["mode"] == "time"
     assert profile["version"] == 6
-    assert actions == ["open", "close"]
+    assert actions == ["open", "close", "open", "close", "open", "close"]
     assert profile["travel_speed"]["open"]["mode"] == "time"
+    assert profile["travel_speed"]["open"]["selection_strategy"] == "median_duration"
+    assert profile["travel_speed"]["open"]["measurement_count"] == 3
+    assert len(profile["travel_speed"]["open"]["samples"]) == 3
     assert profile["travel_speed"]["open"]["speed_percent_per_second"] > 0
+    assert profile["travel_speed"]["close"]["selection_strategy"] == "median_duration"
+    assert profile["travel_speed"]["close"]["measurement_count"] == 3
+    assert len(profile["travel_speed"]["close"]["samples"]) == 3
     assert profile["travel_speed"]["close"]["speed_percent_per_second"] > 0
+
+
+def test_time_calibration_selects_median_duration_sample(hass: HomeAssistant) -> None:
+    """Test time calibration selects the median full-travel duration."""
+    instance = _coordinator(hass)
+    selected = instance._select_time_travel_sample(
+        "open",
+        [
+            {"attempt": 1, "duration_ms": 20000, "speed_percent_per_second": 5.0},
+            {"attempt": 2, "duration_ms": 17000, "speed_percent_per_second": 5.88},
+            {"attempt": 3, "duration_ms": 23000, "speed_percent_per_second": 4.35},
+        ],
+    )
+
+    assert selected["attempt"] == 1
+    assert selected["duration_ms"] == 20000
+    assert selected["selected_attempt"] == 1
+    assert selected["measurement_count"] == 3
+    assert selected["duration_samples_ms"] == [20000, 17000, 23000]
 
 
 async def test_time_full_travel_accepts_plausible_stopped_endpoint(
@@ -1096,6 +1125,9 @@ def test_time_calibration_report_summary_attributes_and_formatting(
                 "duration_ms": 25000,
                 "start_percent": 0.0,
                 "end_percent": 100.0,
+                "measurement_count": 3,
+                "selected_attempt": 2,
+                "duration_samples_ms": [26000, 25000, 27000],
             },
             "close": {
                 "mode": "time",
@@ -1103,6 +1135,9 @@ def test_time_calibration_report_summary_attributes_and_formatting(
                 "duration_ms": 20000,
                 "start_percent": 100.0,
                 "end_percent": 0.0,
+                "measurement_count": 3,
+                "selected_attempt": 1,
+                "duration_samples_ms": [20000, 21000, 19000],
             },
         },
         "samples": {"open": [], "close": []},
@@ -1116,14 +1151,17 @@ def test_time_calibration_report_summary_attributes_and_formatting(
     assert report["profile_mode"] == "time"
     assert report["point_count"] == 0
     assert instance.calibration_report_summary.startswith("time_based:")
+    assert "samples open=3 close=3" in instance.calibration_report_summary
 
     attrs = instance.calibration_report_attributes
     assert attrs["profile_mode"] == "time"
     assert attrs["travel_speed"]["close"]["speed_percent_per_second"] == 5.0
+    assert attrs["travel_speed"]["close"]["measurement_count"] == 3
 
     formatted = instance._format_calibration_report(report)
     assert "Profile mode: time" in formatted
     assert "Full-travel speed:" in formatted
+    assert "measurements=3 selected_attempt=2 duration_samples=[26000, 25000, 27000]" in formatted
 
 
 def test_live_calibration_report_and_event_recording(

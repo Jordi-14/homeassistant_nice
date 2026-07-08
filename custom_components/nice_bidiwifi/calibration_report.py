@@ -203,10 +203,18 @@ def _build_time_calibration_report(
     complete = open_speed is not None and close_speed is not None
     quality = "time_based" if complete else "needs_review"
     if complete:
+        open_count = _time_measurement_count(travel_speed, "open")
+        close_count = _time_measurement_count(travel_speed, "close")
+        count_text = (
+            f"; samples open={open_count} close={close_count}"
+            if open_count is not None or close_count is not None
+            else ""
+        )
         summary = (
             "time_based: full-travel timing measured"
             f"; open {open_speed:.2f}%/s"
             f"; close {close_speed:.2f}%/s"
+            f"{count_text}"
         )
     else:
         summary = "needs_review: incomplete time-based calibration"
@@ -249,6 +257,17 @@ def _speed_percent_per_second(travel_speed: Any, action: str) -> float | None:
     return float(speed) if isinstance(speed, (int, float)) and speed > 0 else None
 
 
+def _time_measurement_count(travel_speed: Any, action: str) -> int | None:
+    """Return the number of timed full-travel samples for one direction."""
+    if not isinstance(travel_speed, dict):
+        return None
+    action_speed = travel_speed.get(action)
+    if not isinstance(action_speed, dict):
+        return None
+    count = action_speed.get("measurement_count")
+    return count if isinstance(count, int) and count > 0 else None
+
+
 def format_calibration_report(report: CalibrationReport) -> str:
     """Format a calibration report as copyable plain text."""
     lines = [
@@ -279,13 +298,20 @@ def format_calibration_report(report: CalibrationReport) -> str:
         for direction, value in sorted(travel_speed.items()):
             if not isinstance(value, dict):
                 continue
-            lines.append(
+            line = (
                 "- "
                 f"{direction}: {value.get('speed_percent_per_second')}%/s "
                 f"duration={value.get('duration_ms')}ms "
                 f"from={value.get('start_percent')}% "
                 f"to={value.get('end_percent')}%"
             )
+            if value.get("measurement_count") is not None:
+                line += (
+                    f" measurements={value.get('measurement_count')}"
+                    f" selected_attempt={value.get('selected_attempt')}"
+                    f" duration_samples={value.get('duration_samples_ms')}"
+                )
+            lines.append(line)
 
     points = report.get("points")
     if isinstance(points, list) and points:
