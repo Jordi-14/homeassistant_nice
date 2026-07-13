@@ -6,7 +6,9 @@ by default.
 For daily use, the `cover` entity is the main dashboard entity. It provides
 open, stop, close, current position, and set-position support when position data
 is available. The gate `switch` is a simpler on/off duplicate for users who want
-that style of control.
+that style of control. The `Gate open` binary sensor exposes the same read-only
+open/not-fully-closed signal for security and alarm automations without adding
+another control surface.
 
 The cover and `Gate position` sensor use the same displayed position. On
 controllers with real encoder DMP status this is normally the real percentage.
@@ -47,6 +49,7 @@ Quick recommendations:
 | Daily open/close/stop | Gate cover | Best default dashboard entity. |
 | Separate position display | Gate position | Same displayed percentage as the cover card; real only when `real_position` is available, cached/estimated when marked by the cover attributes. |
 | Remote-control style action | Step-step | Follows the controller's configured step-step cycle. |
+| Alarm open/not closed state | Gate open | Read-only binary sensor; on means the gate is not fully closed. |
 | Pedestrian or partial opening | Partial open 1/2/3 | Uses the configured partial-open encoder positions. |
 | Local connection health | Connection state, last successful update, reconnect count | Useful for troubleshooting Wi-Fi or local API issues. |
 | Controller tuning | Entities ending in `setting` | Advanced; these write controller registers. |
@@ -64,7 +67,6 @@ Planned or investigated entities:
 
 | Need | Status |
 | --- | --- |
-| Alarm-friendly "gate open" binary sensor | Planned. It should expose a status-only open/not-fully-closed signal for alarm integrations without reusing the control switch. Until it exists, use the cover or switch state carefully in a template. |
 | Motor/controller temperature | Investigated. If implemented, it should be documented as a motor/controller diagnostic temperature, not as outdoor or ambient temperature. |
 
 The table below describes the default entity registry behavior for a new
@@ -93,6 +95,7 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | --- | --- | --- | --- | --- | --- | --- |
 | Cover | Gate cover | `cover` | Main gate entity with open, stop, close, displayed position, and set-position support when position is available. | Visible | Enabled | Primary daily-use entity. |
 | Switch | Gate switch | `cover_switch` | Simple on/off gate control: turn on opens, turn off closes, on means not closed. | Visible | Enabled | Useful for simple automations, but visually duplicates the cover. |
+| Binary sensor | Gate open | `gate_open` | Read-only open/not-fully-closed state using the same state mapping as the gate switch: off only when closed, on when open/opening/closing/stopped. | Visible | Enabled | Alarm-friendly status entity with no control commands. |
 | Switch | Auto close setting | `bus_t4_auto_close` | Writes BusT4 auto-close on/off to register `04/80`. | Visible | Enabled | Advanced but decoded enough to expose intentionally. |
 | Switch | Photo close setting | `bus_t4_photo_close` | Writes BusT4 photo-close on/off to register `04/84`. | Visible | Enabled | Advanced but decoded enough to expose intentionally. |
 | Switch | Always close setting | `bus_t4_always_close` | Writes BusT4 always-close on/off to register `04/88`. | Visible | Enabled | Advanced but decoded enough to expose intentionally. |

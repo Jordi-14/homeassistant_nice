@@ -12,7 +12,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .client import NiceBidiStatus
+from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_STOPPED, NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
 from .runtime import get_coordinator
@@ -25,7 +25,22 @@ class NiceBidiBinarySensorEntityDescription(BinarySensorEntityDescription):
     value_fn: Callable[[NiceBidiStatus], bool | None]
 
 
+def _gate_open(status: NiceBidiStatus) -> bool | None:
+    """Return the same read-only open state as the gate switch."""
+    if status.state == STATE_CLOSED:
+        return False
+    if status.state in {STATE_OPEN, STATE_OPENING, STATE_CLOSING, STATE_STOPPED}:
+        return True
+    return None
+
+
 BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
+    NiceBidiBinarySensorEntityDescription(
+        key="gate_open",
+        name="Gate open",
+        device_class=BinarySensorDeviceClass.OPENING,
+        value_fn=_gate_open,
+    ),
     NiceBidiBinarySensorEntityDescription(
         key="limit_closed",
         name="Closed limit switch",

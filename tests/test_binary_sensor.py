@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+
 from custom_components.nice_bidiwifi.binary_sensor import (
     BINARY_SENSORS,
     NiceBidiBinarySensor,
@@ -20,6 +22,7 @@ class TestNiceBidiBinarySensorProperties:
     def test_binary_sensor_descriptions_have_unique_keys(self) -> None:
         keys = [description.key for description in BINARY_SENSORS]
         assert len(keys) == len(set(keys))
+        assert "gate_open" in keys
         assert "limit_closed" in keys
         assert "limit_open" in keys
         assert "photocell" in keys
@@ -38,6 +41,30 @@ class TestNiceBidiBinarySensorProperties:
         assert entity._attr_entity_registry_visible_default is False
         assert entity.is_on is True
         assert entity.available is True
+
+    def test_gate_open_binary_sensor_matches_gate_switch_state(self) -> None:
+        coordinator = FakeCoordinator()
+        entity = NiceBidiBinarySensor(coordinator, config_entry(), _description("gate_open"))
+
+        assert entity.unique_id == "aabbccddeeff_1_gate_open"
+        assert entity.entity_description.device_class == BinarySensorDeviceClass.OPENING
+        assert entity.entity_description.entity_registry_enabled_default is True
+        assert entity.entity_description.entity_registry_visible_default is True
+        assert entity.is_on is True
+        assert entity.available is True
+
+        for state in ("open", "opening", "closing", "stopped"):
+            coordinator.data = make_status(state=state)
+            assert entity.is_on is True
+            assert entity.available is True
+
+        coordinator.data = make_status(state="closed")
+        assert entity.is_on is False
+        assert entity.available is True
+
+        coordinator.data = make_status(state=None)
+        assert entity.is_on is None
+        assert entity.available is False
 
     def test_false_binary_sensor_is_available(self) -> None:
         coordinator = FakeCoordinator()
