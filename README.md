@@ -46,8 +46,9 @@ Latest stable release: `v0.7.0`
 - Real state from DMP register `04/01` when the controller exposes that path.
 - Real position from DMP registers `04/11`, `04/18`, and `04/19` when encoder
   bounds are available.
-- Experimental CU_WIFI status support from live NHK `STATUS` / `CHANGE` plus
-  live T4 `04/40` and `04/02` events.
+- Experimental alternate status support from live NHK `STATUS` / `CHANGE` plus
+  live T4 `04/40` and `04/02` events, including CU_WIFI percentage frames and
+  RBA4R10-style raw `0..7000` position frames.
 - Faster polling while the gate is moving, slower polling while idle.
 - Automatic reconnect after BiDi reboot, HA restart, and transient TLS EOFs.
 - Diagnostic sensors for connection state, last update/error, reconnect count,

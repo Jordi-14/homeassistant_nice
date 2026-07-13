@@ -141,17 +141,18 @@ State values:
 - `04/01 = 04 ff 00 00` -> open
 - `04/01 = 05 ff 00 00` -> closed
 
-For CU_WIFI devices that do not answer the normal DMP status reads, the beta
-fallback can also use live T4 events:
+For devices that do not answer the normal DMP position reads, the beta fallback
+can also use live T4 events:
 
 - NHK `DoorStatus` from live `STATUS` / `CHANGE` frames for movement state.
-- T4 `04/40` frames for coarse percentage. If one reports `stopped` while
-  NHK `DoorStatus` still says the gate is moving and the percentage is not near
-  an endpoint, the integration keeps the movement state and only uses the
-  position.
+- T4 `04/40` frames for coarse percentage. Some CU_WIFI devices report this
+  directly as `0..100`; some RBA4R10 controllers report raw `0..7000` values
+  that the integration scales to percent. If one reports `stopped` while NHK
+  `DoorStatus` still says the gate is moving and the percentage is not near an
+  endpoint, the integration keeps the movement state and only uses the position.
 - T4 `04/02` frames for movement or endpoint state.
 
-Those CU_WIFI values are expected to be less smooth than the real encoder path.
+Those live T4 values are expected to be less smooth than the real encoder path.
 
 ## Dashboard Slider
 

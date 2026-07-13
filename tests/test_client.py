@@ -460,6 +460,75 @@ def test_read_nhk_status_parses_cuwifi_instant_position_event() -> None:
     assert status.registers["NHK/T4InstantPositionPayload"] == "04 40 00 00 4c ff ff"
 
 
+def test_read_nhk_status_parses_rba4r10_raw_live_position_event() -> None:
+    """Test RBA4R10 04/40 live T4 events scale raw 0..7000 positions."""
+
+    class NhkStatusClient(NiceBidiClient):
+        def _signed_exchange_frames_locked(
+            self,
+            request_type,
+            body="",
+            *,
+            post_response_listen_seconds=0.0,
+        ):
+            assert request_type == "STATUS"
+            assert post_response_listen_seconds > 0
+            return [
+                STX
+                + b'<Response type="STATUS" id="513"><Devices><Device id="1"><Properties>'
+                + b"<DoorStatus>opening</DoorStatus><Obstruct>0</Obstruct>"
+                + b"</Properties></Device></Devices></Response>"
+                + ETX,
+                _encrypted_t4_event(bytes.fromhex("55 0e ff 01 00 03 01 07 fb 04 40 83 1b 58 00 84 0e")),
+            ]
+
+    status = NhkStatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+    )._read_nhk_status_locked()
+
+    assert status.state == "opening"
+    assert status.position == 100.0
+    assert status.registers["NHK/T4InstantPosition"] == "100"
+    assert status.registers["NHK/T4InstantPositionRaw"] == "7000"
+    assert status.registers["NHK/T4InstantPositionScale"] == "raw_0_7000"
+    assert status.registers["NHK/T4InstantPositionPayload"] == "04 40 83 1b 58 00"
+
+
+def test_read_nhk_status_scales_low_rba4r10_raw_position_as_raw_not_percent() -> None:
+    """Test low RBA4R10 raw values are not misread as already-percent values."""
+
+    class NhkStatusClient(NiceBidiClient):
+        def _signed_exchange_frames_locked(
+            self,
+            request_type,
+            body="",
+            *,
+            post_response_listen_seconds=0.0,
+        ):
+            return [
+                STX
+                + b'<Response type="STATUS" id="513"><Devices><Device id="1"><Properties>'
+                + b"<DoorStatus>opening</DoorStatus><Obstruct>0</Obstruct>"
+                + b"</Properties></Device></Devices></Response>"
+                + ETX,
+                _encrypted_t4_event(bytes.fromhex("55 0e ff 01 00 03 01 07 fb 04 40 83 00 63 00 a4 0e")),
+            ]
+
+    status = NhkStatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+    )._read_nhk_status_locked()
+
+    assert status.state == "opening"
+    assert status.position == 1.4
+    assert status.registers["NHK/T4InstantPosition"] == "1"
+    assert status.registers["NHK/T4InstantPositionRaw"] == "99"
+    assert status.registers["NHK/T4InstantPositionScale"] == "raw_0_7000"
+
+
 def test_read_nhk_status_keeps_moving_state_for_intermediate_cuwifi_stopped_position() -> None:
     """Test CU_WIFI 04/40 stopped state does not override moving DoorStatus."""
 

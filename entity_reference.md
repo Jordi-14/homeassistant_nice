@@ -10,7 +10,8 @@ that style of control.
 
 The cover and `Gate position` sensor use the same displayed position. On
 controllers with real encoder DMP status this is normally the real percentage.
-On CU_WIFI devices with validated live T4 percentages it may be a coarse real
+On devices with validated live T4 position frames, such as CU_WIFI percentage
+frames or RBA4R10-style raw `0..7000` `04/40` frames, it may be a coarse real
 percentage, then temporarily become a cached or simulated display value between
 sparse updates. Check the cover attributes `real_position`, `display_position`,
 `display_position_estimated`, and `position_simulation_action` when you need to
@@ -19,9 +20,9 @@ know whether the displayed percentage is fresh or estimated.
 The integration does not treat a fully time-inferred intermediate percentage as
 real controller position. Real position can come from encoder registers such as
 `04/11`, `04/18`, and `04/19`, or from validated live controller frames such as
-CU_WIFI `04/40` when that mapping is known for the device. Endpoint-only status
-can safely say open, closed, opening, closing, or stopped, but it cannot prove
-the exact half-open percentage after a stop.
+CU_WIFI percentage `04/40` or RBA4R10 raw `04/40` when that mapping is known for
+the device. Endpoint-only status can safely say open, closed, opening, closing,
+or stopped, but it cannot prove the exact half-open percentage after a stop.
 
 Use `real_position` for automations that require a confirmed physical
 percentage. Use `display_position` for dashboards where an approximate,

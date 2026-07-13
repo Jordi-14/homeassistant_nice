@@ -28,6 +28,7 @@ STATE_CLOSING = "closing"
 STATE_OPEN = "open"
 STATE_CLOSED = "closed"
 CUWIFI_INTERMEDIATE_POSITION_TOLERANCE = 1.0
+LIVE_RAW_POSITION_OPEN = 7000
 
 STATUS_BY_BYTE = {
     0x01: STATE_STOPPED,
@@ -276,6 +277,16 @@ class _CuwifiLiveStatus:
     position: float | None
     payload_hex: str
     payload_kind: str
+    raw_position: int | None = None
+    position_scale: str | None = None
+
+
+@dataclass(frozen=True)
+class _LiveT4Message:
+    """Inner controller-originated live T4 message and its target address."""
+
+    message: bytes
+    target: tuple[int, int]
 
 
 def _sha256(*values: bytes) -> bytes:
@@ -711,6 +722,10 @@ def _merge_cuwifi_live_status(
     if live_status.position is not None:
         registers["NHK/T4InstantPosition"] = str(round(live_status.position))
         registers["NHK/T4InstantPositionPayload"] = live_status.payload_hex
+    if live_status.raw_position is not None:
+        registers["NHK/T4InstantPositionRaw"] = str(live_status.raw_position)
+    if live_status.position_scale is not None:
+        registers["NHK/T4InstantPositionScale"] = live_status.position_scale
     registers["NHK/T4PayloadKind"] = live_status.payload_kind
 
     position = live_status.position
@@ -755,7 +770,7 @@ def _parse_nhk_status_frames(frames: list[bytes], device_id: int = 1) -> NiceBid
     return status
 
 
-def _cuwifi_t4_message(plain: bytes) -> bytes | None:
+def _cuwifi_t4_message(plain: bytes) -> _LiveT4Message | None:
     """Return the inner controller-originated CU_WIFI T4 message."""
     if len(plain) < 12:
         return None
@@ -777,19 +792,34 @@ def _cuwifi_t4_message(plain: bytes) -> bytes | None:
     message = body[7:-1]
     if message_size != len(message) + 1:
         return None
-    if (to_row, to_address) != (0x00, 0xFF):
+    target = (to_row, to_address)
+    if target not in {(0x00, 0xFF), (0xFF, 0x01)}:
         return None
     if (from_row, from_address) != DMP_TARGET_CONTROLLER:
         return None
     if message_type != 0x01:
         return None
 
-    return message
+    return _LiveT4Message(message=message, target=target)
+
+
+def _live_04_40_position(position_value: int, target: tuple[int, int]) -> tuple[float | None, str | None]:
+    """Return percent position and scale name from a live 04/40 raw value."""
+    if target == (0xFF, 0x01):
+        if 0 <= position_value <= LIVE_RAW_POSITION_OPEN:
+            return round((position_value / LIVE_RAW_POSITION_OPEN) * 100.0, 1), "raw_0_7000"
+        return None, "raw_0_7000"
+    if 0 <= position_value <= 100:
+        return float(position_value), "percent"
+    return None, None
 
 
 def _parse_cuwifi_live_status_payload(plain: bytes) -> _CuwifiLiveStatus | None:
     """Parse CU_WIFI live T4 status and coarse instant-position payloads."""
-    message = _cuwifi_t4_message(plain)
+    live_message = _cuwifi_t4_message(plain)
+    if live_message is None:
+        return None
+    message = live_message.message
     if not message or len(message) < 3 or message[0] != 0x04:
         return None
 
@@ -797,7 +827,7 @@ def _parse_cuwifi_live_status_payload(plain: bytes) -> _CuwifiLiveStatus | None:
     if message[1] == 0x40 and len(message) >= 5:
         state = STATUS_BY_BYTE.get(message[2])
         position_value = int.from_bytes(message[3:5], "big")
-        position = float(position_value) if 0 <= position_value <= 100 else None
+        position, position_scale = _live_04_40_position(position_value, live_message.target)
         if state is None and position is None:
             return None
         return _CuwifiLiveStatus(
@@ -805,6 +835,8 @@ def _parse_cuwifi_live_status_payload(plain: bytes) -> _CuwifiLiveStatus | None:
             position=position,
             payload_hex=payload_hex,
             payload_kind="04/40",
+            raw_position=position_value if position is not None else None,
+            position_scale=position_scale if position is not None else None,
         )
 
     if message[1] == 0x02:
