@@ -51,6 +51,7 @@ NHK_DOOR_STATUS = {
     "stopped": STATE_STOPPED,
     "stop": STATE_STOPPED,
 }
+NHK_UNKNOWN_DOOR_STATUS = {"unknown", "unknow"}
 
 STOP_REASON_BY_BYTE = {
     0x00: "normal",
@@ -638,6 +639,12 @@ def _nhk_status_value(value: str | None) -> str | None:
     return NHK_DOOR_STATUS.get(value.strip().casefold())
 
 
+def _is_nhk_unknown_status(value: str | None) -> bool:
+    if not value:
+        return False
+    return value.strip().casefold() in NHK_UNKNOWN_DOOR_STATUS
+
+
 def _nhk_bool_value(value: str | None) -> bool | None:
     if value is None:
         return None
@@ -681,7 +688,21 @@ def _parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceBidiStatus
 
     state = _nhk_status_value(raw_state)
     if raw_state is not None and state is None:
-        raise NiceBidiConnectionError(f"Unsupported NHK DoorStatus value: {raw_state}")
+        if not _is_nhk_unknown_status(raw_state):
+            raise NiceBidiConnectionError(f"Unsupported NHK DoorStatus value: {raw_state}")
+        obstacle = _nhk_bool_value(raw_obstruct)
+        registers = {"NHK/DoorStatus": raw_state}
+        if raw_obstruct is not None:
+            registers["NHK/Obstruct"] = raw_obstruct
+        return NiceBidiStatus(
+            state=None,
+            position=None,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+            registers=registers,
+            obstacle=obstacle,
+        )
     if state is None:
         return None
 

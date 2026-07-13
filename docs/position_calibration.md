@@ -11,13 +11,15 @@ the socket, marks the cover unavailable, and retries later instead of hammering
 the device.
 
 The cover exposes Home Assistant's position support. For intermediate targets,
-the integration sends `open` or `close`, polls the best available position, and
-sends `stop` after the position reaches or crosses the requested percentage.
-On the validated BiDi-WiFi/NewRobus path this uses real encoder-derived DMP
-position. On CU_WIFI devices that expose validated live T4 percentages, the same
-UI uses that coarse live value, then may keep a cached or simulated display
-position between sparse updates. This is intentionally coarse and should not be
-treated as millimeter precision.
+the integration sends `open` or `close`, calculates a calibrated stop time, and
+sends `stop` at the best known moment. When a real position update arrives while
+the gate is still moving, the integration recalculates the remaining time from
+that fresh position. On the validated BiDi-WiFi/NewRobus path this can be backed
+by real encoder-derived DMP position. On CU_WIFI devices that expose validated
+live T4 percentages, the same UI can use that coarse live value to correct the
+timing, then may keep a cached or simulated display position between sparse
+updates. This is intentionally coarse and should not be treated as millimeter
+precision.
 
 The integration does not treat a fully time-inferred intermediate percentage as
 real controller position. Endpoint-only devices can safely tell Home Assistant
@@ -105,8 +107,10 @@ calibration:
 
 This time-based profile improves display animation and can provide approximate
 set-position timing by moving for the calculated duration and sending `stop`.
-It does not learn precise per-target stop corrections because the integration
-cannot verify the final raw position after each stop.
+If validated live percentages arrive during that movement, they are used to
+readjust the remaining stop time. The profile does not learn precise per-target
+stop corrections unless the integration can verify the final position after each
+stop.
 
 During calibration it polls every 0.5 seconds and waits 0.5 seconds after a
 stop or fully reached endpoint before sending the next movement command.
@@ -145,6 +149,9 @@ For devices that do not answer the normal DMP position reads, the beta fallback
 can also use live T4 events:
 
 - NHK `DoorStatus` from live `STATUS` / `CHANGE` frames for movement state.
+  A transient `unknown` value is treated as sparse status, not as a connection
+  failure, so the cover remains available while waiting for a useful state or T4
+  position frame.
 - T4 `04/40` frames for coarse percentage. Some CU_WIFI devices report this
   directly as `0..100`; some RBA4R10 controllers report raw `0..7000` values
   that the integration scales to percent. If one reports `stopped` while NHK
@@ -153,6 +160,15 @@ can also use live T4 events:
 - T4 `04/02` frames for movement or endpoint state.
 
 Those live T4 values are expected to be less smooth than the real encoder path.
+They are used for displayed real position and, when plausible during motion, to
+correct calibrated set-position timing. They are not made user-configurable and
+out-of-range or implausibly fast jumps are ignored.
+
+Some BusT4 diagnostic and configuration entities depend on DMP registers that a
+CU_WIFI controller may not expose. Those entities stay hidden or disabled by
+default when they are advanced/raw, and otherwise become unavailable when the
+controller does not return the required value. The integration does not invent
+missing configuration values.
 
 ## Dashboard Slider
 

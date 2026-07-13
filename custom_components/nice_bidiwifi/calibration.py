@@ -1276,8 +1276,8 @@ class NiceBidiCalibrationMixin:
             return self.client.read_nhk_status()
         return self.client.read_status()
 
-    def _calibrated_stop_raw(self, target: int, action: str, status: NiceBidiStatus) -> int | None:
-        """Return an interpolated calibrated stop threshold for a target."""
+    def _calibrated_stop_percent(self, target: float, action: str) -> float | None:
+        """Return an interpolated calibrated stop percentage for a target."""
         profile = self.calibration_profile
         if profile is None:
             return None
@@ -1316,13 +1316,19 @@ class NiceBidiCalibrationMixin:
             return None
 
         points.sort(key=lambda item: item[0])
-        stop_percent = self._interpolate_stop_percent(float(target), points)
+        return self._interpolate_stop_percent(float(target), points)
+
+    def _calibrated_stop_raw(self, target: int, action: str, status: NiceBidiStatus) -> int | None:
+        """Return an interpolated calibrated raw stop threshold for a target."""
+        stop_percent = self._calibrated_stop_percent(float(target), action)
+        if stop_percent is None:
+            return None
         return self._raw_for_percent(status, stop_percent)
 
-    def _calibrated_stop_delay_seconds(self, current: float, target: int, action: str) -> float | None:
-        """Return a time-based stop delay for devices without encoder data."""
+    def _calibrated_stop_delay_seconds(self, current: float, target: float, action: str) -> float | None:
+        """Return a calibrated stop delay for a target percentage."""
         profile = self.calibration_profile
-        if profile is None or profile.get("mode") != "time":
+        if profile is None:
             return None
         speed = self._calibrated_travel_speed_percent_per_second(action)
         if speed is None or speed <= 0:

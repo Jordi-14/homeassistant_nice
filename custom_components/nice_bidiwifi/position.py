@@ -37,6 +37,8 @@ POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND = 1.0
 POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR = 0.8
 POSITION_SIMULATION_START_GRACE_SECONDS = 8.0
 POSITION_SIMULATION_TIMEOUT_PADDING_SECONDS = 30.0
+POSITION_TARGET_LIVE_POSITION_TOLERANCE = 0.5
+POSITION_TARGET_LIVE_SPEED_MARGIN = 3.0
 
 
 class NiceBidiPositionMixin:
@@ -366,6 +368,63 @@ class NiceBidiPositionMixin:
             return "close"
         return None
 
+    @staticmethod
+    def _position_reached(action: str, position: float, target: float) -> bool:
+        """Return true when a percentage has crossed the requested stop point."""
+        if action == "open":
+            return position >= target
+        return position <= target
+
+    @staticmethod
+    def _live_position_can_adjust_stop(
+        action: str,
+        *,
+        start_position: float | None,
+        position: float,
+        elapsed_seconds: float,
+        planned_delay_seconds: float,
+        stop_position: float,
+    ) -> bool:
+        """Return true when a live position update is useful for target timing."""
+        if start_position is None:
+            return False
+        tolerance = POSITION_TARGET_LIVE_POSITION_TOLERANCE
+        if action == "open":
+            if position <= start_position + tolerance:
+                return False
+        elif position >= start_position - tolerance:
+            return False
+
+        if elapsed_seconds <= 0 or planned_delay_seconds <= 0:
+            return True
+
+        planned_distance = abs(stop_position - start_position)
+        if planned_distance <= 0:
+            return True
+        planned_speed = planned_distance / planned_delay_seconds
+        observed_speed = abs(position - start_position) / elapsed_seconds
+        max_reasonable_speed = max(
+            planned_speed * POSITION_TARGET_LIVE_SPEED_MARGIN,
+            planned_speed + 10.0,
+        )
+        return observed_speed <= max_reasonable_speed
+
+    def _remaining_stop_delay_seconds(
+        self,
+        action: str,
+        position: float,
+        stop_position: float,
+    ) -> float | None:
+        """Return remaining calibrated time from a live position update."""
+        speed = self._calibrated_travel_speed_percent_per_second(action)
+        if speed is None or speed <= 0:
+            return None
+        if action == "open":
+            remaining = stop_position - position
+        else:
+            remaining = position - stop_position
+        return max(0.0, remaining) / speed
+
     async def async_set_position(self, target_position: int) -> None:
         """Move toward a target percentage and stop after the target is reached."""
         await self._async_cancel_calibration()
@@ -392,14 +451,23 @@ class NiceBidiPositionMixin:
             return
 
         action = "open" if target > current else "close"
-        stop_raw = self._calibrated_stop_raw(target, action, status)
-        stop_delay_seconds = None
-        if stop_raw is None:
-            stop_delay_seconds = self._calibrated_stop_delay_seconds(current, target, action)
+        calibrated_stop_percent = self._calibrated_stop_percent(float(target), action)
+        stop_position = float(target) if calibrated_stop_percent is None else calibrated_stop_percent
+        stop_raw = None
+        if calibrated_stop_percent is not None and self._has_encoder_calibration_data(status):
+            stop_raw = self._raw_for_percent(status, stop_position)
+        stop_delay_seconds = self._calibrated_stop_delay_seconds(current, stop_position, action)
         await self._async_cancel_position_target()
         await self._async_send_action(action, refresh=False, simulation_target_position=target)
         self._position_target_task = self.hass.async_create_task(
-            self._async_stop_at_position(target, action, stop_raw, stop_delay_seconds=stop_delay_seconds),
+            self._async_stop_at_position(
+                target,
+                action,
+                stop_raw,
+                stop_delay_seconds=stop_delay_seconds,
+                start_position=current,
+                stop_position=stop_position,
+            ),
             name=f"{DOMAIN} stop at {target}%",
         )
 
@@ -410,6 +478,8 @@ class NiceBidiPositionMixin:
         stop_raw: int | None = None,
         *,
         stop_delay_seconds: float | None = None,
+        start_position: float | None = None,
+        stop_position: float | None = None,
     ) -> None:
         """Poll live position and stop after crossing the target."""
         moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
@@ -419,15 +489,27 @@ class NiceBidiPositionMixin:
         movement_started_monotonic: float | None = None
         timing_started_monotonic = time.monotonic()
         movement_start_deadline = time.monotonic() + 8.0
+        stop_deadline_monotonic: float | None = None
+        live_adjustment_position = start_position
+        target_stop_position = float(target) if stop_position is None else float(stop_position)
         try:
             while True:
                 await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
+                now = time.monotonic()
                 status = await self._async_read_motion_status()
 
                 if status.state == moving_state:
                     started_moving = True
                     if movement_started_monotonic is None:
-                        movement_started_monotonic = time.monotonic()
+                        movement_started_monotonic = now
+                        if stop_delay_seconds is not None:
+                            stop_deadline_monotonic = now + stop_delay_seconds
+                elif (
+                    stop_delay_seconds is not None
+                    and stop_deadline_monotonic is None
+                    and now > movement_start_deadline
+                ):
+                    stop_deadline_monotonic = timing_started_monotonic + stop_delay_seconds
 
                 position = status.position
                 if position is not None:
@@ -435,25 +517,45 @@ class NiceBidiPositionMixin:
                         if self._raw_reached(action, status, status.current_position, stop_raw):
                             await self._async_send_action("stop")
                             return
-                    elif stop_delay_seconds is None:
-                        if action == "open" and position >= target:
+
+                    if stop_delay_seconds is None:
+                        if self._position_reached(action, position, target_stop_position):
                             await self._async_send_action("stop")
                             return
-                        if action == "close" and position <= target:
-                            await self._async_send_action("stop")
-                            return
-                if stop_delay_seconds is not None:
-                    timing_anchor = movement_started_monotonic or timing_started_monotonic
-                    if time.monotonic() - timing_anchor >= stop_delay_seconds and (
-                        started_moving or time.monotonic() > movement_start_deadline
+                    elif status.state == moving_state and self._live_position_can_adjust_stop(
+                        action,
+                        start_position=start_position,
+                        position=position,
+                        elapsed_seconds=max(now - timing_started_monotonic, 0.0),
+                        planned_delay_seconds=stop_delay_seconds,
+                        stop_position=target_stop_position,
                     ):
+                        if self._position_reached(action, position, target_stop_position):
+                            await self._async_send_action("stop")
+                            return
+                        if (
+                            live_adjustment_position is None
+                            or abs(position - live_adjustment_position)
+                            >= POSITION_TARGET_LIVE_POSITION_TOLERANCE
+                        ):
+                            remaining_delay = self._remaining_stop_delay_seconds(
+                                action,
+                                position,
+                                target_stop_position,
+                            )
+                            if remaining_delay is not None:
+                                stop_deadline_monotonic = now + remaining_delay
+                                live_adjustment_position = position
+
+                if stop_deadline_monotonic is not None and now >= stop_deadline_monotonic:
+                    if started_moving or now > movement_start_deadline:
                         await self._async_send_action("stop")
                         return
                 if status.state == moving_state:
                     continue
                 if started_moving and (status.state in terminal_states or status.state != moving_state):
                     return
-                if not started_moving and time.monotonic() > movement_start_deadline:
+                if not started_moving and now > movement_start_deadline:
                     return
         except asyncio.CancelledError:
             raise

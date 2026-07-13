@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.nice_bidiwifi import coordinator as coordinator_module
+from custom_components.nice_bidiwifi import position as position_module
 from custom_components.nice_bidiwifi.client import (
     DEP_ACTION_COURTESY_LIGHT,
     DEP_ACTION_PARTIAL_OPEN_1,
@@ -182,6 +183,31 @@ async def test_update_data_uses_nhk_status_when_dmp_status_is_unsupported(
     await instance._async_update_data()
     assert client.nhk_status_reads == 2
     assert client.info_reads == 1
+
+
+async def test_update_data_keeps_cuwifi_unknown_door_status_available(
+    hass: HomeAssistant,
+) -> None:
+    """Test transient CU_WIFI unknown DoorStatus is not treated as update failure."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.read_nhk_status_result = make_status(
+        state=None,
+        position=None,
+        current_position=None,
+        closed_position=None,
+        open_position=None,
+    )
+    instance.client = client
+    instance._use_nhk_status = True
+
+    result = await instance._async_update_data()
+
+    assert result.state is None
+    assert result.position is None
+    assert instance.connection_state == coordinator_module.CONNECTION_STATE_CONNECTED
+    assert instance.last_error is None
+    assert instance.last_update_success is True
 
 
 async def test_motion_status_uses_nhk_status_after_fallback(
@@ -635,8 +661,8 @@ def test_calibrated_stop_raw_interpolates_valid_samples(
     assert stop_raw == 225
 
 
-def test_time_calibrated_stop_delay_uses_full_travel_speed(hass: HomeAssistant) -> None:
-    """Test time-based calibration can calculate set-position stop delays."""
+def test_calibrated_stop_delay_uses_full_travel_speed(hass: HomeAssistant) -> None:
+    """Test any calibrated profile can calculate set-position stop delays."""
     instance = _coordinator(hass)
     instance.calibration_profile = {
         "mode": "time",
@@ -650,8 +676,8 @@ def test_time_calibrated_stop_delay_uses_full_travel_speed(hass: HomeAssistant) 
         },
     }
 
-    assert instance._calibrated_stop_delay_seconds(20.0, 70, "open") == 10.0
-    assert instance._calibrated_stop_delay_seconds(70.0, 20, "close") == 12.5
+    assert instance._calibrated_stop_delay_seconds(20.0, 70.0, "open") == 10.0
+    assert instance._calibrated_stop_delay_seconds(70.0, 20.0, "close") == 12.5
 
     instance.calibration_profile = {
         "travel_speed": {
@@ -660,7 +686,7 @@ def test_time_calibrated_stop_delay_uses_full_travel_speed(hass: HomeAssistant) 
             }
         }
     }
-    assert instance._calibrated_stop_delay_seconds(20.0, 70, "open") is None
+    assert instance._calibrated_stop_delay_seconds(20.0, 70.0, "open") == 10.0
 
 
 async def test_time_based_calibration_builds_full_travel_profile(
@@ -889,7 +915,60 @@ async def test_timed_set_position_ignores_stale_position_until_delay(
     await instance._async_stop_at_position(50, "open", stop_delay_seconds=2.0)
 
     assert actions == ["stop"]
-    assert reads == 2
+    assert reads == 3
+
+
+async def test_timed_set_position_rebases_deadline_from_live_position(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test calibrated timing is corrected by plausible live position updates."""
+    instance = _coordinator(hass)
+    actions: list[str] = []
+    clock = 0.0
+    reads = 0
+    instance.calibration_profile = {
+        "travel_speed": {
+            "open": {
+                "speed_percent_per_second": 10.0,
+            }
+        }
+    }
+
+    async def fake_sleep(delay: float) -> None:
+        nonlocal clock
+        clock += delay
+
+    async def fake_read_motion_status() -> Any:
+        nonlocal reads
+        reads += 1
+        return make_status(
+            state="opening",
+            position=10.0,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        )
+
+    async def fake_send_action(action: str, **_kwargs: Any) -> None:
+        actions.append(action)
+
+    monkeypatch.setattr(position_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(position_module.time, "monotonic", lambda: clock)
+    instance._async_read_motion_status = fake_read_motion_status
+    instance._async_send_action = fake_send_action
+
+    await instance._async_stop_at_position(
+        80,
+        "open",
+        stop_delay_seconds=8.0,
+        start_position=0.0,
+        stop_position=80.0,
+    )
+
+    assert actions == ["stop"]
+    assert reads == 15
+    assert clock == pytest.approx(7.5)
 
 
 async def test_position_calibration_falls_back_to_time_profile_without_encoder(

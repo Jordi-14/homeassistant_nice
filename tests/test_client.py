@@ -394,6 +394,41 @@ def test_read_nhk_status_parses_status_response() -> None:
     }
 
 
+def test_read_nhk_status_accepts_unknown_door_status() -> None:
+    """Test transient CU_WIFI unknown DoorStatus stays a successful sparse status."""
+
+    class NhkStatusClient(NiceBidiClient):
+        def _signed_exchange_frames_locked(
+            self,
+            request_type,
+            body="",
+            *,
+            post_response_listen_seconds=0.0,
+        ):
+            assert request_type == "STATUS"
+            return [
+                STX
+                + b'<Response type="STATUS" id="513"><Devices><Device id="1"><Properties>'
+                + b"<DoorStatus>unknown</DoorStatus><Obstruct>0</Obstruct>"
+                + b"</Properties></Device></Devices></Response>"
+                + ETX
+            ]
+
+    status = NhkStatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+    )._read_nhk_status_locked()
+
+    assert status.state is None
+    assert status.position is None
+    assert status.obstacle is False
+    assert status.registers == {
+        "NHK/DoorStatus": "unknown",
+        "NHK/Obstruct": "0",
+    }
+
+
 def test_read_nhk_status_accepts_change_event_frame() -> None:
     """Test async CHANGE frames use the same DoorStatus parser."""
 
