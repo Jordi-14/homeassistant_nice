@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_STOPPED, NiceBidiStatus
+from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_PARTIALLY_OPEN, STATE_STOPPED, NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
 from .runtime import get_coordinator
@@ -83,7 +83,7 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
             return False
         if status.state == STATE_CLOSED:
             return True
-        if status.state in {STATE_OPEN, STATE_OPENING, STATE_CLOSING, STATE_STOPPED}:
+        if status.state in {STATE_OPEN, STATE_OPENING, STATE_CLOSING, STATE_STOPPED, STATE_PARTIALLY_OPEN}:
             return False
         return None
 

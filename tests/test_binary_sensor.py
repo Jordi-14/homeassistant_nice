@@ -53,7 +53,7 @@ class TestNiceBidiBinarySensorProperties:
         assert entity.is_on is True
         assert entity.available is True
 
-        for state in ("open", "opening", "closing", "stopped"):
+        for state in ("open", "opening", "closing", "stopped", "partially_open"):
             coordinator.data = make_status(state=state)
             assert entity.is_on is True
             assert entity.available is True

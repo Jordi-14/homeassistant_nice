@@ -39,6 +39,10 @@ class TestNiceBidiCoverSwitchProperties:
         coordinator.data = make_status(state="stopped")
         assert entity.is_on is True
 
+        coordinator.data = make_status(state="partially_open")
+        assert entity.is_on is True
+        assert entity.available is True
+
     def test_off_state(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.data = make_status(state="closed")
