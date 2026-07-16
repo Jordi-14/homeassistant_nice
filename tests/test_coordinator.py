@@ -13,6 +13,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.nice_bidiwifi import calibration as calibration_module
 from custom_components.nice_bidiwifi import coordinator as coordinator_module
 from custom_components.nice_bidiwifi import position as position_module
 from custom_components.nice_bidiwifi.client import (
@@ -975,6 +976,142 @@ async def test_time_full_travel_rejects_early_stopped_endpoint(
 
     with pytest.raises(HomeAssistantError, match="Position calibration stopped during full close"):
         await instance._async_measure_full_travel_time("close", expected_duration_ms=20000)
+
+
+async def test_encoder_move_to_end_accepts_endpoint_after_stopped_confirmation(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test encoder endpoint movement tolerates a delayed endpoint report."""
+    instance = _coordinator(hass)
+    actions: list[str] = []
+    now = 0.0
+    reads = 0
+
+    async def fake_sleep(delay: float) -> None:
+        nonlocal now
+        now += delay
+
+    def fake_monotonic() -> float:
+        return now
+
+    async def fake_read_motion_status() -> Any:
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            return make_status(
+                state="stopped",
+                position=53.9,
+                current_position=2163,
+                closed_position=0,
+                open_position=4016,
+            )
+        if reads == 2:
+            return make_status(
+                state="opening",
+                position=60.0,
+                current_position=2410,
+                closed_position=0,
+                open_position=4016,
+            )
+        if reads == 3:
+            return make_status(
+                state="stopped",
+                position=80.0,
+                current_position=3213,
+                closed_position=0,
+                open_position=4016,
+            )
+        return make_status(
+            state="open",
+            position=100.0,
+            current_position=4016,
+            closed_position=0,
+            open_position=4016,
+        )
+
+    async def fake_send_action(action: str, **_kwargs: Any) -> None:
+        actions.append(action)
+
+    monkeypatch.setattr(calibration_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(calibration_module.time, "monotonic", fake_monotonic)
+    instance._async_read_motion_status = fake_read_motion_status
+    instance._async_send_action = fake_send_action
+
+    result = await instance._async_move_to_end("open")
+
+    assert actions == ["open"]
+    assert result.state == "open"
+    assert [event["message"] for event in instance._calibration_events] == [
+        "Moving to open endpoint",
+        "open endpoint reported stopped before endpoint confirmation",
+        "Reached open endpoint after stopped confirmation",
+    ]
+    assert instance._calibration_events[1]["details"]["current_raw"] == 3213
+
+
+async def test_encoder_move_to_end_rejects_stopped_before_endpoint(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test encoder endpoint movement still rejects real mid-travel stops."""
+    instance = _coordinator(hass)
+    now = 0.0
+    reads = 0
+
+    async def fake_sleep(delay: float) -> None:
+        nonlocal now
+        now += delay
+
+    def fake_monotonic() -> float:
+        return now
+
+    async def fake_read_motion_status() -> Any:
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            return make_status(
+                state="stopped",
+                position=53.9,
+                current_position=2163,
+                closed_position=0,
+                open_position=4016,
+            )
+        if reads == 2:
+            return make_status(
+                state="opening",
+                position=60.0,
+                current_position=2410,
+                closed_position=0,
+                open_position=4016,
+            )
+        return make_status(
+            state="stopped",
+            position=70.0,
+            current_position=2811,
+            closed_position=0,
+            open_position=4016,
+        )
+
+    async def fake_send_action(_action: str, **_kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(calibration_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(calibration_module.time, "monotonic", fake_monotonic)
+    instance._async_read_motion_status = fake_read_motion_status
+    instance._async_send_action = fake_send_action
+
+    with pytest.raises(
+        HomeAssistantError,
+        match="Position calibration stopped before reaching open endpoint",
+    ):
+        await instance._async_move_to_end("open")
+
+    assert [event["message"] for event in instance._calibration_events] == [
+        "Moving to open endpoint",
+        "open endpoint reported stopped before endpoint confirmation",
+    ]
+    assert instance._calibration_events[1]["details"]["current_percent"] == 70.0
 
 
 async def test_timed_set_position_ignores_stale_position_until_delay(

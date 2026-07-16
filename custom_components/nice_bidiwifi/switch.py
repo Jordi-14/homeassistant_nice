@@ -13,6 +13,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .calibration_constants import CALIBRATION_STATE_RUNNING
 from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_PARTIALLY_OPEN, STATE_STOPPED, NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
@@ -189,6 +190,7 @@ class NiceBidiConfigSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Swi
         return (
             self.coordinator.last_update_success
             and status is not None
+            and self.coordinator.calibration_state != CALIBRATION_STATE_RUNNING
             and not status.is_moving
             and self.is_on is not None
         )

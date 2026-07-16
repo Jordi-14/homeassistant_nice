@@ -119,6 +119,15 @@ class TestNiceBidiConfigSwitchProperties:
         assert entity.is_on is True
         assert entity.available is False
 
+    def test_config_switch_unavailable_while_position_calibration_is_running(self) -> None:
+        coordinator = FakeCoordinator()
+        coordinator.calibration_state = "running"
+        coordinator.data = make_status(state="stopped")
+        entity = NiceBidiConfigSwitch(coordinator, config_entry(), _description("bus_t4_auto_close"))
+
+        assert entity.is_on is True
+        assert entity.available is False
+
     async def test_config_switch_writes_register(self) -> None:
         coordinator = FakeCoordinator()
         entity = NiceBidiConfigSwitch(coordinator, config_entry(), _description("bus_t4_auto_close"))

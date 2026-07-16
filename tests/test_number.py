@@ -89,6 +89,15 @@ class TestNiceBidiNumberProperties:
         assert entity.native_value == 60
         assert entity.available is False
 
+    def test_unavailable_while_position_calibration_is_running(self) -> None:
+        coordinator = FakeCoordinator()
+        coordinator.calibration_state = "running"
+        coordinator.data = make_status(state="stopped")
+        entity = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_speed"))
+
+        assert entity.native_value == 60
+        assert entity.available is False
+
     async def test_number_writes_single_byte_register(self) -> None:
         coordinator = FakeCoordinator()
         entity = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_speed"))

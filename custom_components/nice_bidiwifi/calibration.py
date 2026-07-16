@@ -1969,8 +1969,35 @@ class NiceBidiCalibrationMixin:
                 return status
             if status.state == moving_state:
                 started_moving = True
-            if status.state == STATE_STOPPED and (started_moving or time.monotonic() > movement_start_deadline):
-                raise HomeAssistantError(f"Position calibration stopped before reaching {action} endpoint")
+            if status.state == STATE_STOPPED and (
+                started_moving or time.monotonic() > movement_start_deadline
+            ):
+                stopped_at = time.monotonic()
+                self._add_calibration_event(
+                    "endpoint",
+                    f"{action} endpoint reported stopped before endpoint confirmation",
+                    action=action,
+                    current_raw=status.current_position,
+                    current_percent=status.position,
+                    state=status.state,
+                    duration_ms=round((stopped_at - started) * 1000),
+                )
+                confirmed = await self._async_wait_for_endpoint_after_stopped(action)
+                if confirmed is not None:
+                    self._add_calibration_event(
+                        "endpoint",
+                        f"Reached {action} endpoint after stopped confirmation",
+                        action=action,
+                        current_raw=confirmed.current_position,
+                        current_percent=confirmed.position,
+                        state=confirmed.state,
+                        duration_ms=round((stopped_at - started) * 1000),
+                    )
+                    await self._async_pause_before_next_calibration_command()
+                    return confirmed
+                raise HomeAssistantError(
+                    f"Position calibration stopped before reaching {action} endpoint"
+                )
 
         raise HomeAssistantError(f"Timed out moving to {action} endpoint during position calibration")
 

@@ -13,6 +13,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .calibration_constants import CALIBRATION_STATE_RUNNING
 from .client import NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
@@ -267,6 +268,7 @@ class NiceBidiNumber(CoordinatorEntity[NiceBidiDataUpdateCoordinator], NumberEnt
         return (
             self.coordinator.last_update_success
             and status is not None
+            and self.coordinator.calibration_state != CALIBRATION_STATE_RUNNING
             and not status.is_moving
             and self.native_value is not None
         )
