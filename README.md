@@ -39,16 +39,16 @@ Latest stable release: `v0.7.0`
   courtesy light timer, lock, and unlock.
 - Coarse set-position support by moving in the required direction and sending
   stop once the best available real or calibrated approximate target is reached.
-- Optional position calibration. Devices with encoder data learn
-  direction-specific stop correction. Devices without encoder data can use
-  time-based full-travel calibration for approximate display animation and
-  set-position timing.
+- Optional standardized position calibration. Encoder, live-percent, and
+  live-scalar position sources learn direction-specific stop correction.
+  Endpoint-only devices fall back to time-based full-travel calibration for
+  approximate display animation and set-position timing.
 - Real state from DMP register `04/01` when the controller exposes that path.
 - Real position from DMP registers `04/11`, `04/18`, and `04/19` when encoder
   bounds are available.
 - Experimental alternate status support from live NHK `STATUS` / `CHANGE` plus
   live T4 `04/40` and `04/02` events, including CU_WIFI percentage frames and
-  RBA4R10-style raw `0..7000` position frames.
+  RBA4R10-style raw scalar position frames.
 - Faster polling while the gate is moving, slower polling while idle.
 - Automatic reconnect after BiDi reboot, HA restart, and transient TLS EOFs.
 - Diagnostic sensors for connection state, last update/error, reconnect count,
@@ -169,10 +169,10 @@ The cover attributes separate real source data from dashboard display values:
   held from the last known value.
 - `position_simulation_action`: simulated display direction while active.
 
-Calibration is optional. Encoder-based calibration learns stop correction for
-intermediate targets. Devices without encoder data can use lower-confidence
-time-based calibration for approximate display animation and set-position
-timing, but that does not become real position sensing.
+Calibration is optional. Encoder, live-percent, and live-scalar sources can
+learn stop correction for intermediate targets. Endpoint-only devices can use
+lower-confidence time-based calibration for approximate display animation and
+set-position timing, but that does not become real position sensing.
 
 See [Position, State, and Calibration](docs/position_calibration.md) for the
 full behavior, calibration sequence, known registers, and dashboard slider

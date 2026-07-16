@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 import logging
@@ -66,6 +67,22 @@ from .position import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+CALIBRATION_MODE_ENCODER = "encoder"
+CALIBRATION_MODE_LIVE_PERCENT = "live_percent"
+CALIBRATION_MODE_LIVE_SCALAR = "live_scalar"
+CALIBRATION_MODE_TIME = "time"
+
+
+@dataclass
+class _CalibrationPositionSource:
+    """Position source selected during one calibration run."""
+
+    mode: str
+    scalar_closed_raw: int | None = None
+    scalar_open_raw: int | None = None
+    scalar_min_raw: int | None = None
+    scalar_max_raw: int | None = None
 
 
 class NiceBidiCalibrationMixin:
@@ -202,16 +219,24 @@ class NiceBidiCalibrationMixin:
         self._add_calibration_event("run", "Reading initial status")
         start_status = await self._async_read_motion_status()
         if not self._has_encoder_calibration_data(start_status):
+            source = self._calibration_position_source_for_status(start_status)
             self._add_calibration_event(
                 "run",
-                "Encoder position data unavailable; using time-based calibration",
+                "Encoder position data unavailable; starting standardized non-encoder calibration",
+                mode=source.mode,
                 state=start_status.state,
                 position=start_status.position,
                 current_raw=start_status.current_position,
                 closed_raw=start_status.closed_position,
                 open_raw=start_status.open_position,
+                live_raw=self._live_scalar_raw_from_status(start_status),
+                live_scale=start_status.registers.get("NHK/T4InstantPositionScale"),
             )
-            return await self._async_build_time_position_calibration(started_at, start_status)
+            return await self._async_build_non_encoder_position_calibration(
+                started_at,
+                start_status,
+                source,
+            )
 
         self._validate_position_bounds(start_status)
         self._add_calibration_event(
@@ -256,6 +281,7 @@ class NiceBidiCalibrationMixin:
 
         return {
             "version": 5,
+            "mode": CALIBRATION_MODE_ENCODER,
             "created_at": started_at.isoformat(),
             "updated_at": updated_at.isoformat(),
             "poll_seconds": POSITION_TARGET_POLL_SECONDS,
@@ -275,6 +301,152 @@ class NiceBidiCalibrationMixin:
                 "final_closed_raw": final_status.closed_position,
                 "final_open_raw": final_status.open_position,
                 "final_state": final_status.state,
+            },
+            "travel_speed": {
+                "open": opening_travel,
+                "close": closing_travel,
+            },
+            "samples": {
+                "open": sorted(opening_samples, key=lambda sample: sample["target_percent"]),
+                "close": sorted(closing_samples, key=lambda sample: sample["target_percent"]),
+            },
+        }
+
+    async def _async_build_non_encoder_position_calibration(
+        self,
+        started_at: datetime,
+        start_status: NiceBidiStatus,
+        source: _CalibrationPositionSource,
+    ) -> CalibrationProfile:
+        """Build a calibration profile without DMP encoder bounds."""
+        self._add_calibration_event(
+            "run",
+            "Initial non-encoder calibration status read",
+            mode=source.mode,
+            state=start_status.state,
+            position=start_status.position,
+            live_raw=self._live_scalar_raw_from_status(start_status),
+            live_scale=start_status.registers.get("NHK/T4InstantPositionScale"),
+        )
+
+        self._add_calibration_event("speed", "Moving fully closed before standardized calibration")
+        closed_status = await self._async_move_to_end_with_position_source("close", source)
+        opening_travel_samples = []
+        closing_travel_samples = []
+        for attempt in range(1, CALIBRATION_TIME_FULL_TRAVEL_ATTEMPTS + 1):
+            self._add_calibration_event(
+                "speed",
+                f"Measuring standardized full opening {attempt}/{CALIBRATION_TIME_FULL_TRAVEL_ATTEMPTS}",
+                mode=source.mode,
+            )
+            opening_travel_samples.append(
+                await self._async_measure_full_travel_with_position_source(
+                    "open",
+                    source,
+                    attempt=attempt,
+                )
+            )
+            expected_close_duration_ms = self._median_time_travel_duration_ms(opening_travel_samples)
+            self._add_calibration_event(
+                "speed",
+                f"Measuring standardized full closing {attempt}/{CALIBRATION_TIME_FULL_TRAVEL_ATTEMPTS}",
+                mode=source.mode,
+            )
+            closing_travel_samples.append(
+                await self._async_measure_full_travel_with_position_source(
+                    "close",
+                    source,
+                    attempt=attempt,
+                    expected_duration_ms=expected_close_duration_ms,
+                )
+            )
+            self._finalize_live_scalar_bounds(source)
+            if self._calibration_source_can_measure_targets(source):
+                break
+
+        if self._calibration_source_can_measure_targets(source):
+            opening_travel = opening_travel_samples[-1]
+            closing_travel = closing_travel_samples[-1]
+            opening_samples = []
+            for target in CALIBRATION_TARGETS:
+                self._add_calibration_event(
+                    "target",
+                    f"Opening-side calibration for {target}% started",
+                    mode=source.mode,
+                )
+                opening_samples.append(
+                    await self._async_calibrate_target_from_endpoint_with_position_source(
+                        target,
+                        "open",
+                        "close",
+                        source,
+                    )
+                )
+
+            self._add_calibration_event("endpoint", "Moving fully open before closing-side calibration")
+            open_status = await self._async_move_to_end_with_position_source("open", source)
+            closing_samples = []
+            for target in reversed(CALIBRATION_TARGETS):
+                self._add_calibration_event(
+                    "target",
+                    f"Closing-side calibration for {target}% started",
+                    mode=source.mode,
+                )
+                closing_samples.append(
+                    await self._async_calibrate_target_from_endpoint_with_position_source(
+                        target,
+                        "close",
+                        "open",
+                        source,
+                    )
+                )
+            targets = list(CALIBRATION_TARGETS)
+            max_attempts = CALIBRATION_MAX_ATTEMPTS
+            stability_attempts = CALIBRATION_STABILITY_ATTEMPTS
+        else:
+            source.mode = CALIBRATION_MODE_TIME
+            opening_travel = self._select_time_travel_sample("open", opening_travel_samples)
+            closing_travel = self._select_time_travel_sample("close", closing_travel_samples)
+            opening_samples = []
+            closing_samples = []
+            open_status = None
+            targets = []
+            max_attempts = CALIBRATION_TIME_FULL_TRAVEL_ATTEMPTS
+            stability_attempts = 1
+
+        self._add_calibration_event("endpoint", "Final close started")
+        final_status = await self._async_move_to_end_with_position_source("close", source)
+        final_percent = self._calibration_percent_for_status(final_status, source)
+        self._add_calibration_event(
+            "endpoint",
+            "Final close completed",
+            mode=source.mode,
+            current_percent=final_percent,
+            state=final_status.state,
+        )
+        updated_at = datetime.now(UTC)
+
+        return {
+            "version": 7,
+            "mode": source.mode,
+            "created_at": started_at.isoformat(),
+            "updated_at": updated_at.isoformat(),
+            "poll_seconds": POSITION_TARGET_POLL_SECONDS,
+            "settle_seconds": CALIBRATION_SETTLE_SECONDS,
+            "command_pause_seconds": CALIBRATION_COMMAND_PAUSE_SECONDS,
+            "max_attempts": max_attempts,
+            "stability_attempts": stability_attempts,
+            "target_tolerance_percent": CALIBRATION_TARGET_TOLERANCE_PERCENT,
+            "targets": targets,
+            "bounds": {
+                "mode": source.mode,
+                "initial_state": start_status.state,
+                "initial_position": start_status.position,
+                "closed_state": closed_status.state,
+                "open_state": open_status.state if open_status is not None else None,
+                "final_state": final_status.state,
+                "full_travel_attempts": len(opening_travel_samples),
+                **self._calibration_source_bounds(source),
             },
             "travel_speed": {
                 "open": opening_travel,
@@ -609,6 +781,597 @@ class NiceBidiCalibrationMixin:
             }
         )
         return result
+
+    async def _async_move_to_end_with_position_source(
+        self,
+        action: str,
+        source: _CalibrationPositionSource,
+    ) -> NiceBidiStatus:
+        """Move fully open or closed while tracking the active position source."""
+        status = await self._async_read_motion_status()
+        self._update_calibration_position_source(source, status)
+        current_percent = self._calibration_percent_for_status(status, source)
+        if self._is_at_endpoint(status, action):
+            self._add_calibration_event(
+                "endpoint",
+                f"Already at {action} endpoint",
+                action=action,
+                current_percent=current_percent,
+                state=status.state,
+                mode=source.mode,
+            )
+            return status
+
+        self._add_calibration_event(
+            "endpoint",
+            f"Moving to {action} endpoint",
+            action=action,
+            current_percent=current_percent,
+            state=status.state,
+            mode=source.mode,
+        )
+        await self._async_send_action(action, refresh=False, simulate=False)
+        started = time.monotonic()
+        moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
+        started_moving = False
+        movement_start_deadline = started + POSITION_SIMULATION_START_GRACE_SECONDS
+        while time.monotonic() - started < CALIBRATION_MOVEMENT_TIMEOUT_SECONDS:
+            await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
+            status = await self._async_read_motion_status()
+            self._update_calibration_position_source(source, status)
+            current_percent = self._calibration_percent_for_status(status, source)
+            if self._is_at_endpoint(status, action):
+                self._add_calibration_event(
+                    "endpoint",
+                    f"Reached {action} endpoint",
+                    action=action,
+                    current_percent=current_percent,
+                    state=status.state,
+                    duration_ms=round((time.monotonic() - started) * 1000),
+                    mode=source.mode,
+                )
+                await self._async_pause_before_next_calibration_command()
+                return status
+            if status.state == moving_state:
+                started_moving = True
+            if status.state == STATE_STOPPED and (
+                started_moving or time.monotonic() > movement_start_deadline
+            ):
+                stopped_at = time.monotonic()
+                self._add_calibration_event(
+                    "endpoint",
+                    f"{action} endpoint reported stopped before endpoint confirmation",
+                    action=action,
+                    current_percent=current_percent,
+                    state=status.state,
+                    duration_ms=round((stopped_at - started) * 1000),
+                    mode=source.mode,
+                )
+                confirmed = await self._async_wait_for_endpoint_after_stopped(action)
+                if confirmed is not None:
+                    self._update_calibration_position_source(source, confirmed)
+                    self._add_calibration_event(
+                        "endpoint",
+                        f"Reached {action} endpoint after stopped confirmation",
+                        action=action,
+                        current_percent=self._calibration_percent_for_status(confirmed, source),
+                        state=confirmed.state,
+                        duration_ms=round((stopped_at - started) * 1000),
+                        mode=source.mode,
+                    )
+                    await self._async_pause_before_next_calibration_command()
+                    return confirmed
+                raise HomeAssistantError(f"Position calibration stopped before reaching {action} endpoint")
+
+        raise HomeAssistantError(f"Timed out moving to {action} endpoint during position calibration")
+
+    async def _async_measure_full_travel_with_position_source(
+        self,
+        action: str,
+        source: _CalibrationPositionSource,
+        *,
+        attempt: int | None = None,
+        expected_duration_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Measure full travel and discover live position sources while moving."""
+        start_status = await self._async_read_motion_status()
+        self._update_calibration_position_source(source, start_status)
+        if self._is_at_endpoint(start_status, action):
+            raise HomeAssistantError(f"Nice gate is already at {action} endpoint")
+
+        start_raw = self._calibration_raw_for_status(start_status, source)
+        first_raw = start_raw
+        last_raw = start_raw
+        start_percent = self._calibration_percent_for_status(start_status, source)
+        if start_percent is None:
+            start_percent = 0.0 if action == "open" else 100.0
+        end_percent = 100.0 if action == "open" else 0.0
+        started = time.monotonic()
+        self._add_calibration_event(
+            "speed",
+            f"Standardized full {action} speed measurement started",
+            action=action,
+            attempt=attempt,
+            mode=source.mode,
+            start_raw=start_raw,
+            start_percent=start_percent,
+            state=start_status.state,
+        )
+        await self._async_send_action(action, refresh=False, simulate=False)
+        moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
+        movement_started_at: float | None = None
+        movement_start_deadline = started + POSITION_SIMULATION_START_GRACE_SECONDS
+
+        def build_result(
+            status: NiceBidiStatus,
+            finished: float,
+            *,
+            endpoint_confirmed_after_stopped: bool = False,
+            endpoint_inferred_from_stopped: bool = False,
+            stopped_duration_ratio: float | None = None,
+        ) -> dict[str, Any]:
+            measured_from = movement_started_at if movement_started_at is not None else started
+            duration_ms = max(1, round((finished - measured_from) * 1000))
+            duration_seconds = duration_ms / 1000
+            final_raw = self._calibration_raw_for_status(status, source)
+            self._learn_live_scalar_bounds_from_travel(
+                source,
+                action,
+                first_raw,
+                final_raw if final_raw is not None else last_raw,
+            )
+            final_percent = self._calibration_percent_for_status(status, source)
+            if final_percent is None:
+                final_percent = end_percent
+            distance_percent = final_percent - start_percent
+            speed_percent_per_second = abs(distance_percent) / duration_seconds
+            result: dict[str, Any] = {
+                "action": action,
+                "mode": source.mode,
+                "start_raw": start_raw,
+                "start_percent": round(start_percent, 2),
+                "end_raw": final_raw,
+                "end_percent": round(final_percent, 2),
+                "end_state": status.state,
+                "duration_ms": duration_ms,
+                "movement_start_delay_ms": (
+                    round((movement_started_at - started) * 1000)
+                    if movement_started_at is not None
+                    else None
+                ),
+                "distance_percent": round(distance_percent, 2),
+                "speed_percent_per_second": round(speed_percent_per_second, 2),
+            }
+            if attempt is not None:
+                result["attempt"] = attempt
+            if endpoint_confirmed_after_stopped:
+                result["endpoint_confirmed_after_stopped"] = True
+            if endpoint_inferred_from_stopped:
+                result["endpoint_inferred_from_stopped"] = True
+            if stopped_duration_ratio is not None:
+                result["stopped_duration_ratio"] = round(stopped_duration_ratio, 2)
+            return result
+
+        while time.monotonic() - started < CALIBRATION_MOVEMENT_TIMEOUT_SECONDS:
+            await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
+            status = await self._async_read_motion_status()
+            self._update_calibration_position_source(source, status)
+            current_raw = self._calibration_raw_for_status(status, source)
+            if current_raw is not None:
+                if first_raw is None:
+                    first_raw = current_raw
+                last_raw = current_raw
+            if status.state == moving_state and movement_started_at is None:
+                movement_started_at = time.monotonic()
+            if self._is_at_endpoint(status, action):
+                finished = time.monotonic()
+                result = build_result(status, finished)
+                self._add_calibration_event(
+                    "speed",
+                    f"Standardized full {action} speed measurement completed",
+                    **result,
+                )
+                await self._async_pause_before_next_calibration_command()
+                return result
+            if status.state == STATE_STOPPED and (
+                movement_started_at is not None or time.monotonic() > movement_start_deadline
+            ):
+                stopped_at = time.monotonic()
+                measured_from = movement_started_at if movement_started_at is not None else started
+                duration_ms = max(1, round((stopped_at - measured_from) * 1000))
+                duration_ratio = (
+                    duration_ms / expected_duration_ms
+                    if isinstance(expected_duration_ms, (int, float)) and expected_duration_ms > 0
+                    else None
+                )
+                self._add_calibration_event(
+                    "speed",
+                    f"Standardized full {action} reported stopped before endpoint confirmation",
+                    action=action,
+                    attempt=attempt,
+                    current_percent=self._calibration_percent_for_status(status, source),
+                    state=status.state,
+                    duration_ms=duration_ms,
+                    expected_duration_ms=expected_duration_ms,
+                    stopped_duration_ratio=round(duration_ratio, 2) if duration_ratio is not None else None,
+                    mode=source.mode,
+                )
+                confirmed = await self._async_wait_for_endpoint_after_stopped(action)
+                if confirmed is not None:
+                    self._update_calibration_position_source(source, confirmed)
+                    result = build_result(
+                        confirmed,
+                        stopped_at,
+                        endpoint_confirmed_after_stopped=True,
+                        stopped_duration_ratio=duration_ratio,
+                    )
+                    self._add_calibration_event(
+                        "speed",
+                        f"Standardized full {action} speed measurement completed after stopped confirmation",
+                        **result,
+                    )
+                    await self._async_pause_before_next_calibration_command()
+                    return result
+                if (
+                    source.mode == CALIBRATION_MODE_TIME
+                    and duration_ratio is not None
+                    and duration_ratio >= CALIBRATION_STOPPED_ENDPOINT_MIN_DURATION_RATIO
+                ):
+                    result = build_result(
+                        status,
+                        stopped_at,
+                        endpoint_inferred_from_stopped=True,
+                        stopped_duration_ratio=duration_ratio,
+                    )
+                    self._add_calibration_event(
+                        "speed",
+                        f"Standardized full {action} speed measurement accepted stopped endpoint",
+                        **result,
+                    )
+                    await self._async_pause_before_next_calibration_command()
+                    return result
+                raise HomeAssistantError(f"Position calibration stopped during full {action}")
+
+        raise HomeAssistantError(f"Timed out measuring full {action} speed")
+
+    async def _async_calibrate_target_from_endpoint_with_position_source(
+        self,
+        target: int,
+        action: str,
+        endpoint_action: str,
+        source: _CalibrationPositionSource,
+    ) -> dict[str, Any]:
+        """Calibrate one target using a non-encoder position source."""
+        attempts = []
+        stop_percent: float | None = None
+
+        for attempt in range(1, CALIBRATION_MAX_ATTEMPTS + 1):
+            self._add_calibration_event(
+                "attempt",
+                f"{action} {target}% attempt {attempt}: moving to known {endpoint_action} endpoint",
+                action=action,
+                target_percent=target,
+                attempt=attempt,
+                endpoint_action=endpoint_action,
+                requested_stop_percent=stop_percent,
+                mode=source.mode,
+            )
+            await self._async_move_to_end_with_position_source(endpoint_action, source)
+            if stop_percent is None:
+                stop_percent = float(target)
+                self._add_calibration_event(
+                    "attempt",
+                    f"{action} {target}% attempt {attempt}: using nominal first stop threshold",
+                    action=action,
+                    target_percent=target,
+                    attempt=attempt,
+                    requested_stop_percent=round(stop_percent, 2),
+                    mode=source.mode,
+                )
+
+            sample = await self._async_calibrate_target_with_position_source(
+                target,
+                action,
+                endpoint_action,
+                attempt,
+                stop_percent,
+                source,
+            )
+            attempts.append(sample)
+            selection_so_far = self._select_calibration_sample(attempts)
+            stop_percent = selection_so_far["sample"]["corrected_stop_percent"]
+            attempt_successful = self._calibration_attempt_successful(sample)
+            event_details = {
+                "action": action,
+                "target_percent": target,
+                "attempt": attempt,
+                "valid": self._calibration_attempt_valid(sample),
+                "successful": attempt_successful,
+                "stable_success": self._calibration_attempts_stable(attempts),
+                "successful_attempts": self._calibration_success_count(attempts),
+                "final_percent": sample["final_percent"],
+                "error_percent": sample["error_percent"],
+                "requested_stop_percent": sample["requested_stop_percent"],
+                "corrected_stop_percent": sample["corrected_stop_percent"],
+                "stop_command_latency_ms": sample["stop_command_latency_ms"],
+                "move_duration_ms": sample["move_duration_ms"],
+                "mode": source.mode,
+            }
+            failure_reason = sample.get("failure_reason")
+            if failure_reason is not None:
+                event_details["failure_reason"] = failure_reason
+            if self._calibration_attempt_valid(sample):
+                event_message = f"{action} {target}% attempt {attempt}: settled with {sample['error_percent']}% error"
+            else:
+                event_message = f"{action} {target}% attempt {attempt}: invalid after {failure_reason}"
+            self._add_calibration_event("attempt", event_message, **event_details)
+
+            await self._async_move_to_end_with_position_source(endpoint_action, source)
+
+        selection = self._select_calibration_sample(attempts)
+        selected_sample = selection["sample"]
+        successful = selection["strategy"] == "stable_window"
+        self._add_calibration_event(
+            "target",
+            f"{action} {target}% calibration finished",
+            action=action,
+            target_percent=target,
+            successful=successful,
+            successful_attempts=self._calibration_success_count(attempts),
+            stability_attempts=CALIBRATION_STABILITY_ATTEMPTS,
+            attempts_used=len(attempts),
+            selection_strategy=selection["strategy"],
+            selected_attempt=selection["selected_attempt"],
+            selected_attempts=selection["selected_attempts"],
+            selected_abs_error_percent=selection["selected_abs_error_percent"],
+            ignored_outlier_attempts=selection["ignored_outlier_attempts"],
+            ignored_invalid_attempts=selection["ignored_invalid_attempts"],
+            final_error_percent=selected_sample["error_percent"],
+            corrected_stop_percent=selected_sample["corrected_stop_percent"],
+            mode=source.mode,
+        )
+        return {
+            **selected_sample,
+            "successful": successful,
+            "successful_attempts": self._calibration_success_count(attempts),
+            "stability_attempts": CALIBRATION_STABILITY_ATTEMPTS,
+            "attempts_used": len(attempts),
+            "selection_strategy": selection["strategy"],
+            "selected_attempt": selection["selected_attempt"],
+            "selected_attempts": selection["selected_attempts"],
+            "selected_window_avg_abs_error_percent": selection["selected_window_avg_abs_error_percent"],
+            "selected_abs_error_percent": selection["selected_abs_error_percent"],
+            "ignored_outlier_attempts": selection["ignored_outlier_attempts"],
+            "ignored_invalid_attempts": selection["ignored_invalid_attempts"],
+            "outlier_error_percent": CALIBRATION_OUTLIER_ERROR_PERCENT,
+            "last_attempt": attempts[-1],
+            "attempts": attempts,
+        }
+
+    async def _async_calibrate_target_with_position_source(
+        self,
+        target: int,
+        action: str,
+        endpoint_action: str,
+        attempt: int,
+        requested_stop_percent: float,
+        source: _CalibrationPositionSource,
+    ) -> dict[str, Any]:
+        """Measure one target approach using normalized percentages."""
+        status = await self._async_read_motion_status()
+        self._update_calibration_position_source(source, status)
+        start_percent = self._calibration_percent_for_status(status, source)
+        if start_percent is None:
+            start_percent = 0.0 if endpoint_action == "close" else 100.0
+        start_raw = self._calibration_raw_for_status(status, source)
+        target_percent = float(target)
+        if self._position_reached_for_calibration(action, start_percent, target_percent):
+            raise HomeAssistantError(f"Position calibration already crossed {target}% while preparing to {action}")
+
+        self._add_calibration_event(
+            "attempt",
+            f"{action} {target}% attempt {attempt}: movement command sent",
+            action=action,
+            target_percent=target,
+            attempt=attempt,
+            mode=source.mode,
+            start_raw=start_raw,
+            start_percent=round(start_percent, 2),
+            requested_stop_percent=round(requested_stop_percent, 2),
+        )
+        move_started = time.monotonic()
+        await self._async_send_action(action, refresh=False, simulate=False)
+        stop_command_percent: float | None = None
+        stop_command_raw: int | None = None
+        moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
+        started_moving = False
+        movement_start_deadline = move_started + POSITION_SIMULATION_START_GRACE_SECONDS
+
+        while time.monotonic() - move_started < CALIBRATION_MOVEMENT_TIMEOUT_SECONDS:
+            await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
+            status = await self._async_read_motion_status()
+            self._update_calibration_position_source(source, status)
+            current_percent = self._calibration_percent_for_status(status, source)
+            current_raw = self._calibration_raw_for_status(status, source)
+            if (
+                current_percent is not None
+                and self._position_reached_for_calibration(action, current_percent, requested_stop_percent)
+            ):
+                stop_command_percent = current_percent
+                stop_command_raw = current_raw
+                self._add_calibration_event(
+                    "attempt",
+                    f"{action} {target}% attempt {attempt}: stop threshold reached",
+                    action=action,
+                    target_percent=target,
+                    attempt=attempt,
+                    mode=source.mode,
+                    current_raw=current_raw,
+                    current_percent=round(current_percent, 2),
+                    requested_stop_percent=round(requested_stop_percent, 2),
+                    state=status.state,
+                )
+                await self._async_send_action("stop", refresh=False, simulate=False)
+                break
+            if status.state == moving_state:
+                started_moving = True
+            if status.state in {STATE_OPEN, STATE_CLOSED, STATE_STOPPED} and (
+                started_moving or time.monotonic() > movement_start_deadline
+            ):
+                raise HomeAssistantError(f"Position calibration stopped before reaching {target}%")
+
+        if stop_command_percent is None:
+            raise HomeAssistantError(f"Timed out calibrating {target}% while moving {action}")
+
+        settled, settle_timed_out = await self._async_wait_for_settle(
+            action=action,
+            target=target,
+            attempt=attempt,
+        )
+        self._update_calibration_position_source(source, settled)
+        final_percent = self._calibration_percent_for_status(settled, source)
+        final_raw = self._calibration_raw_for_status(settled, source)
+
+        if settle_timed_out or final_percent is None:
+            return self._invalid_calibration_sample_with_position_source(
+                action=action,
+                endpoint_action=endpoint_action,
+                attempt=attempt,
+                target=target,
+                source=source,
+                start_raw=start_raw,
+                start_percent=start_percent,
+                requested_stop_percent=requested_stop_percent,
+                stop_command_raw=stop_command_raw,
+                stop_command_percent=stop_command_percent,
+                final_raw=final_raw,
+                final_percent=final_percent,
+                move_started=move_started,
+                failure_reason="settle_timeout" if settle_timed_out else "final_position_unavailable",
+            )
+
+        error_percent = round(final_percent - target_percent, 2)
+        corrected_stop_percent = self._clamp_calibration_percent(stop_command_percent - error_percent)
+        move_duration_ms = round((time.monotonic() - move_started) * 1000)
+        travel_percent = stop_command_percent - start_percent
+        speed_percent_per_second = (travel_percent / move_duration_ms) * 1000 if move_duration_ms > 0 else None
+        target_raw = self._raw_for_percent_from_source(source, target_percent)
+        requested_stop_raw = self._raw_for_percent_from_source(source, requested_stop_percent)
+        error_raw = (
+            final_raw - target_raw
+            if final_raw is not None and target_raw is not None
+            else None
+        )
+        corrected_stop_raw = self._raw_for_percent_from_source(source, corrected_stop_percent)
+        self._add_calibration_event(
+            "attempt",
+            f"{action} {target}% attempt {attempt}: settled position read",
+            action=action,
+            target_percent=target,
+            attempt=attempt,
+            mode=source.mode,
+            final_raw=final_raw,
+            final_percent=round(final_percent, 2),
+            error_raw=error_raw,
+            error_percent=error_percent,
+            stop_command_raw=stop_command_raw,
+            stop_command_percent=round(stop_command_percent, 2),
+            corrected_stop_raw=corrected_stop_raw,
+            corrected_stop_percent=round(corrected_stop_percent, 2),
+            move_duration_ms=move_duration_ms,
+            stop_command_latency_ms=self.last_command_latency_ms,
+            speed_percent_per_second=round(speed_percent_per_second, 2) if speed_percent_per_second is not None else None,
+        )
+
+        return {
+            "action": action,
+            "endpoint_action": endpoint_action,
+            "mode": source.mode,
+            "valid": True,
+            "failure_reason": None,
+            "attempt": attempt,
+            "target_percent": target,
+            "start_raw": start_raw,
+            "start_percent": round(start_percent, 2),
+            "target_raw": target_raw,
+            "requested_stop_raw": requested_stop_raw,
+            "requested_stop_percent": round(requested_stop_percent, 2),
+            "stop_command_raw": stop_command_raw,
+            "stop_command_percent": round(stop_command_percent, 2),
+            "corrected_stop_raw": corrected_stop_raw,
+            "corrected_stop_percent": round(corrected_stop_percent, 2),
+            "final_raw": final_raw,
+            "final_percent": round(final_percent, 2),
+            "error_raw": error_raw,
+            "error_percent": error_percent,
+            "move_duration_ms": move_duration_ms,
+            "speed_raw_per_second": None,
+            "speed_percent_per_second": round(speed_percent_per_second, 2) if speed_percent_per_second is not None else None,
+            "stop_command_latency_ms": self.last_command_latency_ms,
+        }
+
+    def _invalid_calibration_sample_with_position_source(
+        self,
+        *,
+        action: str,
+        endpoint_action: str,
+        attempt: int,
+        target: int,
+        source: _CalibrationPositionSource,
+        start_raw: int | None,
+        start_percent: float,
+        requested_stop_percent: float,
+        stop_command_raw: int | None,
+        stop_command_percent: float,
+        final_raw: int | None,
+        final_percent: float | None,
+        move_started: float,
+        failure_reason: str,
+    ) -> dict[str, Any]:
+        """Return an invalid non-encoder calibration attempt."""
+        move_duration_ms = round((time.monotonic() - move_started) * 1000)
+        self._add_calibration_event(
+            "attempt",
+            f"{action} {target}% attempt {attempt}: marked invalid",
+            action=action,
+            target_percent=target,
+            attempt=attempt,
+            mode=source.mode,
+            failure_reason=failure_reason,
+            final_raw=final_raw,
+            final_percent=final_percent,
+            requested_stop_percent=round(requested_stop_percent, 2),
+            stop_command_raw=stop_command_raw,
+            stop_command_percent=round(stop_command_percent, 2),
+            move_duration_ms=move_duration_ms,
+            stop_command_latency_ms=self.last_command_latency_ms,
+        )
+        return {
+            "action": action,
+            "endpoint_action": endpoint_action,
+            "mode": source.mode,
+            "valid": False,
+            "failure_reason": failure_reason,
+            "attempt": attempt,
+            "target_percent": target,
+            "start_raw": start_raw,
+            "start_percent": round(start_percent, 2),
+            "target_raw": self._raw_for_percent_from_source(source, float(target)),
+            "requested_stop_raw": self._raw_for_percent_from_source(source, requested_stop_percent),
+            "requested_stop_percent": round(requested_stop_percent, 2),
+            "stop_command_raw": stop_command_raw,
+            "stop_command_percent": round(stop_command_percent, 2),
+            "corrected_stop_raw": self._raw_for_percent_from_source(source, requested_stop_percent),
+            "corrected_stop_percent": round(requested_stop_percent, 2),
+            "final_raw": final_raw,
+            "final_percent": round(final_percent, 2) if final_percent is not None else None,
+            "error_raw": None,
+            "error_percent": None,
+            "move_duration_ms": move_duration_ms,
+            "speed_raw_per_second": None,
+            "speed_percent_per_second": None,
+            "stop_command_latency_ms": self.last_command_latency_ms,
+        }
 
     async def _async_wait_for_endpoint_after_stopped(self, action: str) -> NiceBidiStatus | None:
         """Wait briefly for an endpoint update after a stopped report."""
@@ -1406,6 +2169,218 @@ class NiceBidiCalibrationMixin:
                 return max(0.0, min(100.0, stop))
             previous_target, previous_stop = next_target, next_stop
         return max(0.0, min(100.0, points[-1][1]))
+
+    def _calibration_position_source_for_status(
+        self,
+        status: NiceBidiStatus,
+    ) -> _CalibrationPositionSource:
+        """Return the best calibration position source visible in one status."""
+        source = _CalibrationPositionSource(CALIBRATION_MODE_TIME)
+        self._update_calibration_position_source(source, status)
+        return source
+
+    def _update_calibration_position_source(
+        self,
+        source: _CalibrationPositionSource,
+        status: NiceBidiStatus,
+    ) -> None:
+        """Update source selection and learned scalar bounds from a status."""
+        if self._has_encoder_calibration_data(status):
+            source.mode = CALIBRATION_MODE_ENCODER
+            return
+
+        scale = status.registers.get("NHK/T4InstantPositionScale")
+        raw = self._live_scalar_raw_from_status(status)
+        if scale is not None and scale.startswith("raw") and raw is not None:
+            if source.mode != CALIBRATION_MODE_LIVE_SCALAR:
+                source.mode = CALIBRATION_MODE_LIVE_SCALAR
+                source.scalar_closed_raw = None
+                source.scalar_open_raw = None
+                source.scalar_min_raw = None
+                source.scalar_max_raw = None
+            source.scalar_min_raw = raw if source.scalar_min_raw is None else min(source.scalar_min_raw, raw)
+            source.scalar_max_raw = raw if source.scalar_max_raw is None else max(source.scalar_max_raw, raw)
+            if status.state == STATE_CLOSED:
+                source.scalar_closed_raw = raw
+            elif status.state == STATE_OPEN:
+                source.scalar_open_raw = raw
+            return
+
+        if (
+            source.mode == CALIBRATION_MODE_TIME
+            and scale == "percent"
+            and status.position is not None
+        ):
+            source.mode = CALIBRATION_MODE_LIVE_PERCENT
+
+    def _finalize_live_scalar_bounds(self, source: _CalibrationPositionSource) -> None:
+        """Fill missing live-scalar endpoint bounds from observed range."""
+        if source.mode != CALIBRATION_MODE_LIVE_SCALAR:
+            return
+        if (
+            source.scalar_closed_raw is not None
+            and source.scalar_open_raw is not None
+            and source.scalar_closed_raw != source.scalar_open_raw
+        ):
+            return
+        if source.scalar_min_raw is None or source.scalar_max_raw is None:
+            return
+        if source.scalar_min_raw == source.scalar_max_raw:
+            return
+
+        if source.scalar_closed_raw is None and source.scalar_open_raw is None:
+            source.scalar_closed_raw = source.scalar_min_raw
+            source.scalar_open_raw = source.scalar_max_raw
+            return
+        if source.scalar_closed_raw is None:
+            source.scalar_closed_raw = (
+                source.scalar_max_raw
+                if source.scalar_open_raw == source.scalar_min_raw
+                else source.scalar_min_raw
+            )
+        if source.scalar_open_raw is None:
+            source.scalar_open_raw = (
+                source.scalar_max_raw
+                if source.scalar_closed_raw == source.scalar_min_raw
+                else source.scalar_min_raw
+            )
+
+    @staticmethod
+    def _learn_live_scalar_bounds_from_travel(
+        source: _CalibrationPositionSource,
+        action: str,
+        start_raw: int | None,
+        end_raw: int | None,
+    ) -> None:
+        """Learn live-scalar endpoint bounds from a full-travel direction."""
+        if source.mode != CALIBRATION_MODE_LIVE_SCALAR:
+            return
+        if action == "open":
+            if source.scalar_closed_raw is None and start_raw is not None:
+                source.scalar_closed_raw = start_raw
+            if source.scalar_open_raw is None and end_raw is not None:
+                source.scalar_open_raw = end_raw
+            return
+        if source.scalar_open_raw is None and start_raw is not None:
+            source.scalar_open_raw = start_raw
+        if source.scalar_closed_raw is None and end_raw is not None:
+            source.scalar_closed_raw = end_raw
+
+    @staticmethod
+    def _calibration_source_can_measure_targets(source: _CalibrationPositionSource) -> bool:
+        """Return true when the source can measure partial-stop error."""
+        if source.mode in {CALIBRATION_MODE_ENCODER, CALIBRATION_MODE_LIVE_PERCENT}:
+            return True
+        return (
+            source.mode == CALIBRATION_MODE_LIVE_SCALAR
+            and source.scalar_closed_raw is not None
+            and source.scalar_open_raw is not None
+            and source.scalar_closed_raw != source.scalar_open_raw
+        )
+
+    @staticmethod
+    def _calibration_source_bounds(source: _CalibrationPositionSource) -> dict[str, Any]:
+        """Return stored bounds for the active calibration source."""
+        if source.mode != CALIBRATION_MODE_LIVE_SCALAR:
+            return {}
+        return {
+            "live_scalar_closed_raw": source.scalar_closed_raw,
+            "live_scalar_open_raw": source.scalar_open_raw,
+            "live_scalar_min_raw": source.scalar_min_raw,
+            "live_scalar_max_raw": source.scalar_max_raw,
+        }
+
+    @staticmethod
+    def _live_scalar_raw_from_status(status: NiceBidiStatus) -> int | None:
+        """Return a live T4 raw position from status registers."""
+        raw = status.registers.get("NHK/T4InstantPositionRaw")
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def _calibration_raw_for_status(
+        self,
+        status: NiceBidiStatus,
+        source: _CalibrationPositionSource,
+    ) -> int | None:
+        """Return the raw value for the active calibration source."""
+        if source.mode == CALIBRATION_MODE_ENCODER:
+            return status.current_position
+        if source.mode == CALIBRATION_MODE_LIVE_SCALAR:
+            return self._live_scalar_raw_from_status(status)
+        return None
+
+    def _calibration_percent_for_status(
+        self,
+        status: NiceBidiStatus,
+        source: _CalibrationPositionSource,
+    ) -> float | None:
+        """Return a normalized percentage for the active calibration source."""
+        if source.mode == CALIBRATION_MODE_ENCODER:
+            if status.position is not None:
+                return float(status.position)
+            return self._endpoint_percent_from_state(status.state)
+
+        if source.mode == CALIBRATION_MODE_LIVE_SCALAR:
+            raw = self._live_scalar_raw_from_status(status)
+            if (
+                raw is not None
+                and source.scalar_closed_raw is not None
+                and source.scalar_open_raw is not None
+                and source.scalar_closed_raw != source.scalar_open_raw
+            ):
+                span = source.scalar_open_raw - source.scalar_closed_raw
+                return self._clamp_calibration_percent(
+                    ((raw - source.scalar_closed_raw) / span) * 100.0
+                )
+            return self._endpoint_percent_from_state(status.state)
+
+        if source.mode == CALIBRATION_MODE_LIVE_PERCENT:
+            if status.position is not None:
+                return float(status.position)
+            return self._endpoint_percent_from_state(status.state)
+
+        return self._endpoint_percent_from_state(status.state)
+
+    @staticmethod
+    def _endpoint_percent_from_state(state: str | None) -> float | None:
+        """Return a known endpoint percentage from state."""
+        if state == STATE_CLOSED:
+            return 0.0
+        if state == STATE_OPEN:
+            return 100.0
+        return None
+
+    @staticmethod
+    def _position_reached_for_calibration(action: str, position: float, target: float) -> bool:
+        """Return true when a normalized position crossed a target."""
+        if action == "open":
+            return position >= target
+        return position <= target
+
+    @staticmethod
+    def _clamp_calibration_percent(percent: float) -> float:
+        """Clamp a calibration percentage."""
+        return max(0.0, min(100.0, float(percent)))
+
+    @staticmethod
+    def _raw_for_percent_from_source(
+        source: _CalibrationPositionSource,
+        percent: float,
+    ) -> int | None:
+        """Convert a percent to raw live-scalar value when possible."""
+        if (
+            source.mode != CALIBRATION_MODE_LIVE_SCALAR
+            or source.scalar_closed_raw is None
+            or source.scalar_open_raw is None
+            or source.scalar_closed_raw == source.scalar_open_raw
+        ):
+            return None
+        span = source.scalar_open_raw - source.scalar_closed_raw
+        return round(source.scalar_closed_raw + (span * (percent / 100.0)))
 
     @staticmethod
     def _has_encoder_calibration_data(status: NiceBidiStatus) -> bool:

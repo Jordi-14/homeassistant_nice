@@ -158,6 +158,7 @@ class NiceBidiPositionMixin:
 
     def _normalize_status_for_display(self, status: NiceBidiStatus) -> NiceBidiStatus:
         """Align sparse status updates with the cover behavior users expect."""
+        status = self._normalize_live_scalar_status(status)
         if (
             status.state == STATE_STOPPED
             and status.position is None
@@ -167,6 +168,35 @@ class NiceBidiPositionMixin:
             registers["NHK/LastKnownPositionFallback"] = str(round(self._last_known_position, 1))
             return replace(status, position=self._last_known_position, registers=registers)
         return status
+
+    def _normalize_live_scalar_status(self, status: NiceBidiStatus) -> NiceBidiStatus:
+        """Normalize raw live-scalar positions using calibration bounds."""
+        profile = self.calibration_profile
+        if not isinstance(profile, dict) or profile.get("mode") != "live_scalar":
+            return status
+        registers = status.registers
+        scale = registers.get("NHK/T4InstantPositionScale")
+        if scale is None or not scale.startswith("raw"):
+            return status
+        raw_text = registers.get("NHK/T4InstantPositionRaw")
+        if raw_text is None:
+            return status
+        bounds = profile.get("bounds")
+        if not isinstance(bounds, dict):
+            return status
+        closed_raw = bounds.get("live_scalar_closed_raw")
+        open_raw = bounds.get("live_scalar_open_raw")
+        if not isinstance(closed_raw, int) or not isinstance(open_raw, int) or closed_raw == open_raw:
+            return status
+        try:
+            raw = int(raw_text)
+        except (TypeError, ValueError):
+            return status
+
+        percent = max(0.0, min(100.0, ((raw - closed_raw) / (open_raw - closed_raw)) * 100.0))
+        updated_registers = dict(registers)
+        updated_registers["NHK/T4CalibratedPosition"] = str(round(percent, 1))
+        return replace(status, position=round(percent, 1), registers=updated_registers)
 
     @property
     def display_position(self) -> float | None:

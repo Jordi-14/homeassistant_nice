@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from itertools import count
 from typing import Any
@@ -634,6 +635,102 @@ def test_position_bounds_validation_and_endpoint_helpers() -> None:
     )
 
 
+def test_calibration_source_detection_handles_live_percent_and_scalar(
+    hass: HomeAssistant,
+) -> None:
+    """Test non-encoder live position source detection."""
+    instance = _coordinator(hass)
+    percent_status = replace(
+        make_status(
+            state="opening",
+            position=76.0,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        ),
+        registers={
+            "NHK/T4InstantPosition": "76",
+            "NHK/T4InstantPositionRaw": "76",
+            "NHK/T4InstantPositionScale": "percent",
+        },
+    )
+
+    percent_source = instance._calibration_position_source_for_status(percent_status)
+
+    assert percent_source.mode == "live_percent"
+    assert instance._calibration_percent_for_status(percent_status, percent_source) == 76.0
+
+    scalar_status = replace(
+        make_status(
+            state="opening",
+            position=50.0,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        ),
+        registers={
+            "NHK/T4InstantPosition": "50",
+            "NHK/T4InstantPositionRaw": "3500",
+            "NHK/T4InstantPositionScale": "raw_0_7000",
+        },
+    )
+
+    scalar_source = instance._calibration_position_source_for_status(scalar_status)
+    scalar_source.scalar_closed_raw = 0
+    scalar_source.scalar_open_raw = 7000
+
+    assert scalar_source.mode == "live_scalar"
+    assert instance._calibration_percent_for_status(scalar_status, scalar_source) == 50.0
+    assert instance._raw_for_percent_from_source(scalar_source, 25.0) == 1750
+
+    reverse_source = instance._calibration_position_source_for_status(scalar_status)
+    instance._learn_live_scalar_bounds_from_travel(reverse_source, "open", 5000, 1000)
+    assert reverse_source.scalar_closed_raw == 5000
+    assert reverse_source.scalar_open_raw == 1000
+    reverse_midpoint = replace(
+        scalar_status,
+        registers={
+            "NHK/T4InstantPosition": "50",
+            "NHK/T4InstantPositionRaw": "3000",
+            "NHK/T4InstantPositionScale": "raw_0_7000",
+        },
+    )
+    assert instance._calibration_percent_for_status(reverse_midpoint, reverse_source) == 50.0
+
+
+def test_live_scalar_status_uses_calibration_bounds_for_display(
+    hass: HomeAssistant,
+) -> None:
+    """Test calibrated live-scalar bounds replace the static 0..7000 display scale."""
+    instance = _coordinator(hass)
+    instance.calibration_profile = {
+        "mode": "live_scalar",
+        "bounds": {
+            "live_scalar_closed_raw": 1000,
+            "live_scalar_open_raw": 5000,
+        },
+    }
+    status = replace(
+        make_status(
+            state="opening",
+            position=28.6,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        ),
+        registers={
+            "NHK/T4InstantPosition": "29",
+            "NHK/T4InstantPositionRaw": "3000",
+            "NHK/T4InstantPositionScale": "raw_0_7000",
+        },
+    )
+
+    normalized = instance._normalize_status_for_display(status)
+
+    assert normalized.position == 50.0
+    assert normalized.registers["NHK/T4CalibratedPosition"] == "50.0"
+
+
 def test_calibrated_stop_raw_interpolates_valid_samples(
     hass: HomeAssistant,
 ) -> None:
@@ -974,7 +1071,7 @@ async def test_timed_set_position_rebases_deadline_from_live_position(
 async def test_position_calibration_falls_back_to_time_profile_without_encoder(
     hass: HomeAssistant,
 ) -> None:
-    """Test the main calibration builder chooses time mode without encoder bounds."""
+    """Test the main calibration builder uses the non-encoder standardized path."""
     instance = _coordinator(hass)
 
     async def fake_read_motion_status() -> Any:
@@ -986,16 +1083,114 @@ async def test_position_calibration_falls_back_to_time_profile_without_encoder(
             open_position=None,
         )
 
-    async def fake_time_calibration(_started_at: datetime, status: Any) -> dict[str, Any]:
+    async def fake_non_encoder_calibration(
+        _started_at: datetime,
+        status: Any,
+        source: Any,
+    ) -> dict[str, Any]:
         assert status.current_position is None
+        assert source.mode == "time"
         return {"mode": "time", "travel_speed": {}}
 
     instance._async_read_motion_status = fake_read_motion_status
-    instance._async_build_time_position_calibration = fake_time_calibration
+    instance._async_build_non_encoder_position_calibration = fake_non_encoder_calibration
 
     profile = await instance._async_build_position_calibration()
 
     assert profile["mode"] == "time"
+
+
+async def test_standardized_calibration_promotes_live_percent_to_target_sequence(
+    hass: HomeAssistant,
+) -> None:
+    """Test live-percent devices get the same target calibration sequence."""
+    instance = _coordinator(hass)
+    start_status = make_status(
+        state="closed",
+        position=0.0,
+        current_position=None,
+        closed_position=None,
+        open_position=None,
+    )
+    source = instance._calibration_position_source_for_status(start_status)
+    measured_actions: list[str] = []
+    calibrated_targets: list[tuple[str, int]] = []
+
+    async def fake_move(action: str, _source: Any) -> Any:
+        return make_status(
+            state="open" if action == "open" else "closed",
+            position=100.0 if action == "open" else 0.0,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        )
+
+    async def fake_measure(action: str, source_arg: Any, **_kwargs: Any) -> dict[str, Any]:
+        source_arg.mode = "live_percent"
+        measured_actions.append(action)
+        return {
+            "action": action,
+            "mode": source_arg.mode,
+            "start_percent": 0.0 if action == "open" else 100.0,
+            "end_percent": 100.0 if action == "open" else 0.0,
+            "duration_ms": 20000,
+            "distance_percent": 100.0,
+            "speed_percent_per_second": 5.0,
+        }
+
+    async def fake_calibrate(target: int, action: str, _endpoint_action: str, source_arg: Any) -> dict[str, Any]:
+        calibrated_targets.append((action, target))
+        return {
+            "action": action,
+            "mode": source_arg.mode,
+            "valid": True,
+            "failure_reason": None,
+            "target_percent": target,
+            "corrected_stop_percent": float(target),
+            "final_percent": float(target),
+            "error_percent": 0.0,
+            "stop_command_latency_ms": 20,
+            "move_duration_ms": 1000,
+            "successful": True,
+            "successful_attempts": 2,
+            "stability_attempts": 2,
+            "attempts_used": 2,
+            "selection_strategy": "stable_window",
+            "selected_attempt": 2,
+            "selected_attempts": [1, 2],
+            "selected_window_avg_abs_error_percent": 0.0,
+            "selected_abs_error_percent": 0.0,
+            "ignored_outlier_attempts": [],
+            "ignored_invalid_attempts": [],
+            "outlier_error_percent": 15.0,
+            "attempts": [],
+        }
+
+    instance._async_move_to_end_with_position_source = fake_move
+    instance._async_measure_full_travel_with_position_source = fake_measure
+    instance._async_calibrate_target_from_endpoint_with_position_source = fake_calibrate
+
+    profile = await instance._async_build_non_encoder_position_calibration(
+        datetime.now(coordinator_module.UTC),
+        start_status,
+        source,
+    )
+
+    assert profile["mode"] == "live_percent"
+    assert measured_actions == ["open", "close"]
+    assert calibrated_targets == [
+        ("open", 20),
+        ("open", 40),
+        ("open", 60),
+        ("open", 80),
+        ("close", 80),
+        ("close", 60),
+        ("close", 40),
+        ("close", 20),
+    ]
+    assert profile["targets"] == [20, 40, 60, 80]
+    assert len(profile["samples"]["open"]) == 4
+    assert len(profile["samples"]["close"]) == 4
 
 
 async def test_load_calibration_handles_empty_stored_profile(
