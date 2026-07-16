@@ -2,14 +2,19 @@
 
 from datetime import timedelta
 
-from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
+from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PASSWORD, CONF_PORT, CONF_USERNAME, Platform
 
 DOMAIN = "nice_bidiwifi"
 
+CONF_CONNECTION_METHOD = "connection_method"
 CONF_DEVICE_ID = "device_id"
+CONF_CLOUD_TOKEN = "cloud_token"
 CONF_SOURCE_ID = "source_id"
 CONF_TARGET_MAC = "target_mac"
 CONF_T4_TIMEOUT_MS = "t4_timeout_ms"
+
+CONNECTION_METHOD_LOCAL = "local"
+CONNECTION_METHOD_CLOUD = "cloud"
 
 DEFAULT_NAME = "Nice Gate"
 DEFAULT_PORT = 443
@@ -21,12 +26,24 @@ IDLE_UPDATE_INTERVAL = timedelta(seconds=25)
 MOVING_UPDATE_INTERVAL = timedelta(seconds=1)
 ERROR_UPDATE_INTERVAL = timedelta(seconds=60)
 
+LOCAL_PLATFORMS = [
+    Platform.COVER,
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.SWITCH,
+    Platform.NUMBER,
+]
+CLOUD_PLATFORMS = [Platform.COVER]
+
 CONFIG_FIELDS = {
+    CONF_CONNECTION_METHOD,
     CONF_NAME,
     CONF_HOST,
     CONF_PORT,
     CONF_USERNAME,
     CONF_PASSWORD,
+    CONF_CLOUD_TOKEN,
     CONF_SOURCE_ID,
     CONF_TARGET_MAC,
     CONF_DEVICE_ID,

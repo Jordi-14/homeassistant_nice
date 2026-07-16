@@ -11,3 +11,11 @@ License: Attribution-only license as stated on Wikimedia Commons.
 Nice, the Nice logo, and related product names are trademarks or registered
 trademarks of their respective owners. Their use here is for product
 identification and does not imply endorsement.
+
+Cloud Integration
+=================
+
+The MyNice cloud setup path is based on the MyNice cloud and NHK proxy work from
+StuckInVim-dev's `mynice-ha-integration` project:
+
+https://github.com/StuckInVim-dev/mynice-ha-integration

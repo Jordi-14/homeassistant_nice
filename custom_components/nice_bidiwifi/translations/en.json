@@ -3,6 +3,16 @@
     "step": {
       "user": {
         "title": "Nice",
+        "description": "Choose how Home Assistant should connect to your Nice device. Local control is the recommended default when your interface supports it.",
+        "data": {
+          "connection_method": "Connection method"
+        },
+        "data_description": {
+          "connection_method": "Local connects directly on your network. Cloud uses your MyNice account and the Nice cloud proxy."
+        }
+      },
+      "local": {
+        "title": "Nice local control",
         "description": "Set up local control for a compatible Nice gate or garage-door interface. Close MyNice/MyNice Pro before validating the connection.",
         "data": {
           "name": "Name",
@@ -27,8 +37,20 @@
           "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
         }
       },
+      "cloud": {
+        "title": "Nice cloud control",
+        "description": "Sign in with your MyNice account. Compatible Nice devices with cloud proxy credentials will be discovered automatically.",
+        "data": {
+          "username": "MyNice email",
+          "password": "MyNice password"
+        },
+        "data_description": {
+          "username": "Email address for the MyNice account.",
+          "password": "Password for the MyNice account."
+        }
+      },
       "reauth_confirm": {
-        "title": "Reauthenticate Nice",
+        "title": "Reauthenticate Nice local",
         "description": "Update the local credentials for this Nice interface. The MAC address must match the existing device.",
         "data": {
           "name": "Name",
@@ -53,8 +75,18 @@
           "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
         }
       },
+      "cloud_reauth_confirm": {
+        "title": "Reauthenticate Nice cloud",
+        "description": "The stored Nice cloud credentials for {username} no longer work. Enter the MyNice password again.",
+        "data": {
+          "password": "MyNice password"
+        },
+        "data_description": {
+          "password": "Password for the MyNice account."
+        }
+      },
       "reconfigure": {
-        "title": "Reconfigure Nice",
+        "title": "Reconfigure Nice local",
         "description": "Update the local connection settings for this Nice interface. The MAC address must match the existing device.",
         "data": {
           "name": "Name",
@@ -78,18 +110,37 @@
           "device_id": "NHK device ID to control. Leave at 1 unless troubleshooting a different device.",
           "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
         }
+      },
+      "cloud_reconfigure": {
+        "title": "Reconfigure Nice cloud",
+        "description": "Update the MyNice password used for Nice cloud control for {username}.",
+        "data": {
+          "password": "MyNice password"
+        },
+        "data_description": {
+          "password": "Password for the MyNice account."
+        }
       }
     },
     "error": {
-      "cannot_connect": "Failed to validate the local connection. Check LAN access to the configured TCP port, close MyNice/MyNice Pro, then check Home Assistant logs for the exact failure.",
-      "invalid_auth": "Authentication failed. Check the extracted username, source ID, target MAC, and password.",
+      "cannot_connect": "Failed to validate the connection. Check the connection details and Home Assistant logs for the exact failure.",
+      "invalid_auth": "Authentication failed. Check the credentials.",
+      "no_devices": "No controllable Nice devices were found on this MyNice account.",
       "unknown": "Unexpected error",
       "wrong_device": "The MAC address does not match this configured Nice interface."
     },
     "abort": {
-      "already_configured": "This Nice interface is already configured",
+      "already_configured": "This Nice device or account is already configured",
       "reauth_successful": "Reauthentication successful",
       "reconfigure_successful": "Reconfiguration successful"
+    }
+  },
+  "selector": {
+    "connection_method": {
+      "options": {
+        "local": "Local (recommended)",
+        "cloud": "Cloud"
+      }
     }
   }
 }

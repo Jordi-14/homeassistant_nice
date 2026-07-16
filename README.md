@@ -4,11 +4,14 @@
 [![Hassfest](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml/badge.svg)](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/Jordi-14/homeassistant_nice)](https://github.com/Jordi-14/homeassistant_nice/releases/latest)
 
-Custom Home Assistant integration for local control of compatible Nice gates
-and garage doors.
+Custom Home Assistant integration for compatible Nice gates and garage doors.
 
-This integration talks directly to compatible local NHK/T4 services over
-TLS/TCP 443 and creates one `cover` entity plus helper diagnostic entities. The
+The recommended setup path is local control through compatible NHK/T4 services
+over TLS/TCP 443. Starting with the `0.8.0b4` beta proposal, the integration
+also includes an optional MyNice cloud setup path for devices or users that are
+better served by account-based cloud discovery.
+
+The local path creates one `cover` entity plus helper diagnostic entities. The
 local TLS endpoint on tested BiDi-WiFi firmware uses a device certificate that
 cannot be validated against Home Assistant's normal trust store. The integration
 therefore keeps certificate verification disabled for this local socket and
@@ -28,6 +31,12 @@ Latest stable release: `v0.7.0`
 
 ## Features
 
+- Setup starts by choosing a connection method:
+  - **Local** is the recommended default and uses the existing direct BiDi-WiFi
+    / NHK / T4 path.
+  - **Cloud** signs in with a MyNice account, discovers doors automatically, and
+    uses the Nice cloud proxy path originally implemented by
+    [StuckInVim-dev/mynice-ha-integration](https://github.com/StuckInVim-dev/mynice-ha-integration).
 - Open, stop, and close using the local `DoorAction` service.
 - Native Home Assistant cover position support.
 - Live position percentage while the gate moves when the controller exposes a
@@ -54,6 +63,23 @@ Latest stable release: `v0.7.0`
 - Diagnostic sensors for connection state, last update/error, reconnect count,
   command latency, encoder calibration values, and device firmware/serial data.
 - Diagnostic buttons to refresh status immediately or force a local reconnect.
+
+### Local and Cloud Maintenance Split
+
+The local implementation remains in the existing BiDi-WiFi/NHK/T4 modules:
+`client.py`, `coordinator.py`, and the platform/entity files.
+
+The cloud implementation is intentionally separated into cloud-specific files
+so it is easy to maintain independently:
+
+- `cloud_api.py` keeps the MyNice OAuth, discovery, and proxy socket protocol.
+- `cloud_coordinator.py` keeps the cloud hub and reconnect loop.
+- `cloud_cover.py` keeps the cloud cover entities.
+- `cloud.py` is only the Home Assistant setup/unload bridge for cloud config
+  entries.
+
+This split lets the local and cloud paths share one Home Assistant integration
+and setup flow without forcing either protocol implementation into the other.
 
 ## BusT4 Diagnostics
 
