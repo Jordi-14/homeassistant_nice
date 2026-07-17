@@ -10,6 +10,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.nice_bidiwifi import _async_migrate_default_entity_ids
 from custom_components.nice_bidiwifi.button import BUTTONS, NiceBidiButton
 from custom_components.nice_bidiwifi.const import CONF_TARGET_MAC, DOMAIN
 from custom_components.nice_bidiwifi.cover import NiceBidiCover
@@ -119,3 +120,71 @@ async def test_button_registry_entity_id_ignores_device_area_prefix(
     assert registry_entry is not None
     assert registry_entry.has_entity_name is True
     assert registry_entry.original_name == "Partial open 3"
+
+
+async def test_default_entity_id_migration_uses_configured_name(
+    hass: HomeAssistant,
+) -> None:
+    """Test stale default-name registry IDs are migrated to the configured gate name."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=config_entry_data(**{CONF_NAME: "p0_garage_door_exterior"}),
+        entry_id="entry-1",
+        title="p0_garage_door_exterior",
+    )
+    entry.add_to_hass(hass)
+    entity_registry = er.async_get(hass)
+    entity_registry.async_get_or_create(
+        "cover",
+        DOMAIN,
+        "aabbccddeeff_1_cover",
+        config_entry=entry,
+        suggested_object_id="nice_gate",
+    )
+    entity_registry.async_get_or_create(
+        "binary_sensor",
+        DOMAIN,
+        "aabbccddeeff_1_always_close",
+        config_entry=entry,
+        suggested_object_id="nice_gate_always_close",
+    )
+
+    _async_migrate_default_entity_ids(hass, entry)
+
+    assert entity_registry.async_get("cover.nice_gate") is None
+    assert entity_registry.async_get("binary_sensor.nice_gate_always_close") is None
+    assert entity_registry.async_get("cover.p0_garage_door_exterior") is not None
+    assert entity_registry.async_get("binary_sensor.p0_garage_door_exterior_always_close") is not None
+
+
+async def test_default_entity_id_migration_skips_collisions(
+    hass: HomeAssistant,
+) -> None:
+    """Test the migration leaves stale IDs alone when the desired ID is taken."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=config_entry_data(**{CONF_NAME: "p0_garage_door_exterior"}),
+        entry_id="entry-1",
+        title="p0_garage_door_exterior",
+    )
+    entry.add_to_hass(hass)
+    entity_registry = er.async_get(hass)
+    entity_registry.async_get_or_create(
+        "binary_sensor",
+        DOMAIN,
+        "aabbccddeeff_1_always_close",
+        config_entry=entry,
+        suggested_object_id="nice_gate_always_close",
+    )
+    entity_registry.async_get_or_create(
+        "binary_sensor",
+        DOMAIN,
+        "collision",
+        config_entry=entry,
+        suggested_object_id="p0_garage_door_exterior_always_close",
+    )
+
+    _async_migrate_default_entity_ids(hass, entry)
+
+    assert entity_registry.async_get("binary_sensor.nice_gate_always_close") is not None
+    assert entity_registry.async_get("binary_sensor.p0_garage_door_exterior_always_close") is not None
