@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from homeassistant.const import PERCENTAGE
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
+from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfTemperature
 
 from custom_components.nice_bidiwifi.sensor import (
     SENSORS,
@@ -29,7 +30,11 @@ class TestNiceBidiSensorProperties:
         assert "opening_speed" in keys
         assert "maintenance_count" in keys
         assert "last_stop_reason" in keys
+        assert "motor_temperature" in keys
+        assert "service_voltage" in keys
         assert "oxi_product" in keys
+        assert not any(key.startswith("beta_") for key in keys)
+        assert not any(description.name.startswith("BETA") for description in SENSORS)
 
     def test_connection_state_sensor(self) -> None:
         coordinator = FakeCoordinator()
@@ -64,6 +69,32 @@ class TestNiceBidiSensorProperties:
         assert NiceBidiSensor(coordinator, config_entry(), _description("total_maneuver_count")).native_value == 345
         assert NiceBidiSensor(coordinator, config_entry(), _description("last_stop_reason")).native_value == "obstacle_by_encoder"
         assert NiceBidiSensor(coordinator, config_entry(), _description("oxi_product")).native_value == "OXI"
+
+    def test_issue_15_final_diagnostics_read_d2_payload(self) -> None:
+        coordinator = FakeCoordinator()
+
+        motor_temperature = NiceBidiSensor(coordinator, config_entry(), _description("motor_temperature"))
+        assert motor_temperature.native_value == 42
+        assert motor_temperature.entity_description.device_class == SensorDeviceClass.TEMPERATURE
+        assert motor_temperature.entity_description.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+        assert motor_temperature.entity_description.state_class == SensorStateClass.MEASUREMENT
+        assert motor_temperature.entity_description.entity_registry_enabled_default is True
+        assert motor_temperature.entity_description.entity_registry_visible_default is False
+
+        service_voltage = NiceBidiSensor(coordinator, config_entry(), _description("service_voltage"))
+        assert service_voltage.native_value == 32
+        assert service_voltage.entity_description.device_class == SensorDeviceClass.VOLTAGE
+        assert service_voltage.entity_description.native_unit_of_measurement == UnitOfElectricPotential.VOLT
+        assert service_voltage.entity_description.state_class == SensorStateClass.MEASUREMENT
+        assert service_voltage.entity_description.entity_registry_enabled_default is False
+        assert service_voltage.entity_description.entity_registry_visible_default is False
+
+    def test_issue_15_diagnostics_are_unavailable_without_d2_payload(self) -> None:
+        coordinator = FakeCoordinator()
+        coordinator.data = make_status(diagnostics_parameters="00 00 00 00")
+
+        assert NiceBidiSensor(coordinator, config_entry(), _description("motor_temperature")).native_value is None
+        assert NiceBidiSensor(coordinator, config_entry(), _description("service_voltage")).native_value is None
 
     def test_gate_position_sensor_reads_display_position(self) -> None:
         coordinator = FakeCoordinator()

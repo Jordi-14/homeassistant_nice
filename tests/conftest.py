@@ -90,6 +90,7 @@ def make_status(
     pre_flash: bool | None = False,
     key_lock: bool | None = False,
     last_stop_reason: str | None = "obstacle_by_encoder",
+    diagnostics_parameters: str | None = "00 00 00 bc 00 bc 00 00 00 20 00 00 00 00 00 33 00 00 00 00 00 00 00 00 00 00 00 00",
     oxi_detected: bool | None = True,
     oxi_product: str | None = "OXI",
 ) -> NiceBidiStatus:
@@ -128,6 +129,7 @@ def make_status(
         pre_flash=pre_flash,
         key_lock=key_lock,
         last_stop_reason=last_stop_reason,
+        diagnostics_parameters=diagnostics_parameters,
         oxi_detected=oxi_detected,
         oxi_product=oxi_product,
     )
