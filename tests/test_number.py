@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import pytest
 from homeassistant.const import PERCENTAGE, UnitOfTime
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.nice_bidiwifi.number import (
     NUMBERS,
     NiceBidiNumber,
     async_setup_entry,
 )
-from tests.conftest import FakeCoordinator, config_entry, make_status
+from tests.conftest import FakeCoordinator, config_entry, make_device_info, make_status
 
 
 def _description(key: str):
@@ -89,6 +90,34 @@ class TestNiceBidiNumberProperties:
         assert entity.native_value == 60
         assert entity.available is False
 
+    def test_unavailable_while_position_calibration_is_running(self) -> None:
+        coordinator = FakeCoordinator()
+        coordinator.calibration_state = "running"
+        coordinator.data = make_status(state="stopped")
+        entity = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_speed"))
+
+        assert entity.native_value == 60
+        assert entity.available is False
+
+    def test_speed_settings_unavailable_for_aria_clbox(self) -> None:
+        coordinator = FakeCoordinator()
+        coordinator.device_info = make_device_info(
+            device_product="ARIA200S",
+            device_description="CLBOX",
+        )
+        coordinator.data = make_status(state="open")
+
+        opening_speed = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_speed"))
+        closing_speed = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_closing_speed"))
+        opening_force = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_force"))
+
+        assert opening_speed.native_value == 60
+        assert opening_speed.available is False
+        assert closing_speed.native_value == 55
+        assert closing_speed.available is False
+        assert opening_force.native_value == 70
+        assert opening_force.available is True
+
     async def test_number_writes_single_byte_register(self) -> None:
         coordinator = FakeCoordinator()
         entity = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_speed"))
@@ -116,6 +145,16 @@ class TestNiceBidiNumberProperties:
 
         with pytest.raises(ValueError, match="between 1 and 100"):
             await entity.async_set_native_value(101)
+
+    async def test_speed_settings_reject_writes_for_aria_clbox(self) -> None:
+        coordinator = FakeCoordinator()
+        coordinator.device_info = make_device_info(device_product_detail="ARIA 200S CLBOX")
+        entity = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_speed"))
+
+        with pytest.raises(HomeAssistantError, match="disabled for this controller"):
+            await entity.async_set_native_value(75)
+
+        assert coordinator.calls == []
 
 
 async def test_async_setup_entry_adds_all_numbers() -> None:

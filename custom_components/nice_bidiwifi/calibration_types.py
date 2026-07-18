@@ -60,6 +60,7 @@ class CalibrationProfile(TypedDict, total=False):
     """Stored calibration profile."""
 
     version: int
+    mode: str
     created_at: str
     updated_at: str
     poll_seconds: float
@@ -83,6 +84,7 @@ class CalibrationReport(TypedDict, total=False):
     summary: str
     updated_at: str | None
     profile_version: int | None
+    profile_mode: str | None
     tolerance_percent: float
     poll_seconds: float | None
     settle_seconds: float | None

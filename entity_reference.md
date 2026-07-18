@@ -6,7 +6,32 @@ by default.
 For daily use, the `cover` entity is the main dashboard entity. It provides
 open, stop, close, current position, and set-position support when position data
 is available. The gate `switch` is a simpler on/off duplicate for users who want
-that style of control.
+that style of control. The `Gate open` binary sensor exposes the same read-only
+open/not-fully-closed signal for security and alarm automations without adding
+another control surface.
+
+The cover and `Gate position` sensor use the same displayed position. On
+controllers with real encoder DMP status this is normally the real percentage.
+On devices with validated live T4 position frames, such as CU_WIFI percentage
+frames or RBA4R10-style raw `0..7000` `04/40` frames, it may be a coarse real
+percentage, then temporarily become a cached or simulated display value between
+sparse updates. Check the cover attributes `real_position`, `display_position`,
+`display_position_estimated`, and `position_simulation_action` when you need to
+know whether the displayed percentage is fresh or estimated.
+
+The integration does not treat a fully time-inferred intermediate percentage as
+real controller position. Real position can come from encoder registers such as
+`04/11`, `04/18`, and `04/19`, or from validated live controller frames such as
+CU_WIFI percentage `04/40` or RBA4R10 raw `04/40` when that mapping is known for
+the device. Endpoint-only status can safely say open, closed, opening, closing,
+or stopped, but it cannot prove the exact half-open percentage after a stop.
+
+Use `real_position` for automations that require a confirmed physical
+percentage. Use `display_position` for dashboards where an approximate,
+clearly-marked display value is acceptable. When `display_position_estimated` is
+`true`, the displayed value may be held from the last known real value or
+animated after a command; `position_simulation_action` shows the simulated
+direction while that animation is active.
 
 `Hidden` does not mean broken. It means Home Assistant creates and updates the
 entity, but hides it from default views because it is diagnostic, advanced, or
@@ -22,8 +47,9 @@ Quick recommendations:
 | Need | Use | Notes |
 | --- | --- | --- |
 | Daily open/close/stop | Gate cover | Best default dashboard entity. |
-| Separate position display | Gate position | Real percentage from the latest DMP status registers. |
+| Separate position display | Gate position | Same displayed percentage as the cover card; real only when `real_position` is available, cached/estimated when marked by the cover attributes. |
 | Remote-control style action | Step-step | Follows the controller's configured step-step cycle. |
+| Alarm open/not closed state | Gate open | Read-only binary sensor; on means the gate is not fully closed. |
 | Pedestrian or partial opening | Partial open 1/2/3 | Uses the configured partial-open encoder positions. |
 | Local connection health | Connection state, last successful update, reconnect count | Useful for troubleshooting Wi-Fi or local API issues. |
 | Controller tuning | Entities ending in `setting` | Advanced; these write controller registers. |
@@ -36,6 +62,12 @@ controllers can report values outside a small enum range. They are not seconds,
 percentages, or decoded options. Strongly recommended: do not change them
 unless you already know the exact byte your controller expects. A wrong raw mode
 byte may leave that controller feature misconfigured.
+
+Planned or investigated entities:
+
+| Need | Status |
+| --- | --- |
+| Motor/controller temperature | Investigated. If implemented, it should be documented as a motor/controller diagnostic temperature, not as outdoor or ambient temperature. |
 
 The table below describes the default entity registry behavior for a new
 installation. Home Assistant preserves existing entity registry settings, so an
@@ -61,8 +93,9 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 
 | Platform | Entity | Key | Purpose | Visibility default | Enabled default | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Cover | Gate cover | `cover` | Main gate entity with open, stop, close, and set-position support when position is available. | Visible | Enabled | Primary daily-use entity. |
+| Cover | Gate cover | `cover` | Main gate entity with open, stop, close, displayed position, and set-position support when position is available. | Visible | Enabled | Primary daily-use entity. |
 | Switch | Gate switch | `cover_switch` | Simple on/off gate control: turn on opens, turn off closes, on means not closed. | Visible | Enabled | Useful for simple automations, but visually duplicates the cover. |
+| Binary sensor | Gate open | `gate_open` | Read-only open/not-fully-closed state using the same state mapping as the gate switch: off only when closed, on when open/opening/closing/stopped. | Visible | Enabled | Alarm-friendly status entity with no control commands. |
 | Switch | Auto close setting | `bus_t4_auto_close` | Writes BusT4 auto-close on/off to register `04/80`. | Visible | Enabled | Advanced but decoded enough to expose intentionally. |
 | Switch | Photo close setting | `bus_t4_photo_close` | Writes BusT4 photo-close on/off to register `04/84`. | Visible | Enabled | Advanced but decoded enough to expose intentionally. |
 | Switch | Always close setting | `bus_t4_always_close` | Writes BusT4 always-close on/off to register `04/88`. | Visible | Enabled | Advanced but decoded enough to expose intentionally. |
@@ -79,7 +112,7 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Button | Unlock | `unlock` | Sends the controller unlock action. | Hidden | Enabled | Pair for the advanced lock action. |
 | Button | Refresh status | `refresh_status` | Requests an immediate coordinator refresh. | Hidden | Enabled | Troubleshooting button, not a normal dashboard control. |
 | Button | Reconnect | `reconnect` | Forces the local connection to reconnect. | Hidden | Enabled | Troubleshooting button, not a normal dashboard control. |
-| Button | Calibrate positions | `calibrate_positions` | Runs the position calibration routine for intermediate set-position accuracy. | Hidden | Disabled | Moves the gate repeatedly; users should enable it deliberately. |
+| Button | Calibrate positions | `calibrate_positions` | Runs the position calibration routine for intermediate set-position accuracy or time-based travel measurement. | Hidden | Disabled | Moves the gate repeatedly; users should enable it deliberately. |
 | Binary sensor | Closed limit switch | `limit_closed` | Experimental decoded closed-limit bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |
 | Binary sensor | Open limit switch | `limit_open` | Experimental decoded open-limit bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |
 | Binary sensor | Photocell | `photocell` | Experimental decoded photocell bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |
@@ -98,8 +131,8 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Number | Pause time setting | `bus_t4_pause_time` | Writes BusT4 pause time to register `04/81` as a one-byte value. | Visible | Enabled | Advanced but bounded time setting. |
 | Number | Opening force setting | `bus_t4_opening_force` | Writes BusT4 opening force to register `04/4A` as a one-byte value. | Visible | Enabled | Safety-sensitive motor tuning; change only while the gate is visible and the original value is known. |
 | Number | Closing force setting | `bus_t4_closing_force` | Writes BusT4 closing force to register `04/4B` as a one-byte value. | Visible | Enabled | Safety-sensitive motor tuning; change only while the gate is visible and the original value is known. |
-| Number | Opening speed setting | `bus_t4_opening_speed` | Writes BusT4 opening speed to register `04/42` as a one-byte value. | Visible | Enabled | Safety-sensitive motor tuning; change only while the gate is visible and the original value is known. |
-| Number | Closing speed setting | `bus_t4_closing_speed` | Writes BusT4 closing speed to register `04/43` as a one-byte value. | Visible | Enabled | Safety-sensitive motor tuning; change only while the gate is visible and the original value is known. |
+| Number | Opening speed setting | `bus_t4_opening_speed` | Writes BusT4 opening speed to register `04/42` as a one-byte value. | Visible | Enabled | Safety-sensitive motor tuning; unavailable on ARIA200S/CLBOX-style controllers until their speed format is confirmed. |
+| Number | Closing speed setting | `bus_t4_closing_speed` | Writes BusT4 closing speed to register `04/43` as a one-byte value. | Visible | Enabled | Safety-sensitive motor tuning; unavailable on ARIA200S/CLBOX-style controllers until their speed format is confirmed. |
 | Number | Photo close time setting | `bus_t4_photo_close_time` | Writes BusT4 photo-close time to register `04/85` as a one-byte value. | Visible | Enabled | Advanced but bounded time setting. |
 | Number | Photo close mode setting | `bus_t4_photo_close_mode` | Writes BusT4 photo-close mode to register `04/86` as a raw one-byte value. This value is not decoded; avoid changing it unless you know the correct byte. | Hidden | Disabled | Raw controller byte; keep disabled unless explicitly needed for restore/testing. |
 | Number | Always close time setting | `bus_t4_always_close_time` | Writes BusT4 always-close time to register `04/89` as a one-byte value. | Visible | Enabled | Advanced but bounded time setting. |
@@ -119,7 +152,7 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Sensor | Position calibration error | `position_calibration_error` | Last calibration error, or `none`. | Hidden | Enabled | Useful only when calibration is used. |
 | Sensor | Position calibration quality | `position_calibration_quality` | Quality grade for the current position calibration data. | Hidden | Enabled | Useful only when calibration is used. |
 | Sensor | Position calibration report | `position_calibration_report` | Short calibration report with additional recorder-safe attributes. | Hidden | Disabled | Verbose troubleshooting entity. |
-| Sensor | Gate position | `gate_position` | Real gate position percentage from live DMP status registers. | Visible | Enabled | Useful dashboard/automation sensor separate from the cover card. |
+| Sensor | Gate position | `gate_position` | Displayed gate position percentage from the coordinator. | Visible | Enabled | Matches the cover card position; use cover attributes to distinguish confirmed real position from cached or simulated display values. |
 | Sensor | Current encoder position | `current_encoder_position` | Current raw encoder position from the controller. | Hidden | Enabled | Useful advanced diagnostic; based on core status data. |
 | Sensor | Closed encoder position | `closed_encoder_position` | Raw encoder value for the closed endpoint. | Hidden | Enabled | Useful advanced diagnostic; based on core status data. |
 | Sensor | Open encoder position | `open_encoder_position` | Raw encoder value for the open endpoint. | Hidden | Enabled | Useful advanced diagnostic; based on core status data. |
@@ -136,6 +169,8 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Sensor | Maintenance count | `maintenance_count` | BusT4 maintenance counter. | Hidden | Enabled | Useful maintenance diagnostic. |
 | Sensor | Total maneuver count | `total_maneuver_count` | BusT4 maneuver counter discovered during community testing. | Hidden | Enabled | Useful maintenance/statistics diagnostic. |
 | Sensor | Last stop reason | `last_stop_reason` | Decoded BusT4 last stop reason when the register is available. | Hidden | Enabled | Useful after unexpected stops. |
+| Sensor | Motor temperature | `motor_temperature` | Decoded internal motor temperature from `04/D2` byte 15 minus 9. | Hidden | Enabled | Confirmed from issue #15 testing on Road 400 and RB1000; hidden because it is diagnostic. |
+| Sensor | Service voltage | `service_voltage` | Decoded service voltage from `04/D2` byte 9. | Hidden | Disabled | Confirmed from issue #15 testing; disabled by default because it is advanced diagnostic data. |
 | Sensor | Diagnostics I/O byte | `diagnostics_io_byte` | Raw `04/D1` diagnostics byte, displayed as hex for comparison. | Hidden | Disabled | Raw developer/debug data; decoded bits are not valid on the tested gate. |
 | Sensor | Diagnostics parameters | `diagnostics_parameters` | Raw `04/D2` diagnostics parameter bytes for future decoding. | Hidden | Disabled | Raw developer/debug data. |
 | Sensor | OXI product | `oxi_product` | Product string from the OXI/radio endpoint when available locally. | Hidden | Disabled | Optional metadata that is often unavailable. |

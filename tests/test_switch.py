@@ -39,6 +39,10 @@ class TestNiceBidiCoverSwitchProperties:
         coordinator.data = make_status(state="stopped")
         assert entity.is_on is True
 
+        coordinator.data = make_status(state="partially_open")
+        assert entity.is_on is True
+        assert entity.available is True
+
     def test_off_state(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.data = make_status(state="closed")
@@ -110,6 +114,15 @@ class TestNiceBidiConfigSwitchProperties:
     def test_config_switch_unavailable_while_gate_is_moving(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.data = make_status(state="opening")
+        entity = NiceBidiConfigSwitch(coordinator, config_entry(), _description("bus_t4_auto_close"))
+
+        assert entity.is_on is True
+        assert entity.available is False
+
+    def test_config_switch_unavailable_while_position_calibration_is_running(self) -> None:
+        coordinator = FakeCoordinator()
+        coordinator.calibration_state = "running"
+        coordinator.data = make_status(state="stopped")
         entity = NiceBidiConfigSwitch(coordinator, config_entry(), _description("bus_t4_auto_close"))
 
         assert entity.is_on is True

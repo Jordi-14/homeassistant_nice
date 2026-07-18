@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import logging
 import re
@@ -27,6 +27,9 @@ STATE_OPENING = "opening"
 STATE_CLOSING = "closing"
 STATE_OPEN = "open"
 STATE_CLOSED = "closed"
+STATE_PARTIALLY_OPEN = "partially_open"
+CUWIFI_INTERMEDIATE_POSITION_TOLERANCE = 1.0
+LIVE_RAW_POSITION_OPEN = 7000
 
 STATUS_BY_BYTE = {
     0x01: STATE_STOPPED,
@@ -34,10 +37,24 @@ STATUS_BY_BYTE = {
     0x03: STATE_CLOSING,
     0x04: STATE_OPEN,
     0x05: STATE_CLOSED,
-    0x10: "partially_open",
+    0x10: STATE_PARTIALLY_OPEN,
+    0x11: STATE_PARTIALLY_OPEN,
+    0x12: STATE_PARTIALLY_OPEN,
     0x83: STATE_OPENING,
     0x84: STATE_CLOSING,
 }
+
+NHK_DOOR_STATUS = {
+    "closed": STATE_CLOSED,
+    "close": STATE_CLOSED,
+    "open": STATE_OPEN,
+    "opened": STATE_OPEN,
+    "opening": STATE_OPENING,
+    "closing": STATE_CLOSING,
+    "stopped": STATE_STOPPED,
+    "stop": STATE_STOPPED,
+}
+NHK_UNKNOWN_DOOR_STATUS = {"unknown", "unknow"}
 
 STOP_REASON_BY_BYTE = {
     0x00: "normal",
@@ -53,6 +70,7 @@ STOP_REASON_BY_BYTE = {
 
 DMP_TARGET_CONTROLLER = (0x00, 0x03)
 DMP_TARGET_OXI = (0x00, 0x0A)
+NHK_STATUS_POST_RESPONSE_LISTEN_SECONDS = 0.75
 
 CORE_STATUS_REGISTERS = (
     (0x04, 0x01),
@@ -253,6 +271,26 @@ class NiceBidiServiceCapability:
     permission: str | None
     values_raw: str | None
     values: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _CuwifiLiveStatus:
+    """State or position decoded from a CU_WIFI live T4 event."""
+
+    state: str | None
+    position: float | None
+    payload_hex: str
+    payload_kind: str
+    raw_position: int | None = None
+    position_scale: str | None = None
+
+
+@dataclass(frozen=True)
+class _LiveT4Message:
+    """Inner controller-originated live T4 message and its target address."""
+
+    message: bytes
+    target: tuple[int, int]
 
 
 def _sha256(*values: bytes) -> bytes:
@@ -469,6 +507,15 @@ def _status_from_register(register: dict[str, Any] | None) -> str | None:
     return STATUS_BY_BYTE.get(first_byte)
 
 
+def _endpoint_position_from_state(state: str | None) -> float | None:
+    """Return a known endpoint position from a terminal state."""
+    if state == STATE_CLOSED:
+        return 0.0
+    if state == STATE_OPEN:
+        return 100.0
+    return None
+
+
 def _make_context() -> ssl.SSLContext:
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     # BiDi-WiFi exposes a local TLS endpoint with a device certificate that
@@ -576,7 +623,278 @@ def parse_info_xml(info_xml: str, device_id: int = 1) -> NiceBidiDeviceInfo:
     )
 
 
+def device_info_supports_nhk_status(info: NiceBidiDeviceInfo, device_id: int = 1) -> bool:
+    """Return true when INFO advertises readable NHK DoorStatus."""
+    target_device_id = str(device_id)
+    for prop in info.properties:
+        if prop.name != "DoorStatus":
+            continue
+        if prop.owner != "Device" or prop.owner_id not in {None, target_device_id}:
+            continue
+        if "r" in (prop.permission or ""):
+            return True
+    return False
+
+
+def _nhk_status_value(value: str | None) -> str | None:
+    if not value:
+        return None
+    return NHK_DOOR_STATUS.get(value.strip().casefold())
+
+
+def _is_nhk_unknown_status(value: str | None) -> bool:
+    if not value:
+        return False
+    return value.strip().casefold() in NHK_UNKNOWN_DOOR_STATUS
+
+
+def _nhk_bool_value(value: str | None) -> bool | None:
+    if value is None:
+        return None
+    normalized = value.strip().casefold()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _find_nhk_status_device(root: ET.Element, device_id: int) -> ET.Element | None:
+    if root.tag == "Device" and root.get("id") in {None, str(device_id)}:
+        return root
+    device = root.find(f".//Device[@id='{device_id}']")
+    if device is not None:
+        return device
+    return root.find(".//Device")
+
+
+def _find_child_text(node: ET.Element | None, path: str) -> str | None:
+    if node is None:
+        return None
+    value = node.findtext(path)
+    return value.strip() if value and value.strip() else None
+
+
+def _parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceBidiStatus | None:
+    try:
+        root = ET.fromstring(status_xml)
+    except ET.ParseError as err:
+        raise NiceBidiConnectionError(f"Invalid NHK status XML: {err}") from err
+
+    device = _find_nhk_status_device(root, device_id)
+    raw_state = _find_child_text(device, "./Properties/DoorStatus")
+    raw_obstruct = _find_child_text(device, "./Properties/Obstruct")
+    if raw_state is None:
+        raw_state = _find_child_text(root, ".//DoorStatus")
+    if raw_obstruct is None:
+        raw_obstruct = _find_child_text(root, ".//Obstruct")
+
+    state = _nhk_status_value(raw_state)
+    if raw_state is not None and state is None:
+        if not _is_nhk_unknown_status(raw_state):
+            raise NiceBidiConnectionError(f"Unsupported NHK DoorStatus value: {raw_state}")
+        obstacle = _nhk_bool_value(raw_obstruct)
+        registers = {"NHK/DoorStatus": raw_state}
+        if raw_obstruct is not None:
+            registers["NHK/Obstruct"] = raw_obstruct
+        return NiceBidiStatus(
+            state=None,
+            position=None,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+            registers=registers,
+            obstacle=obstacle,
+        )
+    if state is None:
+        return None
+
+    obstacle = _nhk_bool_value(raw_obstruct)
+    registers = {"NHK/DoorStatus": raw_state or state}
+    if raw_obstruct is not None:
+        registers["NHK/Obstruct"] = raw_obstruct
+
+    return NiceBidiStatus(
+        state=state,
+        position=_endpoint_position_from_state(state),
+        current_position=None,
+        closed_position=None,
+        open_position=None,
+        registers=registers,
+        obstacle=obstacle,
+    )
+
+
+def _merge_cuwifi_live_status(
+    status: NiceBidiStatus | None,
+    live_status: _CuwifiLiveStatus,
+) -> NiceBidiStatus:
+    """Merge one CU_WIFI live T4 status into an NHK status snapshot."""
+    if status is None:
+        status = NiceBidiStatus(
+            state=None,
+            position=None,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+            registers={},
+        )
+    registers = dict(status.registers)
+    if live_status.state is not None:
+        registers["NHK/T4Status"] = live_status.state
+        registers["NHK/T4StatusPayload"] = live_status.payload_hex
+    if live_status.position is not None:
+        registers["NHK/T4InstantPosition"] = str(round(live_status.position))
+        registers["NHK/T4InstantPositionPayload"] = live_status.payload_hex
+    if live_status.raw_position is not None:
+        registers["NHK/T4InstantPositionRaw"] = str(live_status.raw_position)
+    if live_status.position_scale is not None:
+        registers["NHK/T4InstantPositionScale"] = live_status.position_scale
+    registers["NHK/T4PayloadKind"] = live_status.payload_kind
+
+    position = live_status.position
+    if position is None:
+        position = _endpoint_position_from_state(live_status.state)
+    if position is None:
+        position = status.position
+
+    state = live_status.state or status.state
+    if (
+        live_status.payload_kind == "04/40"
+        and live_status.state == STATE_STOPPED
+        and live_status.position is not None
+        and CUWIFI_INTERMEDIATE_POSITION_TOLERANCE
+        < live_status.position
+        < 100.0 - CUWIFI_INTERMEDIATE_POSITION_TOLERANCE
+        and status.state in {STATE_OPENING, STATE_CLOSING}
+    ):
+        registers["NHK/T4StatusIgnored"] = "stopped_with_intermediate_position"
+        state = status.state
+
+    return replace(
+        status,
+        state=state,
+        position=position,
+        registers=registers,
+    )
+
+
+def _parse_nhk_status_frames(frames: list[bytes], device_id: int = 1) -> NiceBidiStatus:
+    status: NiceBidiStatus | None = None
+    for frame in frames:
+        parsed = _parse_nhk_status_xml(_xml_payload(frame), device_id)
+        if parsed is not None:
+            status = parsed
+        for plain in _decrypt_t4_payloads_from_frame(frame):
+            live_status = _parse_cuwifi_live_status_payload(plain)
+            if live_status is not None:
+                status = _merge_cuwifi_live_status(status, live_status)
+    if status is None:
+        raise NiceBidiConnectionError("NHK STATUS response did not include DoorStatus or CU_WIFI T4 status")
+    return status
+
+
+def _cuwifi_t4_message(plain: bytes) -> _LiveT4Message | None:
+    """Return the inner controller-originated CU_WIFI T4 message."""
+    if len(plain) < 12:
+        return None
+
+    if plain[0] == 0x55:
+        if len(plain) < 4:
+            return None
+        body_size = plain[1]
+        if body_size != plain[-1] or body_size != len(plain) - 3:
+            return None
+        body = plain[2:-1]
+    else:
+        body = plain
+
+    if len(body) < 10:
+        return None
+
+    to_row, to_address, from_row, from_address, message_type, message_size = body[:6]
+    message = body[7:-1]
+    if message_size != len(message) + 1:
+        return None
+    target = (to_row, to_address)
+    if target not in {(0x00, 0xFF), (0xFF, 0x01)}:
+        return None
+    if (from_row, from_address) != DMP_TARGET_CONTROLLER:
+        return None
+    if message_type != 0x01:
+        return None
+
+    return _LiveT4Message(message=message, target=target)
+
+
+def _live_04_40_position(position_value: int, target: tuple[int, int]) -> tuple[float | None, str | None]:
+    """Return percent position and scale name from a live 04/40 raw value."""
+    if target == (0xFF, 0x01):
+        if 0 <= position_value <= LIVE_RAW_POSITION_OPEN:
+            return round((position_value / LIVE_RAW_POSITION_OPEN) * 100.0, 1), "raw_0_7000"
+        return None, "raw_0_7000"
+    if 0 <= position_value <= 100:
+        return float(position_value), "percent"
+    return None, None
+
+
+def _parse_cuwifi_live_status_payload(plain: bytes) -> _CuwifiLiveStatus | None:
+    """Parse CU_WIFI live T4 status and coarse instant-position payloads."""
+    live_message = _cuwifi_t4_message(plain)
+    if live_message is None:
+        return None
+    message = live_message.message
+    if not message or len(message) < 3 or message[0] != 0x04:
+        return None
+
+    payload_hex = message.hex(" ")
+    if message[1] == 0x40 and len(message) >= 5:
+        state = STATUS_BY_BYTE.get(message[2])
+        position_value = int.from_bytes(message[3:5], "big")
+        position, position_scale = _live_04_40_position(position_value, live_message.target)
+        if state is None and position is None:
+            return None
+        return _CuwifiLiveStatus(
+            state=state,
+            position=position,
+            payload_hex=payload_hex,
+            payload_kind="04/40",
+            raw_position=position_value if position is not None else None,
+            position_scale=position_scale if position is not None else None,
+        )
+
+    if message[1] == 0x02:
+        state = STATUS_BY_BYTE.get(message[2])
+        if state is None:
+            return None
+        return _CuwifiLiveStatus(
+            state=state,
+            position=_endpoint_position_from_state(state),
+            payload_hex=payload_hex,
+            payload_kind="04/02",
+        )
+
+    return None
+
+
 T4_RE = re.compile(r"<T4\b(?P<attrs>[^>]*)>(?P<body>.*?)</T4>", re.DOTALL)
+
+
+def _decrypt_t4_payloads_from_frame(frame: bytes) -> list[bytes]:
+    """Return decrypted T4 payloads from one NHK XML frame."""
+    text = _printable(frame)
+    payloads: list[bytes] = []
+    for match in T4_RE.finditer(text):
+        key_value = _attr(match.group("attrs"), "key")
+        if not key_value:
+            continue
+        try:
+            key = base64.b64decode(key_value)
+            encrypted = base64.b64decode(match.group("body").strip())
+        except ValueError:
+            continue
+        payloads.append(_xor_sha256(encrypted, key))
+    return payloads
 
 
 def _response_summary(response: bytes) -> str:
@@ -632,6 +950,10 @@ class NiceBidiClient:
         """Read status and position DMP registers."""
         return self._run_with_reconnect(lambda: self._read_status_locked(include_extended=include_extended))
 
+    def read_nhk_status(self) -> NiceBidiStatus:
+        """Read state from NHK STATUS/CHANGE properties."""
+        return self._run_with_reconnect(self._read_nhk_status_locked)
+
     def read_info(self) -> NiceBidiDeviceInfo:
         """Read static BiDi-WiFi and control-unit metadata."""
         return self._run_with_reconnect(self._read_info_locked)
@@ -678,7 +1000,12 @@ class NiceBidiClient:
         except NiceBidiConnectionError as err:
             if nice_bidi_error_code(err) != "14":
                 raise
-            self.read_info()
+            info = self.read_info()
+            if device_info_supports_nhk_status(info, self.device_id):
+                try:
+                    return self.read_nhk_status()
+                except NiceBidiError:
+                    _LOGGER.debug("Nice NHK status validation failed after DMP Code 14", exc_info=True)
             return NiceBidiStatus(
                 state=None,
                 position=None,
@@ -817,7 +1144,38 @@ class NiceBidiClient:
         xml, request_id = self._signed_request_with_id(request_type, body)
         return self._send_locked(xml, expected_type=request_type, expected_id=request_id)
 
+    def _signed_exchange_frames_locked(
+        self,
+        request_type: str,
+        body: str = "",
+        *,
+        post_response_listen_seconds: float = 0.0,
+    ) -> list[bytes]:
+        xml, request_id = self._signed_request_with_id(request_type, body)
+        return self._send_frames_locked(
+            xml,
+            expected_type=request_type,
+            expected_id=request_id,
+            post_response_listen_seconds=post_response_listen_seconds,
+        )
+
     def _send_locked(self, xml: str, expected_type: str | None, expected_id: int | None) -> bytes:
+        frames = self._send_frames_locked(xml, expected_type=expected_type, expected_id=expected_id)
+        for response in frames:
+            if self._matches_response(response, expected_type, expected_id):
+                return response
+        if frames:
+            return frames[-1]
+        raise NiceBidiConnectionError("device did not respond")
+
+    def _send_frames_locked(
+        self,
+        xml: str,
+        expected_type: str | None,
+        expected_id: int | None,
+        *,
+        post_response_listen_seconds: float = 0.0,
+    ) -> list[bytes]:
         if not self._socket:
             raise NiceBidiConnectionError("socket is not open")
         self._socket.settimeout(self.timeout)
@@ -829,21 +1187,27 @@ class NiceBidiClient:
             self.port,
         )
         self._socket.sendall(_frame(xml))
-        last_response = b""
+        frames: list[bytes] = []
         deadline = time.time() + self.timeout
+        post_response_deadline: float | None = None
         while time.time() < deadline:
-            response = self._recv_frame_locked(max(0.1, deadline - time.time()))
+            active_deadline = post_response_deadline or deadline
+            response = self._recv_frame_locked(max(0.1, active_deadline - time.time()))
             if not response:
                 break
-            last_response = response
+            frames.append(response)
             if self._matches_response(response, expected_type, expected_id):
                 _LOGGER.debug("Received matching Nice local response: %s", _response_summary(response))
-                return response
+                if post_response_listen_seconds <= 0:
+                    return frames
+                post_response_deadline = time.time() + post_response_listen_seconds
+                deadline = post_response_deadline
+                continue
             _LOGGER.debug("Received non-matching Nice local response: %s", _response_summary(response))
-        if last_response:
-            _LOGGER.debug("Returning last Nice local response after timeout: %s", _response_summary(last_response))
-            return last_response
-        raise NiceBidiConnectionError("device did not respond")
+        if frames:
+            _LOGGER.debug("Returning last Nice local response after timeout: %s", _response_summary(frames[-1]))
+            return frames
+        return []
 
     def _recv_frame_locked(self, timeout: float) -> bytes:
         if not self._socket:
@@ -1051,6 +1415,16 @@ class NiceBidiClient:
             oxi_description=_dmp_ascii(registers.get("0A/0C@00.0A")),
         )
 
+    def _read_nhk_status_locked(self) -> NiceBidiStatus:
+        frames = self._signed_exchange_frames_locked(
+            "STATUS",
+            post_response_listen_seconds=NHK_STATUS_POST_RESPONSE_LISTEN_SECONDS,
+        )
+        for frame in frames:
+            if "<Error>" in _printable(frame):
+                raise NiceBidiConnectionError(_printable(frame))
+        return _parse_nhk_status_frames(frames, self.device_id)
+
     def _read_info_xml_locked(self) -> str:
         response = self._signed_exchange_locked("INFO")
         text = _printable(response)
@@ -1094,16 +1468,4 @@ class NiceBidiClient:
         return response, plains
 
     def _decrypt_t4_payloads(self, response: bytes) -> list[bytes]:
-        text = _printable(response)
-        payloads: list[bytes] = []
-        for match in T4_RE.finditer(text):
-            key_value = _attr(match.group("attrs"), "key")
-            if not key_value:
-                continue
-            try:
-                key = base64.b64decode(key_value)
-                encrypted = base64.b64decode(match.group("body").strip())
-            except ValueError:
-                continue
-            payloads.append(_xor_sha256(encrypted, key))
-        return payloads
+        return _decrypt_t4_payloads_from_frame(response)

@@ -9,11 +9,13 @@ from homeassistant.components.number import DOMAIN as NUMBER_DOMAIN, NumberEntit
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .client import NiceBidiStatus
+from .calibration_constants import CALIBRATION_STATE_RUNNING
+from .client import NiceBidiDeviceInfo, NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
 from .runtime import get_coordinator
@@ -31,6 +33,35 @@ class NiceBidiNumberEntityDescription(NumberEntityDescription):
 
 def _max_known_open_position(status: NiceBidiStatus) -> int | None:
     return status.max_open_position or status.open_position
+
+
+SPEED_SETTING_KEYS = {
+    "bus_t4_opening_speed",
+    "bus_t4_closing_speed",
+}
+
+SPEED_SETTINGS_DISABLED_DEVICE_TOKENS = {
+    "aria200",
+    "clbox",
+}
+
+
+def _normalized_device_info_text(info: NiceBidiDeviceInfo | None) -> str:
+    if info is None:
+        return ""
+    parts = (
+        info.device_type,
+        info.device_manufacturer,
+        info.device_product,
+        info.device_description,
+        info.device_product_detail,
+    )
+    return "".join(character for part in parts if part for character in part.casefold() if character.isalnum())
+
+
+def _speed_settings_disabled_for_device(info: NiceBidiDeviceInfo | None) -> bool:
+    text = _normalized_device_info_text(info)
+    return any(token in text for token in SPEED_SETTINGS_DISABLED_DEVICE_TOKENS)
 
 
 NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
@@ -267,6 +298,8 @@ class NiceBidiNumber(CoordinatorEntity[NiceBidiDataUpdateCoordinator], NumberEnt
         return (
             self.coordinator.last_update_success
             and status is not None
+            and self.coordinator.calibration_state != CALIBRATION_STATE_RUNNING
+            and not self._disabled_for_device()
             and not status.is_moving
             and self.native_value is not None
         )
@@ -292,6 +325,10 @@ class NiceBidiNumber(CoordinatorEntity[NiceBidiDataUpdateCoordinator], NumberEnt
 
     async def async_set_native_value(self, value: float) -> None:
         """Write the BusT4 number value."""
+        if self._disabled_for_device():
+            raise HomeAssistantError(
+                f"{self.entity_description.name} is disabled for this controller model"
+            )
         int_value = int(round(value))
         min_value = self.native_min_value
         max_value = self.native_max_value
@@ -302,4 +339,10 @@ class NiceBidiNumber(CoordinatorEntity[NiceBidiDataUpdateCoordinator], NumberEnt
             self.entity_description.register_parameter,
             int_value,
             size=self.entity_description.value_size,
+        )
+
+    def _disabled_for_device(self) -> bool:
+        """Return true when this config value should not be changed on this device."""
+        return self.entity_description.key in SPEED_SETTING_KEYS and _speed_settings_disabled_for_device(
+            self.coordinator.device_info
         )

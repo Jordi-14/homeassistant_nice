@@ -40,6 +40,7 @@ def calibration_report_attributes(report: CalibrationReport | None) -> dict[str,
         "summary": report.get("summary"),
         "updated_at": report.get("updated_at"),
         "profile_version": report.get("profile_version"),
+        "profile_mode": report.get("profile_mode"),
         "tolerance_percent": report.get("tolerance_percent"),
         "poll_seconds": report.get("poll_seconds"),
         "settle_seconds": report.get("settle_seconds"),
@@ -99,6 +100,10 @@ def build_calibration_report(profile: CalibrationProfile, state: str) -> Calibra
     points = _calibration_points(profile)
     events = profile.get("events", [])
     tolerance = float(profile.get("target_tolerance_percent") or 2.0)
+    mode = str(profile.get("mode") or "encoder")
+
+    if mode == "time":
+        return _build_time_calibration_report(profile, state, events)
 
     if not points:
         return {
@@ -106,6 +111,7 @@ def build_calibration_report(profile: CalibrationProfile, state: str) -> Calibra
             "quality": "unknown",
             "summary": "No calibration points found in the stored profile",
             "profile": profile,
+            "profile_mode": mode,
             "travel_speed": profile.get("travel_speed", {}),
             "points": [],
             "events": events if isinstance(events, list) else [],
@@ -163,6 +169,7 @@ def build_calibration_report(profile: CalibrationProfile, state: str) -> Calibra
         "summary": summary,
         "updated_at": profile.get("updated_at"),
         "profile_version": profile.get("version"),
+        "profile_mode": mode,
         "tolerance_percent": tolerance,
         "poll_seconds": profile.get("poll_seconds"),
         "settle_seconds": profile.get("settle_seconds"),
@@ -184,6 +191,83 @@ def build_calibration_report(profile: CalibrationProfile, state: str) -> Calibra
     }
 
 
+def _build_time_calibration_report(
+    profile: CalibrationProfile,
+    state: str,
+    events: Any,
+) -> CalibrationReport:
+    """Build a report for time-based calibration profiles."""
+    travel_speed = profile.get("travel_speed", {})
+    open_speed = _speed_percent_per_second(travel_speed, "open")
+    close_speed = _speed_percent_per_second(travel_speed, "close")
+    complete = open_speed is not None and close_speed is not None
+    quality = "time_based" if complete else "needs_review"
+    if complete:
+        open_count = _time_measurement_count(travel_speed, "open")
+        close_count = _time_measurement_count(travel_speed, "close")
+        count_text = (
+            f"; samples open={open_count} close={close_count}"
+            if open_count is not None or close_count is not None
+            else ""
+        )
+        summary = (
+            "time_based: full-travel timing measured"
+            f"; open {open_speed:.2f}%/s"
+            f"; close {close_speed:.2f}%/s"
+            f"{count_text}"
+        )
+    else:
+        summary = "needs_review: incomplete time-based calibration"
+    return {
+        "state": state,
+        "quality": quality,
+        "summary": summary,
+        "updated_at": profile.get("updated_at"),
+        "profile_version": profile.get("version"),
+        "profile_mode": "time",
+        "tolerance_percent": profile.get("target_tolerance_percent"),
+        "poll_seconds": profile.get("poll_seconds"),
+        "settle_seconds": profile.get("settle_seconds"),
+        "command_pause_seconds": profile.get("command_pause_seconds"),
+        "max_attempts": profile.get("max_attempts"),
+        "stability_attempts": profile.get("stability_attempts"),
+        "point_count": 0,
+        "successful_points": 0,
+        "invalid_points": 0,
+        "failed_points": [],
+        "total_attempts": 0,
+        "max_attempts_used": 0,
+        "max_abs_error_percent": None,
+        "avg_abs_error_percent": None,
+        "bounds": profile.get("bounds", {}),
+        "travel_speed": travel_speed if isinstance(travel_speed, dict) else {},
+        "points": [],
+        "events": events if isinstance(events, list) else [],
+    }
+
+
+def _speed_percent_per_second(travel_speed: Any, action: str) -> float | None:
+    """Return a stored full-travel speed for one direction."""
+    if not isinstance(travel_speed, dict):
+        return None
+    action_speed = travel_speed.get(action)
+    if not isinstance(action_speed, dict):
+        return None
+    speed = action_speed.get("speed_percent_per_second")
+    return float(speed) if isinstance(speed, (int, float)) and speed > 0 else None
+
+
+def _time_measurement_count(travel_speed: Any, action: str) -> int | None:
+    """Return the number of timed full-travel samples for one direction."""
+    if not isinstance(travel_speed, dict):
+        return None
+    action_speed = travel_speed.get(action)
+    if not isinstance(action_speed, dict):
+        return None
+    count = action_speed.get("measurement_count")
+    return count if isinstance(count, int) and count > 0 else None
+
+
 def format_calibration_report(report: CalibrationReport) -> str:
     """Format a calibration report as copyable plain text."""
     lines = [
@@ -192,6 +276,7 @@ def format_calibration_report(report: CalibrationReport) -> str:
         f"Quality: {report.get('quality')}",
         f"Summary: {report.get('summary')}",
         f"Updated at: {report.get('updated_at')}",
+        f"Profile mode: {report.get('profile_mode')}",
         f"Tolerance: {report.get('tolerance_percent')}%",
         f"Poll seconds: {report.get('poll_seconds')}",
         f"Settle seconds: {report.get('settle_seconds')}",
@@ -213,13 +298,20 @@ def format_calibration_report(report: CalibrationReport) -> str:
         for direction, value in sorted(travel_speed.items()):
             if not isinstance(value, dict):
                 continue
-            lines.append(
+            line = (
                 "- "
                 f"{direction}: {value.get('speed_percent_per_second')}%/s "
                 f"duration={value.get('duration_ms')}ms "
                 f"from={value.get('start_percent')}% "
                 f"to={value.get('end_percent')}%"
             )
+            if value.get("measurement_count") is not None:
+                line += (
+                    f" measurements={value.get('measurement_count')}"
+                    f" selected_attempt={value.get('selected_attempt')}"
+                    f" duration_samples={value.get('duration_samples_ms')}"
+                )
+            lines.append(line)
 
     points = report.get("points")
     if isinstance(points, list) and points:
