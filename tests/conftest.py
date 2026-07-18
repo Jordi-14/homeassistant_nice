@@ -90,6 +90,7 @@ def make_status(
     pre_flash: bool | None = False,
     key_lock: bool | None = False,
     last_stop_reason: str | None = "obstacle_by_encoder",
+    diagnostics_parameters: str | None = "00 00 00 bc 00 bc 00 00 00 20 00 00 00 00 00 33 00 00 00 00 00 00 00 00 00 00 00 00",
     oxi_detected: bool | None = True,
     oxi_product: str | None = "OXI",
 ) -> NiceBidiStatus:
@@ -128,12 +129,19 @@ def make_status(
         pre_flash=pre_flash,
         key_lock=key_lock,
         last_stop_reason=last_stop_reason,
+        diagnostics_parameters=diagnostics_parameters,
         oxi_detected=oxi_detected,
         oxi_product=oxi_product,
     )
 
 
-def make_device_info(*, nhk_status: bool = False) -> NiceBidiDeviceInfo:
+def make_device_info(
+    *,
+    nhk_status: bool = False,
+    device_product: str | None = "NewRobus",
+    device_description: str | None = "NewRobus",
+    device_product_detail: str | None = "detail",
+) -> NiceBidiDeviceInfo:
     """Create static device metadata."""
     properties = ()
     if nhk_status:
@@ -167,12 +175,12 @@ def make_device_info(*, nhk_status: bool = False) -> NiceBidiDeviceInfo:
         interface_serial="IFACE123",
         device_type="gate",
         device_manufacturer="NICE",
-        device_product="NewRobus",
-        device_description="NewRobus",
+        device_product=device_product,
+        device_description=device_description,
         device_hw_version="HW2",
         device_fw_version="FG01h",
         device_serial="0E6809FF",
-        device_product_detail="detail",
+        device_product_detail=device_product_detail,
         services=(
             NiceBidiServiceCapability(
                 owner="Device",

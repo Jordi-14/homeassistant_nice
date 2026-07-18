@@ -240,6 +240,33 @@ def test_read_status_combines_registers_into_status() -> None:
     assert status.last_stop_reason == "obstacle_by_encoder"
 
 
+@pytest.mark.parametrize("status_byte", [0x10, 0x11, 0x12])
+def test_read_status_decodes_partial_open_variants(status_byte: int) -> None:
+    """Test partial-open status variants reported by some controllers."""
+
+    class StatusClient(NiceBidiClient):
+        def _t4_request_locked(self, protocol, plain_payload, daddr, dendpoint, tout_ms):
+            values = {
+                (0x04, 0x01): bytes([status_byte]),
+                (0x04, 0x11): (1000).to_bytes(2, "big"),
+                (0x04, 0x18): (4000).to_bytes(2, "big"),
+                (0x04, 0x19): (0).to_bytes(2, "big"),
+            }
+            key = (plain_payload[9], plain_payload[10])
+            if key not in values:
+                return b"<Response><Error><Code>14</Code></Error></Response>", []
+            return b"<Response />", [_dmp_response(*key, values[key])]
+
+    status = StatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+    )._read_status_locked()
+
+    assert status.state == "partially_open"
+    assert status.position == 25.0
+
+
 def test_read_info_extracts_interface_and_device_metadata() -> None:
     """Test INFO response parsing."""
 
