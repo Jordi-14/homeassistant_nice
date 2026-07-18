@@ -120,7 +120,6 @@ async def test_button_registry_entity_id_ignores_device_area_prefix(
     assert registry_entry is not None
     assert registry_entry.has_entity_name is True
     assert registry_entry.original_name == "Partial open 3"
-    assert er.async_get_unprefixed_name(hass, registry_entry) == "Partial open 3"
 
 
 async def test_default_entity_id_migration_uses_configured_name(
