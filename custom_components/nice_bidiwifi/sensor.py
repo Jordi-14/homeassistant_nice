@@ -9,7 +9,7 @@ from typing import Any
 
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN, SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -37,6 +37,33 @@ def _hex_byte(value: int | None) -> str | None:
     if value is None:
         return None
     return f"0x{value:02X}"
+
+
+def _diagnostics_parameter_bytes(coordinator: NiceBidiDataUpdateCoordinator) -> bytes | None:
+    status = _status(coordinator)
+    if not status or not status.diagnostics_parameters:
+        return None
+    try:
+        value = bytes.fromhex(status.diagnostics_parameters)
+    except ValueError:
+        return None
+    if not value or all(byte in {0x00, 0xFF} for byte in value):
+        return None
+    return value
+
+
+def _diagnostics_u8(coordinator: NiceBidiDataUpdateCoordinator, index: int) -> int | None:
+    value = _diagnostics_parameter_bytes(coordinator)
+    if value is None or len(value) <= index:
+        return None
+    return value[index]
+
+
+def _motor_temperature(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
+    raw = _diagnostics_u8(coordinator, 15)
+    if raw is None:
+        return None
+    return raw - 9
 
 
 SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
@@ -288,6 +315,27 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:sign-caution",
         value_fn=lambda coordinator: _status(coordinator).last_stop_reason if _status(coordinator) else None,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="motor_temperature",
+        name="Motor temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_motor_temperature,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="service_voltage",
+        name="Service voltage",
+        device_class=SensorDeviceClass.VOLTAGE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda coordinator: _diagnostics_u8(coordinator, 9),
     ),
     NiceBidiSensorEntityDescription(
         key="diagnostics_io_byte",

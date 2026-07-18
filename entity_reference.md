@@ -169,6 +169,8 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Sensor | Maintenance count | `maintenance_count` | BusT4 maintenance counter. | Hidden | Enabled | Useful maintenance diagnostic. |
 | Sensor | Total maneuver count | `total_maneuver_count` | BusT4 maneuver counter discovered during community testing. | Hidden | Enabled | Useful maintenance/statistics diagnostic. |
 | Sensor | Last stop reason | `last_stop_reason` | Decoded BusT4 last stop reason when the register is available. | Hidden | Enabled | Useful after unexpected stops. |
+| Sensor | Motor temperature | `motor_temperature` | Decoded internal motor temperature from `04/D2` byte 15 minus 9. | Hidden | Enabled | Confirmed from issue #15 testing on Road 400 and RB1000; hidden because it is diagnostic. |
+| Sensor | Service voltage | `service_voltage` | Decoded service voltage from `04/D2` byte 9. | Hidden | Disabled | Confirmed from issue #15 testing; disabled by default because it is advanced diagnostic data. |
 | Sensor | Diagnostics I/O byte | `diagnostics_io_byte` | Raw `04/D1` diagnostics byte, displayed as hex for comparison. | Hidden | Disabled | Raw developer/debug data; decoded bits are not valid on the tested gate. |
 | Sensor | Diagnostics parameters | `diagnostics_parameters` | Raw `04/D2` diagnostics parameter bytes for future decoding. | Hidden | Disabled | Raw developer/debug data. |
 | Sensor | OXI product | `oxi_product` | Product string from the OXI/radio endpoint when available locally. | Hidden | Disabled | Optional metadata that is often unavailable. |
