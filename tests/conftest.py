@@ -135,7 +135,13 @@ def make_status(
     )
 
 
-def make_device_info(*, nhk_status: bool = False) -> NiceBidiDeviceInfo:
+def make_device_info(
+    *,
+    nhk_status: bool = False,
+    device_product: str | None = "NewRobus",
+    device_description: str | None = "NewRobus",
+    device_product_detail: str | None = "detail",
+) -> NiceBidiDeviceInfo:
     """Create static device metadata."""
     properties = ()
     if nhk_status:
@@ -169,12 +175,12 @@ def make_device_info(*, nhk_status: bool = False) -> NiceBidiDeviceInfo:
         interface_serial="IFACE123",
         device_type="gate",
         device_manufacturer="NICE",
-        device_product="NewRobus",
-        device_description="NewRobus",
+        device_product=device_product,
+        device_description=device_description,
         device_hw_version="HW2",
         device_fw_version="FG01h",
         device_serial="0E6809FF",
-        device_product_detail="detail",
+        device_product_detail=device_product_detail,
         services=(
             NiceBidiServiceCapability(
                 owner="Device",
