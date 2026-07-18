@@ -13,7 +13,11 @@ from custom_components.nice_bidiwifi import (
     async_setup_entry,
     async_unload_entry,
 )
-from custom_components.nice_bidiwifi.const import DOMAIN
+from custom_components.nice_bidiwifi.const import (
+    CONF_CONNECTION_METHOD,
+    CONNECTION_METHOD_CLOUD,
+    DOMAIN,
+)
 from tests.conftest import config_entry_data
 
 
@@ -64,6 +68,23 @@ async def test_setup_entry_loads_coordinator_and_forwards_platforms(
     mock_forward.assert_called_once_with(entry, PLATFORMS)
 
 
+async def test_setup_entry_dispatches_cloud_entries(hass: HomeAssistant) -> None:
+    """Test cloud entries use the cloud setup path."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_CONNECTION_METHOD: CONNECTION_METHOD_CLOUD},
+        entry_id="entry-1",
+    )
+    entry.add_to_hass(hass)
+
+    with patch.object(nice_init, "async_setup_cloud_entry", new_callable=AsyncMock) as mock_setup:
+        mock_setup.return_value = True
+        result = await async_setup_entry(hass, entry)
+
+    assert result is True
+    mock_setup.assert_awaited_once_with(hass, entry)
+
+
 async def test_unload_entry_unloads_platforms_and_shuts_down_coordinator(
     hass: HomeAssistant,
 ) -> None:
@@ -84,6 +105,22 @@ async def test_unload_entry_unloads_platforms_and_shuts_down_coordinator(
     assert coordinator.shutdown is True
     assert entry.runtime_data is None
     mock_unload.assert_called_once_with(entry, PLATFORMS)
+
+
+async def test_unload_entry_dispatches_cloud_entries(hass: HomeAssistant) -> None:
+    """Test cloud entries use the cloud unload path."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_CONNECTION_METHOD: CONNECTION_METHOD_CLOUD},
+        entry_id="entry-1",
+    )
+
+    with patch.object(nice_init, "async_unload_cloud_entry", new_callable=AsyncMock) as mock_unload:
+        mock_unload.return_value = True
+        result = await async_unload_entry(hass, entry)
+
+    assert result is True
+    mock_unload.assert_awaited_once_with(hass, entry)
 
 
 async def test_unload_entry_preserves_runtime_data_when_platform_unload_fails(

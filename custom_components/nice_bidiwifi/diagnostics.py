@@ -10,10 +10,18 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_SOURCE_ID, CONF_TARGET_MAC
+from .cloud_coordinator import NiceHub
+from .const import (
+    CONF_CLOUD_TOKEN,
+    CONF_CONNECTION_METHOD,
+    CONF_SOURCE_ID,
+    CONF_TARGET_MAC,
+    CONNECTION_METHOD_CLOUD,
+)
 from .runtime import get_coordinator
 
 TO_REDACT = {
+    CONF_CLOUD_TOKEN,
     CONF_HOST,
     CONF_PASSWORD,
     CONF_SOURCE_ID,
@@ -31,6 +39,22 @@ async def async_get_config_entry_diagnostics(
     entry: ConfigEntry,
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
+    if entry.data.get(CONF_CONNECTION_METHOD) == CONNECTION_METHOD_CLOUD:
+        hub = entry.runtime_data
+        diagnostics: dict[str, Any] = {
+            "entry": dict(entry.data),
+            "connection": {
+                "method": CONNECTION_METHOD_CLOUD,
+                "door_count": len(hub.doors) if isinstance(hub, NiceHub) else None,
+                "controllable_door_count": (
+                    len([door for door in hub.doors if door.get("creds")])
+                    if isinstance(hub, NiceHub)
+                    else None
+                ),
+            },
+        }
+        return async_redact_data(diagnostics, TO_REDACT)
+
     coordinator = get_coordinator(entry)
     status = coordinator.data
     device_info = coordinator.device_info

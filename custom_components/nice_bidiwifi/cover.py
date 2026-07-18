@@ -10,7 +10,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_PARTIALLY_OPEN, STATE_STOPPED, NiceBidiStatus
+from .cloud_cover import async_setup_cloud_covers
+from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_STOPPED, NiceBidiStatus
+from .const import CONF_CONNECTION_METHOD, CONNECTION_METHOD_CLOUD
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
 from .runtime import get_coordinator
@@ -24,6 +26,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up cover from a config entry."""
+    if entry.data.get(CONF_CONNECTION_METHOD) == CONNECTION_METHOD_CLOUD:
+        await async_setup_cloud_covers(hass, entry, async_add_entities)
+        return
+
     coordinator = get_coordinator(entry)
     async_add_entities([NiceBidiCover(coordinator, entry)])
 
@@ -83,7 +89,7 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
             return False
         if status.state == STATE_CLOSED:
             return True
-        if status.state in {STATE_OPEN, STATE_OPENING, STATE_CLOSING, STATE_STOPPED, STATE_PARTIALLY_OPEN}:
+        if status.state in {STATE_OPEN, STATE_OPENING, STATE_CLOSING, STATE_STOPPED}:
             return False
         return None
 

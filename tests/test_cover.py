@@ -71,15 +71,6 @@ class TestNiceBidiCoverProperties:
         assert entity.is_closed is True
         assert entity.current_cover_position == 0
 
-    def test_partially_open_state_is_known_not_closed(self) -> None:
-        coordinator = FakeCoordinator()
-        coordinator.data = make_status(state="partially_open", position=19.1, current_position=714)
-        entity = NiceBidiCover(coordinator, config_entry())
-
-        assert entity.available is True
-        assert entity.is_closed is False
-        assert entity.current_cover_position == 19
-
     def test_unavailable_without_status(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.data = None

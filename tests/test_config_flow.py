@@ -24,10 +24,14 @@ from custom_components.nice_bidiwifi.client import (
     NiceBidiConnectionError,
 )
 from custom_components.nice_bidiwifi.const import (
+    CONF_CLOUD_TOKEN,
+    CONF_CONNECTION_METHOD,
     CONF_DEVICE_ID,
     CONF_SOURCE_ID,
     CONF_T4_TIMEOUT_MS,
     CONF_TARGET_MAC,
+    CONNECTION_METHOD_CLOUD,
+    CONNECTION_METHOD_LOCAL,
     DOMAIN,
 )
 from tests.conftest import config_entry_data
@@ -76,13 +80,21 @@ def setup_function() -> None:
     FakeClient.instances = []
 
 
+async def _start_local_flow(hass: HomeAssistant) -> dict[str, Any]:
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_CONNECTION_METHOD: CONNECTION_METHOD_LOCAL},
+    )
+
+
 async def test_user_step_success_creates_entry(hass: HomeAssistant) -> None:
     """Test a successful config flow."""
     with (
         patch.object(config_flow, "NiceBidiClient", FakeClient),
         patch("custom_components.nice_bidiwifi.async_setup_entry", return_value=True),
     ):
-        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await _start_local_flow(hass)
         result = await hass.config_entries.flow.async_configure(result["flow_id"], _input())
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
@@ -95,12 +107,69 @@ async def test_user_step_success_creates_entry(hass: HomeAssistant) -> None:
     assert FakeClient.instances[0].closed is True
 
 
+async def test_user_step_defaults_to_local_method(hass: HomeAssistant) -> None:
+    """Test the first setup step recommends local control."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+    schema = {key.schema: value for key, value in result["data_schema"].schema.items()}
+    assert isinstance(schema[CONF_CONNECTION_METHOD], selector.SelectSelector)
+    assert schema[CONF_CONNECTION_METHOD].config["options"] == [
+        CONNECTION_METHOD_LOCAL,
+        CONNECTION_METHOD_CLOUD,
+    ]
+    assert schema[CONF_CONNECTION_METHOD].config["translation_key"] == CONF_CONNECTION_METHOD
+
+
+async def test_user_step_local_method_routes_to_local_form(hass: HomeAssistant) -> None:
+    """Test choosing local setup opens the local credential form."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_CONNECTION_METHOD: CONNECTION_METHOD_LOCAL},
+    )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "local"
+
+
+async def test_user_step_cloud_success_creates_cloud_entry(hass: HomeAssistant) -> None:
+    """Test a successful cloud config flow."""
+    cloud_data = {
+        CONF_CONNECTION_METHOD: CONNECTION_METHOD_CLOUD,
+        CONF_USERNAME: "user@example.com",
+        CONF_PASSWORD: "secret",
+        CONF_CLOUD_TOKEN: {"access_token": "token"},
+    }
+
+    with (
+        patch.object(config_flow, "_async_validate_cloud_input", new_callable=AsyncMock) as validate,
+        patch("custom_components.nice_bidiwifi.async_setup_entry", return_value=True),
+    ):
+        validate.return_value = cloud_data
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_CONNECTION_METHOD: CONNECTION_METHOD_CLOUD},
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_USERNAME: " user@example.com ", CONF_PASSWORD: " secret "},
+        )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "user@example.com"
+    assert result["data"] == cloud_data
+    validate.assert_awaited_once()
+
+
 async def test_user_step_auth_error_returns_form(hass: HomeAssistant) -> None:
     """Test auth failure handling."""
     FakeClient.connect_error = NiceBidiAuthError("bad credentials")
 
     with patch.object(config_flow, "NiceBidiClient", FakeClient):
-        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await _start_local_flow(hass)
         result = await hass.config_entries.flow.async_configure(result["flow_id"], _input())
 
     assert result["type"] == FlowResultType.FORM
@@ -113,7 +182,7 @@ async def test_user_step_connection_error_returns_form(hass: HomeAssistant) -> N
     FakeClient.connect_error = NiceBidiConnectionError("offline")
 
     with patch.object(config_flow, "NiceBidiClient", FakeClient):
-        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await _start_local_flow(hass)
         result = await hass.config_entries.flow.async_configure(result["flow_id"], _input())
 
     assert result["type"] == FlowResultType.FORM
@@ -130,7 +199,7 @@ async def test_user_step_connection_error_logs_sanitized_details(hass: HomeAssis
     caplog.set_level(logging.WARNING, logger=config_flow.__name__)
 
     with patch.object(config_flow, "NiceBidiClient", FakeClient):
-        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await _start_local_flow(hass)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             _input(
@@ -258,6 +327,64 @@ async def test_reconfigure_connection_error_returns_form(hass: HomeAssistant) ->
     assert result["errors"]["base"] == "cannot_connect"
 
 
+async def test_cloud_reconfigure_keeps_existing_username(hass: HomeAssistant) -> None:
+    """Test cloud reconfiguration cannot change config entry identity."""
+    entry_data = {
+        CONF_CONNECTION_METHOD: CONNECTION_METHOD_CLOUD,
+        CONF_USERNAME: "user@example.com",
+        CONF_PASSWORD: "old-secret",
+        CONF_CLOUD_TOKEN: {"access_token": "old-token"},
+    }
+    updated_data = {
+        CONF_CONNECTION_METHOD: CONNECTION_METHOD_CLOUD,
+        CONF_USERNAME: "user@example.com",
+        CONF_PASSWORD: "new-secret",
+        CONF_CLOUD_TOKEN: {"access_token": "new-token"},
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=entry_data,
+        entry_id="cloud-entry",
+        title="user@example.com",
+        unique_id="cloud:user@example.com",
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch.object(config_flow, "_async_validate_cloud_input", new_callable=AsyncMock) as validate,
+        patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock) as mock_reload,
+    ):
+        validate.return_value = updated_data
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "reconfigure", "entry_id": entry.entry_id},
+        )
+
+        schema = {key.schema: value for key, value in result["data_schema"].schema.items()}
+        assert CONF_PASSWORD in schema
+        assert CONF_USERNAME not in schema
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_PASSWORD: " new-secret "},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    validate.assert_awaited_once_with(
+        hass,
+        {
+            CONF_CONNECTION_METHOD: CONNECTION_METHOD_CLOUD,
+            CONF_USERNAME: "user@example.com",
+            CONF_PASSWORD: "new-secret",
+        },
+    )
+    assert entry.title == "user@example.com"
+    assert entry.unique_id == "cloud:user@example.com"
+    assert entry.data == updated_data
+    mock_reload.assert_called_once_with(entry.entry_id)
+
+
 def test_schema_uses_home_assistant_selectors() -> None:
     """Test config flow schema uses selectors."""
     schema = {
@@ -265,6 +392,12 @@ def test_schema_uses_home_assistant_selectors() -> None:
         for key, value in config_flow._schema().schema.items()
     }
 
+    method_schema = {
+        key.schema: value
+        for key, value in config_flow._method_schema().schema.items()
+    }
+
+    assert isinstance(method_schema[CONF_CONNECTION_METHOD], selector.SelectSelector)
     assert isinstance(schema[CONF_HOST], selector.TextSelector)
     assert isinstance(schema[CONF_PASSWORD], selector.TextSelector)
     assert isinstance(schema[CONF_PORT], selector.NumberSelector)

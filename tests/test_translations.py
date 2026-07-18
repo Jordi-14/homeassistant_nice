@@ -55,7 +55,8 @@ def test_default_translation_uses_generic_integration_name() -> None:
 
     assert strings["config"]["step"]["user"]["title"] == "Nice"
     assert english["config"]["step"]["user"]["title"] == "Nice"
-    assert strings["config"]["step"]["user"]["data"]["host"] == "Interface IP address"
+    assert strings["config"]["step"]["user"]["data"]["connection_method"] == "Connection method"
+    assert strings["config"]["step"]["local"]["data"]["host"] == "Interface IP address"
 
 
 def test_catalan_translation_is_present() -> None:
@@ -63,6 +64,6 @@ def test_catalan_translation_is_present() -> None:
     catalan = _load_json(TRANSLATIONS_DIR / "ca.json")
 
     assert catalan["config"]["step"]["user"]["title"] == "Nice"
-    assert catalan["config"]["step"]["user"]["data"]["name"] == "Nom"
+    assert catalan["config"]["step"]["local"]["data"]["name"] == "Nom"
     assert catalan["config"]["step"]["reconfigure"]["data_description"]["host"]
     assert catalan["config"]["error"]["unknown"] == "Error inesperat"

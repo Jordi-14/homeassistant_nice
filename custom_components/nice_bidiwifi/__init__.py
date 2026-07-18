@@ -5,25 +5,36 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME, Platform
+from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import slugify
 
+from .cloud import async_setup_cloud_entry, async_unload_cloud_entry
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .const import DEFAULT_NAME, DOMAIN
+from .const import (
+    CONF_CONNECTION_METHOD,
+    CONNECTION_METHOD_CLOUD,
+    CONNECTION_METHOD_LOCAL,
+    DEFAULT_NAME,
+    DOMAIN,
+    LOCAL_PLATFORMS,
+)
 from .runtime import get_coordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [
-    Platform.COVER,
-    Platform.SENSOR,
-    Platform.BINARY_SENSOR,
-    Platform.BUTTON,
-    Platform.SWITCH,
-    Platform.NUMBER,
-]
+PLATFORMS = LOCAL_PLATFORMS
+
+
+def entry_connection_method(entry: ConfigEntry) -> str:
+    """Return the selected connection method for a config entry."""
+    return str(entry.data.get(CONF_CONNECTION_METHOD, CONNECTION_METHOD_LOCAL))
+
+
+def entry_uses_cloud(entry: ConfigEntry) -> bool:
+    """Return true when a config entry is backed by MyNice cloud setup."""
+    return entry_connection_method(entry) == CONNECTION_METHOD_CLOUD
 
 
 def _async_migrate_default_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -74,6 +85,9 @@ def _async_migrate_default_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Nice from a config entry."""
+    if entry_uses_cloud(entry):
+        return await async_setup_cloud_entry(hass, entry)
+
     _async_migrate_default_entity_ids(hass, entry)
 
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
@@ -87,6 +101,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    if entry_uses_cloud(entry):
+        return await async_unload_cloud_entry(hass, entry)
+
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if not unload_ok:
         return False
