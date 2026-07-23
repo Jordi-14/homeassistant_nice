@@ -132,10 +132,11 @@ The important changes for your RBS600HS are:
 Could you please update, restart Home Assistant, and test this sequence?
 
 1. Start fully closed and open fully.
-2. Open again and stop halfway, then verify that both open and close remain available.
-3. Continue opening from the stopped position.
-4. Close and stop halfway, then continue closing.
-5. If possible, repeat one stop using the physical step-step input rather than Home Assistant.
+2. Close fully.
+3. Open again and stop halfway, then verify that both open and close remain available.
+4. Continue opening from the stopped position.
+5. Close and stop halfway, then continue closing.
+6. If possible, repeat one stop using the physical step-step input rather than Home Assistant.
 
 Please check both state and position during the test. If anything is wrong, send a diagnostics export plus the cover attributes while stopped halfway. The new source/confidence attributes are especially useful.
 
