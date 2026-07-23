@@ -299,6 +299,7 @@ class NiceBidiDataUpdateCoordinator(
         self.last_error = None
         self.last_successful_update = datetime.now(UTC)
         if status.position is not None:
+            self._position_reporting_observed = True
             self._last_known_position = status.position
         self.update_interval = self._update_interval_for_status(status)
         self._sync_position_simulation_from_status(status)

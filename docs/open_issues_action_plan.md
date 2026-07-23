@@ -235,3 +235,31 @@ If calibration completes, send the summary report. If it is cancelled again, ple
 
 That should finally tell us whether this is an internal timeout/failure or an external action cancelling the task.
 ```
+
+## Copy-paste follow-up response for v0.7.6b1
+
+### Issue #9
+
+```markdown
+Thanks, the entity export was very useful. I found two things that can be fixed and one limitation of the BiDi-WiFi.
+
+I have published a new beta with the fixes:
+
+https://github.com/Jordi-14/homeassistant_nice/releases/tag/v0.7.6b1
+
+The `open` / `closed` state was already reaching Home Assistant, but the estimated movement was not being stopped. That is why HA kept showing opening or closing for around 30 seconds after the gate had physically stopped. This beta stops the estimate as soon as the matching final state arrives.
+
+For controllers that have already reported real numeric position, a confirmed `open` or `closed` state will now also finish at `100%` or `0%`. This is only enabled after real position reporting has been observed. Gates that do not report any position will still never show invented position data.
+
+There is also a fix for external partial movements that happen completely between two polls. If the integration did not see the movement and the controller does not give a numeric position at the end, HA will show position as unavailable instead of keeping an incorrect old value like `1%`.
+
+About the delay when opening with a remote, wall button, or SBS input: unfortunately the gate cannot push a state update to HA. The integration has to pull the state, and while idle it does that every 25 seconds. So an external movement can take roughly 25–30 seconds to appear. I do not want to make that interval faster because it would mean constantly polling the controller more often, so this part is unchanged.
+
+Could you please test `v0.7.6b1` after restarting Home Assistant:
+
+1. Open and close once from HA and check that opening/closing ends immediately when HA receives `open`/`closed`, with position finishing at `100%`/`0%`.
+2. Do a partial opening with the remote or SBS input. If the movement is missed between polls, check that HA does not keep the old endpoint position.
+3. If either result is still wrong, send the cover attributes and one new diagnostics export from that moment.
+
+No exhaustive probe is needed for this test.
+```

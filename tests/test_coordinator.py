@@ -417,6 +417,115 @@ async def test_stopped_status_uses_last_known_position(hass: HomeAssistant) -> N
     assert result.registers["NHK/LastKnownPositionFallback"] == "44.0"
 
 
+@pytest.mark.parametrize(
+    ("action", "terminal_state", "seed_position", "expected_position"),
+    [
+        ("open", "open", 20.0, 100.0),
+        ("close", "closed", 80.0, 0.0),
+    ],
+)
+async def test_matching_terminal_status_stops_simulation_and_confirms_endpoint(
+    hass: HomeAssistant,
+    action: str,
+    terminal_state: str,
+    seed_position: float,
+    expected_position: float,
+) -> None:
+    """Test a terminal BiDi state immediately ends matching display movement."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    client.read_status_result = make_status(
+        state="stopped",
+        position=seed_position,
+        current_position=None,
+    )
+    seed = await instance._async_update_data()
+    instance.async_set_updated_data(seed)
+    instance._start_position_simulation(action)
+
+    client.read_status_result = make_status(
+        state=terminal_state,
+        position=None,
+        current_position=None,
+        closed_position=None,
+        open_position=None,
+    )
+    result = await instance._async_update_data()
+    instance.async_set_updated_data(result)
+
+    assert result.position == expected_position
+    assert result.registers["NHK/ConfirmedEndpointPosition"] == terminal_state
+    assert instance.display_position == expected_position
+    assert instance.display_position_estimated is False
+    assert instance.position_simulation_action is None
+    assert instance.position_source == "confirmed_endpoint"
+
+
+@pytest.mark.parametrize("terminal_state", ["open", "closed"])
+async def test_state_only_terminal_status_never_creates_position(
+    hass: HomeAssistant,
+    terminal_state: str,
+) -> None:
+    """Test endpoint state alone does not create position support."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    client.read_status_result = make_status(
+        state=terminal_state,
+        position=None,
+        current_position=None,
+        closed_position=None,
+        open_position=None,
+    )
+
+    result = await instance._async_update_data()
+    instance.async_set_updated_data(result)
+
+    assert result.position is None
+    assert instance.position_reporting_observed is False
+    assert instance.display_position is None
+    assert instance.position_source is None
+    assert "NHK/ConfirmedEndpointPosition" not in result.registers
+
+
+@pytest.mark.parametrize("terminal_state", ["stopped", "partially_open"])
+async def test_unobserved_external_movement_invalidates_stale_position(
+    hass: HomeAssistant,
+    terminal_state: str,
+) -> None:
+    """Test a movement missed between idle polls does not retain its old endpoint."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    client.read_status_result = make_status(
+        state="closed",
+        position=0.0,
+        current_position=None,
+    )
+    seed = await instance._async_update_data()
+    instance.async_set_updated_data(seed)
+
+    client.read_status_result = make_status(
+        state=terminal_state,
+        position=None,
+        current_position=None,
+        closed_position=None,
+        open_position=None,
+    )
+    result = await instance._async_update_data()
+    instance.async_set_updated_data(result)
+
+    assert result.position is None
+    assert result.registers["NHK/LastKnownPositionInvalidated"] == (
+        "unobserved_external_movement"
+    )
+    assert instance.position_reporting_observed is True
+    assert instance.display_position is None
+    assert instance.display_position_estimated is False
+    assert instance.position_source is None
+
+
 async def test_set_position_uses_display_position_when_status_position_is_sparse(
     hass: HomeAssistant,
 ) -> None:
@@ -426,6 +535,7 @@ async def test_set_position_uses_display_position_when_status_position_is_sparse
     instance.client = client
     instance.async_set_updated_data(make_status(state="stopped", position=None, current_position=None))
     instance._last_known_position = 55.0
+    instance._position_reporting_observed = True
     refreshes = 0
 
     async def fake_request_refresh() -> None:

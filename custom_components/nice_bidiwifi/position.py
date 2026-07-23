@@ -51,6 +51,7 @@ class NiceBidiPositionMixin:
         self._recent_stop_started_from_motion = False
         self._post_command_fast_poll_until_monotonic: float | None = None
         self._last_known_position: float | None = None
+        self._position_reporting_observed = False
         self._position_target_task: asyncio.Task[None] | None = None
         self._post_command_refresh_task: asyncio.Task[None] | None = None
         self._position_simulation_task: asyncio.Task[None] | None = None
@@ -161,6 +162,29 @@ class NiceBidiPositionMixin:
         """Align sparse status updates with the cover behavior users expect."""
         status = self._normalize_live_scalar_status(status)
         if (
+            status.position is None
+            and self._position_simulation_action is None
+            and self.data is not None
+            and self.data.state in {STATE_OPEN, STATE_CLOSED}
+            and status.state in {STATE_STOPPED, STATE_PARTIALLY_OPEN}
+        ):
+            self._last_known_position = None
+            registers = dict(status.registers)
+            registers["NHK/LastKnownPositionInvalidated"] = "unobserved_external_movement"
+            status = replace(status, registers=registers)
+        if (
+            status.position is None
+            and self.position_reporting_observed
+            and status.state in {STATE_OPEN, STATE_CLOSED}
+        ):
+            registers = dict(status.registers)
+            registers["NHK/ConfirmedEndpointPosition"] = status.state
+            return replace(
+                status,
+                position=100.0 if status.state == STATE_OPEN else 0.0,
+                registers=registers,
+            )
+        if (
             status.state in {STATE_STOPPED, STATE_PARTIALLY_OPEN}
             and status.position is None
             and self._last_known_position is not None
@@ -214,7 +238,7 @@ class NiceBidiPositionMixin:
     def position_reporting_observed(self) -> bool:
         """Return true only after the controller has supplied a numeric position."""
         status = self.data
-        return self._last_known_position is not None or (
+        return self._position_reporting_observed or (
             status is not None and status.position is not None
         )
 
@@ -269,6 +293,8 @@ class NiceBidiPositionMixin:
         if status is None:
             return None
         registers = status.registers
+        if "NHK/ConfirmedEndpointPosition" in registers:
+            return "confirmed_endpoint"
         if status.position is None and self._last_known_position is not None:
             return "held_last_known"
         if "NHK/T4CalibratedPosition" in registers:
@@ -393,6 +419,14 @@ class NiceBidiPositionMixin:
             self._clear_position_simulation(notify=False)
             return
         real_action = self._motion_action_from_state(status.state)
+        if (
+            self._position_simulation_action == "open"
+            and status.state == STATE_OPEN
+            or self._position_simulation_action == "close"
+            and status.state == STATE_CLOSED
+        ):
+            self._clear_position_simulation(notify=False)
+            return
         if status.position is None:
             if real_action is not None:
                 if self._position_simulation_action is None:
