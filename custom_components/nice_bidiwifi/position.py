@@ -20,6 +20,7 @@ from .client import (
     STATE_CLOSING,
     STATE_OPEN,
     STATE_OPENING,
+    STATE_PARTIALLY_OPEN,
     STATE_STOPPED,
 )
 from .connection import CONNECTION_STATE_AUTH_FAILED, CONNECTION_STATE_FAILED
@@ -154,19 +155,19 @@ class NiceBidiPositionMixin:
 
         registers = dict(status.registers)
         registers["NHK/RecentStopOverride"] = status.state
-        return replace(status, state=STATE_STOPPED, position=self._last_known_position, registers=registers)
+        return replace(status, state=STATE_STOPPED, position=None, registers=registers)
 
     def _normalize_status_for_display(self, status: NiceBidiStatus) -> NiceBidiStatus:
         """Align sparse status updates with the cover behavior users expect."""
         status = self._normalize_live_scalar_status(status)
         if (
-            status.state == STATE_STOPPED
+            status.state in {STATE_STOPPED, STATE_PARTIALLY_OPEN}
             and status.position is None
             and self._last_known_position is not None
         ):
             registers = dict(status.registers)
             registers["NHK/LastKnownPositionFallback"] = str(round(self._last_known_position, 1))
-            return replace(status, position=self._last_known_position, registers=registers)
+            return replace(status, registers=registers)
         return status
 
     def _normalize_live_scalar_status(self, status: NiceBidiStatus) -> NiceBidiStatus:
@@ -210,6 +211,14 @@ class NiceBidiPositionMixin:
         return status.position if status.position is not None else self._last_known_position
 
     @property
+    def position_reporting_observed(self) -> bool:
+        """Return true only after the controller has supplied a numeric position."""
+        status = self.data
+        return self._last_known_position is not None or (
+            status is not None and status.position is not None
+        )
+
+    @property
     def display_position_estimated(self) -> bool:
         """Return true when the displayed position is currently estimated."""
         if self._current_simulated_position() is not None:
@@ -230,8 +239,72 @@ class NiceBidiPositionMixin:
         speed = self._position_simulation_speed_percent_per_second
         return round(speed, 2) if speed is not None else None
 
+    @property
+    def state_source(self) -> str | None:
+        """Return the source currently responsible for the displayed state."""
+        status = self.data
+        if status is None:
+            return None
+        registers = status.registers
+        if "NHK/RecentStopOverride" in registers:
+            return "local_stop_hold"
+        payload_kind = registers.get("NHK/T4PayloadKind")
+        t4_state = registers.get("NHK/T4Status")
+        if payload_kind == "04/02" and t4_state == status.state:
+            return "t4_04_02"
+        if payload_kind == "04/40" and t4_state == status.state:
+            return "t4_04_40_motion"
+        if "NHK/DoorStatus" in registers:
+            return "nhk_door_status"
+        if "04/01" in registers:
+            return "dmp_04_01"
+        return "unknown"
+
+    @property
+    def position_source(self) -> str | None:
+        """Return the source currently responsible for displayed position."""
+        if self._current_simulated_position() is not None:
+            return "time_simulation"
+        status = self.data
+        if status is None:
+            return None
+        registers = status.registers
+        if status.position is None and self._last_known_position is not None:
+            return "held_last_known"
+        if "NHK/T4CalibratedPosition" in registers:
+            return "t4_live_scalar_calibrated"
+        if "NHK/T4InstantPosition" in registers:
+            return "t4_04_40"
+        if (
+            status.position is not None
+            and status.current_position is not None
+            and status.closed_position is not None
+            and status.open_position is not None
+            and status.closed_position != status.open_position
+        ):
+            return "dmp_encoder"
+        if status.position is not None and status.state in {STATE_OPEN, STATE_CLOSED}:
+            return "confirmed_endpoint"
+        return "controller_reported" if status.position is not None else None
+
+    @property
+    def position_confidence(self) -> str | None:
+        """Return whether displayed position is measured, live, or estimated."""
+        source = self.position_source
+        if source is None:
+            return None
+        if source == "dmp_encoder":
+            return "measured"
+        if source in {"t4_04_40", "t4_live_scalar_calibrated", "confirmed_endpoint"}:
+            return "observed"
+        if source in {"time_simulation", "held_last_known"}:
+            return "estimated"
+        return "reported"
+
     def _start_position_simulation(self, action: str, *, target_position: float | None = None) -> None:
         """Start or restart optimistic position animation after a movement command."""
+        if not self.position_reporting_observed:
+            return
         anchor = self._current_simulated_position()
         if anchor is None:
             anchor = self.display_position
@@ -319,10 +392,18 @@ class NiceBidiPositionMixin:
         if self.calibration_state == CALIBRATION_STATE_RUNNING:
             self._clear_position_simulation(notify=False)
             return
+        real_action = self._motion_action_from_state(status.state)
         if status.position is None:
+            if real_action is not None:
+                if self._position_simulation_action is None:
+                    self._start_position_simulation(real_action)
+                if self._position_simulation_action == real_action:
+                    self._position_simulation_confirmed_moving = True
+                return
+            if status.state in {STATE_STOPPED, STATE_PARTIALLY_OPEN}:
+                self._hold_position_simulation()
             return
 
-        real_action = self._motion_action_from_state(status.state)
         if real_action is not None:
             self._rebase_position_simulation(
                 real_action,
@@ -341,6 +422,13 @@ class NiceBidiPositionMixin:
                 and time.monotonic() - started < POSITION_SIMULATION_START_GRACE_SECONDS
             ):
                 return
+        self._clear_position_simulation(notify=False)
+
+    def _hold_position_simulation(self) -> None:
+        """Freeze an estimated position when movement ends without real position."""
+        simulated = self._current_simulated_position()
+        if simulated is not None:
+            self._last_known_position = round(simulated, 1)
         self._clear_position_simulation(notify=False)
 
     def _rebase_position_simulation(
@@ -457,7 +545,7 @@ class NiceBidiPositionMixin:
 
     async def async_set_position(self, target_position: int) -> None:
         """Move toward a target percentage and stop after the target is reached."""
-        await self._async_cancel_calibration()
+        await self._async_cancel_calibration(reason="set_position")
         await self._async_cancel_post_command_refresh()
         target = max(0, min(100, target_position))
         status = self.data
@@ -516,10 +604,13 @@ class NiceBidiPositionMixin:
         terminal_states = {STATE_OPEN, STATE_CLOSED, STATE_STOPPED}
         task = asyncio.current_task()
         started_moving = False
-        movement_started_monotonic: float | None = None
         timing_started_monotonic = time.monotonic()
         movement_start_deadline = time.monotonic() + 8.0
-        stop_deadline_monotonic: float | None = None
+        stop_deadline_monotonic = (
+            timing_started_monotonic + stop_delay_seconds
+            if stop_delay_seconds is not None
+            else None
+        )
         live_adjustment_position = start_position
         target_stop_position = float(target) if stop_position is None else float(stop_position)
         try:
@@ -530,16 +621,6 @@ class NiceBidiPositionMixin:
 
                 if status.state == moving_state:
                     started_moving = True
-                    if movement_started_monotonic is None:
-                        movement_started_monotonic = now
-                        if stop_delay_seconds is not None:
-                            stop_deadline_monotonic = now + stop_delay_seconds
-                elif (
-                    stop_delay_seconds is not None
-                    and stop_deadline_monotonic is None
-                    and now > movement_start_deadline
-                ):
-                    stop_deadline_monotonic = timing_started_monotonic + stop_delay_seconds
 
                 position = status.position
                 if position is not None:
@@ -574,16 +655,23 @@ class NiceBidiPositionMixin:
                                 target_stop_position,
                             )
                             if remaining_delay is not None:
-                                stop_deadline_monotonic = now + remaining_delay
+                                candidate_deadline = now + remaining_delay
+                                stop_deadline_monotonic = min(
+                                    stop_deadline_monotonic,
+                                    candidate_deadline,
+                                )
                                 live_adjustment_position = position
 
                 if stop_deadline_monotonic is not None and now >= stop_deadline_monotonic:
-                    if started_moving or now > movement_start_deadline:
-                        await self._async_send_action("stop")
-                        return
+                    await self._async_send_action("stop")
+                    return
                 if status.state == moving_state:
                     continue
-                if started_moving and (status.state in terminal_states or status.state != moving_state):
+                if stop_delay_seconds is not None:
+                    continue
+                if status.state in {STATE_OPEN, STATE_CLOSED}:
+                    return
+                if started_moving and status.state in terminal_states:
                     return
                 if not started_moving and now > movement_start_deadline:
                     return

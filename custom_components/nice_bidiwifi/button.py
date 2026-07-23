@@ -35,6 +35,16 @@ class NiceBidiButtonEntityDescription(ButtonEntityDescription):
 
     press_fn: Callable[[NiceBidiDataUpdateCoordinator], Awaitable[None]]
     available_when_offline: bool = False
+    supported_fn: Callable[[NiceBidiDataUpdateCoordinator], bool] | None = None
+
+
+def _partial_open_position_known(
+    coordinator: NiceBidiDataUpdateCoordinator,
+    index: int,
+) -> bool:
+    """Return whether an optional partial-open slot is configured."""
+    status = coordinator.data
+    return status is not None and getattr(status, f"partial_open_{index}_position") is not None
 
 
 BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
@@ -49,12 +59,14 @@ BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
         name="Partial open 2",
         icon="mdi:gate-open",
         press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_2),
+        supported_fn=lambda coordinator: _partial_open_position_known(coordinator, 2),
     ),
     NiceBidiButtonEntityDescription(
         key="partial_open_3",
         name="Partial open 3",
         icon="mdi:gate-open",
         press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_3),
+        supported_fn=lambda coordinator: _partial_open_position_known(coordinator, 3),
     ),
     NiceBidiButtonEntityDescription(
         key="step_step",
@@ -163,7 +175,8 @@ class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEnt
         """Return if the diagnostic button can currently be pressed."""
         if self.entity_description.available_when_offline:
             return True
-        return super().available
+        supported_fn = self.entity_description.supported_fn
+        return super().available and (supported_fn is None or supported_fn(self.coordinator))
 
     async def async_press(self) -> None:
         """Handle the button press."""

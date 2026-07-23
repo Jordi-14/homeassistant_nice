@@ -29,10 +29,15 @@ async def test_diagnostics_redacts_sensitive_data(hass) -> None:
     assert diagnostics["status"]["state"] == "opening"
     assert diagnostics["status"]["position"] == 42.4
     assert diagnostics["status"]["current_position"] == 424
+    assert diagnostics["status"]["state_source"] == "dmp_04_01"
+    assert diagnostics["status"]["position_source"] == "dmp_encoder"
+    assert diagnostics["status"]["position_confidence"] == "measured"
+    assert diagnostics["status"]["position_reporting_observed"] is True
     assert diagnostics["status"]["is_moving"] is True
     assert diagnostics["status"]["bus_t4"]["opening_speed"] == 60
     assert diagnostics["status"]["bus_t4"]["maintenance_count"] == 12
     assert diagnostics["status"]["bus_t4"]["limit_open"] is True
     assert diagnostics["status"]["bus_t4"]["obstacle"] is True
     assert diagnostics["status"]["bus_t4"]["oxi_product"] == "OXI"
+    assert diagnostics["calibration"]["cancel_reason"] is None
     assert "dmp_registers" not in diagnostics["status"]

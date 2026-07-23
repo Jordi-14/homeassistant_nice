@@ -16,13 +16,14 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from custom_components.nice_bidiwifi.client import (  # noqa: E402
-    NiceBidiClient,
-    NiceBidiCredentials,
-    NiceBidiDeviceInfo,
-    NiceBidiStatus,
-    parse_info_xml,
-)
+from scripts._standalone_client import load_client_module  # noqa: E402
+
+_client_module = load_client_module(REPO_ROOT)
+NiceBidiClient = _client_module.NiceBidiClient
+NiceBidiCredentials = _client_module.NiceBidiCredentials
+NiceBidiDeviceInfo = _client_module.NiceBidiDeviceInfo
+NiceBidiStatus = _client_module.NiceBidiStatus
+parse_info_xml = _client_module.parse_info_xml
 
 STATUS_REGISTER_MEANINGS = {
     "04/01": "gate state",

@@ -60,6 +60,10 @@ async def async_get_config_entry_diagnostics(
             "open_position": status.open_position if status else None,
             "display_position": coordinator.display_position,
             "display_position_estimated": coordinator.display_position_estimated,
+            "position_reporting_observed": coordinator.position_reporting_observed,
+            "state_source": coordinator.state_source,
+            "position_source": coordinator.position_source,
+            "position_confidence": coordinator.position_confidence,
             "position_simulation_action": coordinator.position_simulation_action,
             "position_simulation_speed_percent_per_second": (
                 coordinator.position_simulation_speed_percent_per_second
@@ -111,6 +115,9 @@ async def async_get_config_entry_diagnostics(
             if coordinator.calibration_updated_at
             else None,
             "last_error": coordinator.calibration_last_error,
+            "cancel_reason": coordinator.calibration_cancel_reason,
+            "cancel_stop_requested": coordinator.calibration_cancel_stop_requested,
+            "cancel_stop_sent": coordinator.calibration_cancel_stop_sent,
             "summary": coordinator.calibration_report_summary,
         },
     }

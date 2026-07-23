@@ -118,6 +118,32 @@ class TestNiceBidiNumberProperties:
         assert opening_force.native_value == 70
         assert opening_force.available is True
 
+    @pytest.mark.parametrize(
+        ("product", "description"),
+        [("ARIA200S", "Control unit"), ("Generic", "CLBOX")],
+    )
+    def test_speed_policy_requires_composite_aria_clbox_identity(
+        self,
+        product: str,
+        description: str,
+    ) -> None:
+        """Test one ambiguous identity token alone does not disable writes."""
+        coordinator = FakeCoordinator()
+        coordinator.device_info = make_device_info(
+            device_product=product,
+            device_description=description,
+            device_product_detail=None,
+        )
+        coordinator.data = make_status(state="open")
+
+        entity = NiceBidiNumber(
+            coordinator,
+            config_entry(),
+            _description("bus_t4_opening_speed"),
+        )
+
+        assert entity.available is True
+
     async def test_number_writes_single_byte_register(self) -> None:
         coordinator = FakeCoordinator()
         entity = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_speed"))

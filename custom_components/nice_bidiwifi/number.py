@@ -15,10 +15,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .calibration_constants import CALIBRATION_STATE_RUNNING
-from .client import NiceBidiDeviceInfo, NiceBidiStatus
+from .client import NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
 from .runtime import get_coordinator
+from .write_policy import dmp_write_block_reason
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -39,30 +40,6 @@ SPEED_SETTING_KEYS = {
     "bus_t4_opening_speed",
     "bus_t4_closing_speed",
 }
-
-SPEED_SETTINGS_DISABLED_DEVICE_TOKENS = {
-    "aria200",
-    "clbox",
-}
-
-
-def _normalized_device_info_text(info: NiceBidiDeviceInfo | None) -> str:
-    if info is None:
-        return ""
-    parts = (
-        info.device_type,
-        info.device_manufacturer,
-        info.device_product,
-        info.device_description,
-        info.device_product_detail,
-    )
-    return "".join(character for part in parts if part for character in part.casefold() if character.isalnum())
-
-
-def _speed_settings_disabled_for_device(info: NiceBidiDeviceInfo | None) -> bool:
-    text = _normalized_device_info_text(info)
-    return any(token in text for token in SPEED_SETTINGS_DISABLED_DEVICE_TOKENS)
-
 
 NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
     NiceBidiNumberEntityDescription(
@@ -343,6 +320,8 @@ class NiceBidiNumber(CoordinatorEntity[NiceBidiDataUpdateCoordinator], NumberEnt
 
     def _disabled_for_device(self) -> bool:
         """Return true when this config value should not be changed on this device."""
-        return self.entity_description.key in SPEED_SETTING_KEYS and _speed_settings_disabled_for_device(
-            self.coordinator.device_info
-        )
+        return self.entity_description.key in SPEED_SETTING_KEYS and dmp_write_block_reason(
+            self.coordinator.device_info,
+            0x04,
+            self.entity_description.register_parameter,
+        ) is not None

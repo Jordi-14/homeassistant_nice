@@ -287,6 +287,9 @@ class FakeCoordinator:
         self.calibration_state = "calibrated"
         self.calibration_updated_at = datetime(2026, 5, 27, tzinfo=UTC)
         self.calibration_last_error = None
+        self.calibration_cancel_reason = None
+        self.calibration_cancel_stop_requested = False
+        self.calibration_cancel_stop_sent = False
         self.calibration_quality = "good"
         self.calibration_report_summary = "good: 8/8 repeatable targets"
         self.calibration_report_attributes = {"quality": "good", "point_count": 8}
@@ -303,6 +306,11 @@ class FakeCoordinator:
         return False
 
     @property
+    def position_reporting_observed(self) -> bool:
+        """Return whether the fake controller reports numeric position."""
+        return self.data is not None and self.data.position is not None
+
+    @property
     def position_simulation_action(self) -> str | None:
         """Return active simulated movement direction."""
         return None
@@ -311,6 +319,21 @@ class FakeCoordinator:
     def position_simulation_speed_percent_per_second(self) -> float | None:
         """Return active simulated movement speed."""
         return None
+
+    @property
+    def state_source(self) -> str:
+        """Return fake state provenance."""
+        return "dmp_04_01"
+
+    @property
+    def position_source(self) -> str:
+        """Return fake position provenance."""
+        return "dmp_encoder"
+
+    @property
+    def position_confidence(self) -> str:
+        """Return fake position confidence."""
+        return "measured"
 
     def async_add_listener(self, update_callback, context=None):
         """Return a no-op listener remover for registered CoordinatorEntity tests."""

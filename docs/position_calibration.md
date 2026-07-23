@@ -21,6 +21,12 @@ concepts:
 Use `real_position` for automations that need a confirmed physical percentage.
 Use `display_position` only when a dashboard-friendly value is acceptable.
 
+A controller must report at least one real numeric position before the
+integration exposes any Home Assistant position. A state-only gate never gets
+synthetic endpoint percentages or time-derived position. Once real position
+reporting has been observed, the integration may bridge sparse updates with a
+clearly marked cached or simulated display value.
+
 Home Assistant covers do not have a separate visual state for "stopped
 mid-travel". A stopped half-open gate normally appears as open with a
 percentage, for example `Open - 42%`, while both open and close actions remain
@@ -68,15 +74,16 @@ them in the calibration profile.
 After calibration, incoming raw scalar frames are normalized with the learned
 bounds before they are used for display or set-position timing.
 
-### Time Only
+### State and Time Only
 
 Some devices only report state: open, opening, closing, closed, and sometimes
 stopped. Issue #11 ARIA200S/CLBOX currently belongs in this class unless future
 probe data shows a real intermediate position source.
 
-Time-only devices can learn full-travel duration and direction speed. They
-cannot learn real overshoot correction at 20%, 40%, 60%, or 80%, because the
-integration has no way to verify where the gate actually stopped.
+These devices can measure full-travel duration and direction speed for
+calibration diagnostics. They cannot learn real overshoot correction at 20%,
+40%, 60%, or 80%, and the timing profile does not enable Home Assistant
+position display or set-position support.
 
 ## State Sources
 
@@ -213,7 +220,7 @@ Example:
 This can overshoot because the gate keeps moving while the position update is
 received, processed, and the stop command travels back to the controller.
 
-If the device has no real or estimated current position, intermediate
+If the device has no controller-reported current position, intermediate
 set-position cannot start safely. Endpoint requests still work: 0% sends close,
 and 100% sends open.
 
@@ -255,19 +262,18 @@ different.
 ### Time-Only Calibration
 
 Time-only calibration is for devices that do not report real intermediate
-position. It measures full-travel duration and uses that timing as an estimate.
+position. It measures and records full-travel duration.
 
 Example:
 
 1. Full opening takes 20 seconds.
 2. Full closing takes 24 seconds.
-3. From closed, a request for 50% opens for about 10 seconds and sends `stop`.
-4. From open, a request for 50% closes for about 12 seconds and sends `stop`.
+3. The calibration report records those direction-specific timings.
 
-This is useful for display animation and approximate set-position. It is not a
-real position sensor. If the gate slows down, starts from an unexpected point, is
-interrupted, or moves differently in cold weather or under load, the displayed
-percentage can drift from the physical position.
+The integration deliberately does not convert those timings into a displayed
+percentage or set-position feature. Without controller feedback, a timed value
+could drift whenever the gate slows down, starts from an unexpected point, is
+interrupted, or moves differently under load.
 
 ### Stopping Halfway
 
@@ -276,9 +282,8 @@ position when the controller reports one. If the last real frame was sparse or
 delayed, the displayed position may temporarily hold the last known value or use
 simulation until a better update arrives.
 
-On time-only devices, a stopped halfway position is estimated. It can be useful
-for the dashboard, but automations should not treat it as confirmed physical
-position.
+On state-only/time-only devices, a stopped halfway gate has no Home Assistant
+position. The state remains available, but no percentage is invented.
 
 ### Sparse or Strange Live Frames
 
@@ -330,8 +335,8 @@ The report includes:
 
 Only run calibration when the gate is visible and the path is clear. The
 integration deliberately avoids inventing position on devices that do not report
-it. A time-only profile can improve animation and approximate stop timing, but
-it is not a real position sensor.
+it. A time-only profile records travel measurements but does not expose a
+position or enable set-position.
 
 Some BusT4 diagnostic and configuration entities depend on DMP registers that a
 CU_WIFI controller may not expose. Those entities stay hidden or disabled by

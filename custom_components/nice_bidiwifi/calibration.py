@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import json
 import logging
@@ -72,6 +72,10 @@ CALIBRATION_MODE_ENCODER = "encoder"
 CALIBRATION_MODE_LIVE_PERCENT = "live_percent"
 CALIBRATION_MODE_LIVE_SCALAR = "live_scalar"
 CALIBRATION_MODE_TIME = "time"
+CALIBRATION_LIVE_MIN_UNIQUE_SAMPLES = 6
+CALIBRATION_LIVE_MIN_MONOTONIC_TRANSITIONS = 4
+CALIBRATION_LIVE_MIN_SPAN_PERCENT = 60.0
+CALIBRATION_LIVE_MAX_GAP_PERCENT = 15.0
 
 
 @dataclass
@@ -83,6 +87,10 @@ class _CalibrationPositionSource:
     scalar_open_raw: int | None = None
     scalar_min_raw: int | None = None
     scalar_max_raw: int | None = None
+    observed_values: set[float] = field(default_factory=set)
+    last_moving_value: dict[str, float] = field(default_factory=dict)
+    monotonic_transitions: int = 0
+    direction_violations: int = 0
 
 
 class NiceBidiCalibrationMixin:
@@ -97,6 +105,10 @@ class NiceBidiCalibrationMixin:
         self.calibration_profile: CalibrationProfile | None = None
         self.calibration_report: CalibrationReport | None = None
         self._calibration_events: list[CalibrationEvent] = []
+        self.calibration_cancel_reason: str | None = None
+        self.calibration_cancel_stop_requested = False
+        self.calibration_cancel_stop_sent = False
+        self._calibration_started_monotonic: float | None = None
         self._calibration_store = Store[CalibrationProfile](
             hass,
             CALIBRATION_STORAGE_VERSION,
@@ -133,7 +145,7 @@ class NiceBidiCalibrationMixin:
             with suppress(ValueError):
                 self.calibration_updated_at = datetime.fromisoformat(updated_at)
 
-    async def _async_cancel_calibration(self, *, stop: bool = True) -> None:
+    async def _async_cancel_calibration(self, *, reason: str, stop: bool = True) -> None:
         """Cancel a running calibration task."""
         task = self._calibration_task
         if task is None:
@@ -144,12 +156,31 @@ class NiceBidiCalibrationMixin:
         if task is asyncio.current_task():
             return
 
+        self.calibration_cancel_reason = reason
+        self.calibration_cancel_stop_requested = stop
+        self.calibration_cancel_stop_sent = False
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+        stop_error: str | None = None
         if stop:
-            with suppress(HomeAssistantError):
+            try:
                 await self._async_send_action("stop")
+            except HomeAssistantError as err:
+                stop_error = str(err)
+            else:
+                self.calibration_cancel_stop_sent = True
+        self._add_calibration_event(
+            "run",
+            "Position calibration cancellation finalized",
+            cancellation_reason=reason,
+            stop_requested=stop,
+            stop_sent=self.calibration_cancel_stop_sent,
+            stop_error=stop_error,
+        )
+        self.calibration_report = self._build_live_calibration_report("Calibration cancelled")
+        self._log_calibration_report(self.calibration_report, f"cancelled ({reason})")
+        self.async_update_listeners()
 
     async def async_start_position_calibration(self) -> None:
         """Start a background position calibration run."""
@@ -160,6 +191,10 @@ class NiceBidiCalibrationMixin:
         await self._async_cancel_position_target()
         await self._async_cancel_post_command_refresh()
         self._calibration_events = []
+        self.calibration_cancel_reason = None
+        self.calibration_cancel_stop_requested = False
+        self.calibration_cancel_stop_sent = False
+        self._calibration_started_monotonic = time.monotonic()
         self.calibration_state = CALIBRATION_STATE_RUNNING
         self.calibration_last_error = None
         self.calibration_report = self._build_live_calibration_report("Calibration started")
@@ -196,10 +231,30 @@ class NiceBidiCalibrationMixin:
             await self._calibration_store.async_save(profile)
             self._log_calibration_report(self.calibration_report, "completed")
         except asyncio.CancelledError:
+            reason = self.calibration_cancel_reason or "task_cancelled"
+            elapsed_seconds = (
+                round(time.monotonic() - self._calibration_started_monotonic, 3)
+                if self._calibration_started_monotonic is not None
+                else None
+            )
+            last_event = self._calibration_events[-1] if self._calibration_events else None
+            status = self.data
             self.calibration_state = CALIBRATION_STATE_CANCELLED
-            self.calibration_last_error = "cancelled"
-            self._add_calibration_event("run", "Position calibration cancelled")
+            self.calibration_last_error = f"cancelled: {reason}"
+            self._add_calibration_event(
+                "run",
+                "Position calibration cancelled",
+                cancellation_reason=reason,
+                stop_requested=self.calibration_cancel_stop_requested,
+                elapsed_seconds=elapsed_seconds,
+                last_event_stage=last_event.get("stage") if last_event else None,
+                last_event_message=last_event.get("message") if last_event else None,
+                last_motion_state=status.state if status is not None else None,
+                last_command=self.last_command,
+            )
             self.calibration_report = self._build_live_calibration_report("Calibration cancelled")
+            if self.calibration_cancel_reason is None:
+                self._log_calibration_report(self.calibration_report, f"cancelled ({reason})")
             raise
         except (NiceBidiAuthError, NiceBidiConnectionError, OSError, HomeAssistantError) as err:
             self.calibration_state = CALIBRATION_STATE_FAILED
@@ -209,6 +264,7 @@ class NiceBidiCalibrationMixin:
             self._log_calibration_report(self.calibration_report, "failed")
             _LOGGER.warning("Nice position calibration failed: %s", err)
         finally:
+            self._calibration_started_monotonic = None
             if self._calibration_task is task:
                 self._calibration_task = None
             self.async_update_listeners()
@@ -404,6 +460,14 @@ class NiceBidiCalibrationMixin:
             max_attempts = CALIBRATION_MAX_ATTEMPTS
             stability_attempts = CALIBRATION_STABILITY_ATTEMPTS
         else:
+            rejected_quality = self._calibration_source_quality(source)
+            if source.mode != CALIBRATION_MODE_TIME:
+                self._add_calibration_event(
+                    "source",
+                    "Live position source rejected for target calibration; using time-only mode",
+                    mode=source.mode,
+                    **rejected_quality,
+                )
             source.mode = CALIBRATION_MODE_TIME
             opening_travel = self._select_time_travel_sample("open", opening_travel_samples)
             closing_travel = self._select_time_travel_sample("close", closing_travel_samples)
@@ -2220,7 +2284,7 @@ class NiceBidiCalibrationMixin:
         raw = self._live_scalar_raw_from_status(status)
         if scale is not None and scale.startswith("raw") and raw is not None:
             if source.mode != CALIBRATION_MODE_LIVE_SCALAR:
-                source.mode = CALIBRATION_MODE_LIVE_SCALAR
+                self._reset_calibration_live_source(source, CALIBRATION_MODE_LIVE_SCALAR)
                 source.scalar_closed_raw = None
                 source.scalar_open_raw = None
                 source.scalar_min_raw = None
@@ -2231,6 +2295,7 @@ class NiceBidiCalibrationMixin:
                 source.scalar_closed_raw = raw
             elif status.state == STATE_OPEN:
                 source.scalar_open_raw = raw
+            self._record_calibration_live_sample(source, status, float(raw))
             return
 
         if (
@@ -2238,7 +2303,43 @@ class NiceBidiCalibrationMixin:
             and scale == "percent"
             and status.position is not None
         ):
-            source.mode = CALIBRATION_MODE_LIVE_PERCENT
+            self._reset_calibration_live_source(source, CALIBRATION_MODE_LIVE_PERCENT)
+            self._record_calibration_live_sample(source, status, float(status.position))
+        elif source.mode == CALIBRATION_MODE_LIVE_PERCENT and status.position is not None:
+            self._record_calibration_live_sample(source, status, float(status.position))
+
+    @staticmethod
+    def _reset_calibration_live_source(
+        source: _CalibrationPositionSource,
+        mode: str,
+    ) -> None:
+        """Select a live source and clear quality evidence from older modes."""
+        source.mode = mode
+        source.observed_values.clear()
+        source.last_moving_value.clear()
+        source.monotonic_transitions = 0
+        source.direction_violations = 0
+
+    @staticmethod
+    def _record_calibration_live_sample(
+        source: _CalibrationPositionSource,
+        status: NiceBidiStatus,
+        value: float,
+    ) -> None:
+        """Record direction and coverage evidence for a live position source."""
+        action = "open" if status.state == STATE_OPENING else "close" if status.state == STATE_CLOSING else None
+        if action is None:
+            return
+        source.observed_values.add(round(value, 3))
+        previous = source.last_moving_value.get(action)
+        source.last_moving_value[action] = value
+        if previous is None or value == previous:
+            return
+        delta = value - previous
+        if (action == "open" and delta > 0) or (action == "close" and delta < 0):
+            source.monotonic_transitions += 1
+        else:
+            source.direction_violations += 1
 
     def _finalize_live_scalar_bounds(self, source: _CalibrationPositionSource) -> None:
         """Fill missing live-scalar endpoint bounds from observed range."""
@@ -2293,17 +2394,57 @@ class NiceBidiCalibrationMixin:
         if source.scalar_closed_raw is None and end_raw is not None:
             source.scalar_closed_raw = end_raw
 
-    @staticmethod
-    def _calibration_source_can_measure_targets(source: _CalibrationPositionSource) -> bool:
+    @classmethod
+    def _calibration_source_can_measure_targets(cls, source: _CalibrationPositionSource) -> bool:
         """Return true when the source can measure partial-stop error."""
-        if source.mode in {CALIBRATION_MODE_ENCODER, CALIBRATION_MODE_LIVE_PERCENT}:
+        if source.mode == CALIBRATION_MODE_ENCODER:
             return True
+        if source.mode == CALIBRATION_MODE_LIVE_SCALAR and not (
+            source.scalar_closed_raw is not None
+            and source.scalar_open_raw is not None
+            and source.scalar_closed_raw != source.scalar_open_raw
+        ):
+            return False
+        if source.mode not in {CALIBRATION_MODE_LIVE_PERCENT, CALIBRATION_MODE_LIVE_SCALAR}:
+            return False
+        quality = cls._calibration_source_quality(source)
         return (
+            quality["unique_samples"] >= CALIBRATION_LIVE_MIN_UNIQUE_SAMPLES
+            and quality["monotonic_transitions"] >= CALIBRATION_LIVE_MIN_MONOTONIC_TRANSITIONS
+            and quality["direction_violations"] == 0
+            and quality["span_percent"] >= CALIBRATION_LIVE_MIN_SPAN_PERCENT
+            and quality["max_gap_percent"] <= CALIBRATION_LIVE_MAX_GAP_PERCENT
+        )
+
+    @staticmethod
+    def _calibration_source_quality(source: _CalibrationPositionSource) -> dict[str, Any]:
+        """Return normalized live-source coverage and monotonicity evidence."""
+        values = sorted(source.observed_values)
+        normalized = values
+        if (
             source.mode == CALIBRATION_MODE_LIVE_SCALAR
             and source.scalar_closed_raw is not None
             and source.scalar_open_raw is not None
             and source.scalar_closed_raw != source.scalar_open_raw
+        ):
+            span = source.scalar_open_raw - source.scalar_closed_raw
+            normalized = sorted(
+                max(0.0, min(100.0, ((value - source.scalar_closed_raw) / span) * 100.0))
+                for value in values
+            )
+        span_percent = normalized[-1] - normalized[0] if len(normalized) >= 2 else 0.0
+        max_gap_percent = (
+            max(next_value - value for value, next_value in zip(normalized, normalized[1:], strict=False))
+            if len(normalized) >= 2
+            else 100.0
         )
+        return {
+            "unique_samples": len(normalized),
+            "monotonic_transitions": source.monotonic_transitions,
+            "direction_violations": source.direction_violations,
+            "span_percent": round(span_percent, 2),
+            "max_gap_percent": round(max_gap_percent, 2),
+        }
 
     @staticmethod
     def _calibration_source_bounds(source: _CalibrationPositionSource) -> dict[str, Any]:

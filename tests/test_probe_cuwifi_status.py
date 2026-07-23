@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -128,6 +129,24 @@ def test_generate_dmp_reads_includes_expanded_discovery_registers() -> None:
     assert (0x00, 0x0A, 0x04, 0xD0) in keys
     assert len(keys) == len(reads)
     assert len(reads) <= 400
+
+
+def test_checkpoint_writes_resumable_partial_report(tmp_path: Path) -> None:
+    """Test long probes persist progress before the final report is complete."""
+    output = tmp_path / "checkpoint.json"
+    report = {
+        "info_samples": [],
+        "live_capture": {},
+        "nhk_read_probes": [],
+        "dmp_register_probes": [{"ok": False}],
+    }
+
+    probe._write_probe_checkpoint(output, report, probe.time.monotonic())
+
+    checkpoint = json.loads(output.read_text())
+    assert checkpoint["checkpoint"] is True
+    assert checkpoint["summary"]["counts"]["dmp_register_probes"] == 1
+    assert checkpoint["dmp_register_probes"] == [{"ok": False}]
 
 
 def test_exhaustive_defaults_enable_broad_post_live_scan() -> None:

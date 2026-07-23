@@ -29,20 +29,21 @@ Latest stable release: `v0.7.0`
 ## Features
 
 - Open, stop, and close using the local `DoorAction` service.
-- Native Home Assistant cover position support.
+- Native Home Assistant cover position support when the controller reports a
+  numeric position source.
 - Live position percentage while the gate moves when the controller exposes a
   real position source.
-- Display-position animation can start immediately after open/close commands,
-  then rebases to real controller position updates as they arrive. Estimated
-  display values are marked with `display_position_estimated`.
+- On position-capable controllers, display-position animation can start
+  immediately after open/close commands, then rebase to real controller
+  position updates. State-only controllers never expose a synthetic position.
 - Additional action buttons for partial open 1/2/3, step-step, courtesy light,
   courtesy light timer, lock, and unlock.
 - Coarse set-position support by moving in the required direction and sending
   stop once the best available real or calibrated approximate target is reached.
 - Optional standardized position calibration. Encoder, live-percent, and
   live-scalar position sources learn direction-specific stop correction.
-  Endpoint-only devices fall back to time-based full-travel calibration for
-  approximate display animation and set-position timing.
+  Endpoint-only devices fall back to time-based full-travel measurement, but
+  this does not enable position display or set-position support.
 - Real state from DMP register `04/01` when the controller exposes that path.
 - Real position from DMP registers `04/11`, `04/18`, and `04/19` when encoder
   bounds are available.
@@ -158,8 +159,9 @@ Detailed setup and credential extraction instructions are in
 
 Real position can come from encoder registers or validated live controller
 frames. Endpoint-only devices can safely report open, closed, opening, closing,
-or stopped, but they cannot prove an exact half-open percentage unless a real
-position source reports it.
+or stopped. They expose no Home Assistant position until the controller
+supplies a real numeric position source; endpoint states are not converted to
+`0%` or `100%`.
 
 The cover attributes separate real source data from dashboard display values:
 
@@ -170,9 +172,9 @@ The cover attributes separate real source data from dashboard display values:
 - `position_simulation_action`: simulated display direction while active.
 
 Calibration is optional. Encoder, live-percent, and live-scalar sources can
-learn stop correction for intermediate targets. Endpoint-only devices can use
-lower-confidence time-based calibration for approximate display animation and
-set-position timing, but that does not become real position sensing.
+learn stop correction for intermediate targets. Endpoint-only devices can
+measure full-travel timing for diagnostics, but the integration does not turn
+that timing into Home Assistant position data or set-position support.
 
 See [Position, State, and Calibration](docs/position_calibration.md) for the
 full behavior, calibration sequence, known registers, and dashboard slider

@@ -28,7 +28,6 @@ STATE_CLOSING = "closing"
 STATE_OPEN = "open"
 STATE_CLOSED = "closed"
 STATE_PARTIALLY_OPEN = "partially_open"
-CUWIFI_INTERMEDIATE_POSITION_TOLERANCE = 1.0
 LIVE_RAW_POSITION_OPEN = 7000
 
 STATUS_BY_BYTE = {
@@ -507,15 +506,6 @@ def _status_from_register(register: dict[str, Any] | None) -> str | None:
     return STATUS_BY_BYTE.get(first_byte)
 
 
-def _endpoint_position_from_state(state: str | None) -> float | None:
-    """Return a known endpoint position from a terminal state."""
-    if state == STATE_CLOSED:
-        return 0.0
-    if state == STATE_OPEN:
-        return 100.0
-    return None
-
-
 def _make_context() -> ssl.SSLContext:
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     # BiDi-WiFi exposes a local TLS endpoint with a device certificate that
@@ -716,7 +706,7 @@ def _parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceBidiStatus
 
     return NiceBidiStatus(
         state=state,
-        position=_endpoint_position_from_state(state),
+        position=None,
         current_position=None,
         closed_position=None,
         open_position=None,
@@ -752,24 +742,17 @@ def _merge_cuwifi_live_status(
         registers["NHK/T4InstantPositionScale"] = live_status.position_scale
     registers["NHK/T4PayloadKind"] = live_status.payload_kind
 
-    position = live_status.position
-    if position is None:
-        position = _endpoint_position_from_state(live_status.state)
-    if position is None:
-        position = status.position
+    position = live_status.position if live_status.position is not None else status.position
 
-    state = live_status.state or status.state
-    if (
-        live_status.payload_kind == "04/40"
-        and live_status.state == STATE_STOPPED
-        and live_status.position is not None
-        and CUWIFI_INTERMEDIATE_POSITION_TOLERANCE
-        < live_status.position
-        < 100.0 - CUWIFI_INTERMEDIATE_POSITION_TOLERANCE
-        and status.state in {STATE_OPENING, STATE_CLOSING}
-    ):
-        registers["NHK/T4StatusIgnored"] = "stopped_with_intermediate_position"
-        state = status.state
+    if live_status.payload_kind == "04/40":
+        if live_status.state in {STATE_OPENING, STATE_CLOSING}:
+            state = live_status.state
+        else:
+            state = status.state
+            if live_status.state is not None and live_status.state != status.state:
+                registers["NHK/T4StatusIgnored"] = "04/40_position_only"
+    else:
+        state = live_status.state or status.state
 
     return replace(
         status,
@@ -869,7 +852,7 @@ def _parse_cuwifi_live_status_payload(plain: bytes) -> _CuwifiLiveStatus | None:
             return None
         return _CuwifiLiveStatus(
             state=state,
-            position=_endpoint_position_from_state(state),
+            position=None,
             payload_hex=payload_hex,
             payload_kind="04/02",
         )
@@ -1352,10 +1335,6 @@ class NiceBidiClient:
         position: float | None = None
         if current is not None and opened is not None and closed is not None and opened != closed:
             position = max(0.0, min(100.0, ((current - closed) / (opened - closed)) * 100))
-        elif state == STATE_CLOSED:
-            position = 0.0
-        elif state == STATE_OPEN:
-            position = 100.0
 
         diagnostics_io = _dmp_bytes(registers.get("04/D1"))
         io_byte = diagnostics_io[2] if diagnostics_io and len(diagnostics_io) >= 3 else diagnostics_io[0] if diagnostics_io else None

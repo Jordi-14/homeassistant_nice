@@ -115,6 +115,10 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
             "real_position": status.position,
             "display_position": self.coordinator.display_position,
             "display_position_estimated": self.coordinator.display_position_estimated,
+            "position_reporting_observed": self.coordinator.position_reporting_observed,
+            "state_source": self.coordinator.state_source,
+            "position_source": self.coordinator.position_source,
+            "position_confidence": self.coordinator.position_confidence,
             "position_simulation_action": self.coordinator.position_simulation_action,
             "position_simulation_speed_percent_per_second": (
                 self.coordinator.position_simulation_speed_percent_per_second

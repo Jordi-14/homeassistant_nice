@@ -17,7 +17,7 @@ from custom_components.nice_bidiwifi.client import (
     DEP_ACTION_STEP_STEP,
     DEP_ACTION_UNLOCK,
 )
-from tests.conftest import FakeCoordinator, config_entry
+from tests.conftest import FakeCoordinator, config_entry, make_status
 
 
 async def test_async_setup_entry_adds_all_buttons() -> None:
@@ -95,3 +95,21 @@ def test_reconnect_and_refresh_buttons_remain_available_when_coordinator_failed(
     assert buttons["reconnect"].available is True
     assert buttons["partial_open_1"].available is False
     assert buttons["calibrate_positions"].available is False
+
+
+def test_optional_partial_open_buttons_require_known_configuration() -> None:
+    """Test optional partial-open slots are hidden when their registers are absent."""
+    coordinator = FakeCoordinator()
+    coordinator.data = make_status(
+        partial_open_2_position=None,
+        partial_open_3_position=None,
+    )
+    entry = config_entry()
+    buttons = {
+        entity.entity_description.key: entity
+        for entity in (NiceBidiButton(coordinator, entry, description) for description in BUTTONS)
+    }
+
+    assert buttons["partial_open_1"].available is True
+    assert buttons["partial_open_2"].available is False
+    assert buttons["partial_open_3"].available is False

@@ -84,6 +84,7 @@ from .position import (  # noqa: F401 - constants are re-exported for compatibil
     RECENT_STOP_STATUS_OVERRIDE_SECONDS,
     NiceBidiPositionMixin,
 )
+from .write_policy import dmp_write_block_reason
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,6 +95,11 @@ DEP_MOVEMENT_ACTIONS = {
     DEP_ACTION_PARTIAL_OPEN_2,
     DEP_ACTION_PARTIAL_OPEN_3,
     DEP_ACTION_STEP_STEP,
+}
+DEP_PARTIAL_OPEN_ACTIONS = {
+    DEP_ACTION_PARTIAL_OPEN_1,
+    DEP_ACTION_PARTIAL_OPEN_2,
+    DEP_ACTION_PARTIAL_OPEN_3,
 }
 CORE_STATUS_FIELD_NAMES = frozenset(
     {
@@ -297,23 +303,34 @@ class NiceBidiDataUpdateCoordinator(
         self.update_interval = self._update_interval_for_status(status)
         self._sync_position_simulation_from_status(status)
 
-    async def _async_cancel_background_tasks(self, *, stop_calibration: bool = True) -> None:
+    async def _async_cancel_background_tasks(
+        self,
+        *,
+        calibration_reason: str,
+        stop_calibration: bool = True,
+    ) -> None:
         """Cancel background tasks owned by this coordinator."""
         await self._async_cancel_position_target()
         await self._async_cancel_post_command_refresh()
         await self._async_cancel_position_simulation()
-        await self._async_cancel_calibration(stop=stop_calibration)
+        await self._async_cancel_calibration(
+            reason=calibration_reason,
+            stop=stop_calibration,
+        )
 
     async def async_send_action(self, action: str) -> None:
         """Send an open, close, or stop command."""
         await self._async_cancel_position_target()
-        await self._async_cancel_calibration(stop=action != "stop")
+        await self._async_cancel_calibration(
+            reason=f"cover_action:{action}",
+            stop=action != "stop",
+        )
         await self._async_send_action(action)
 
     async def async_send_dep_action(self, action: str) -> None:
         """Send a low-level DEP action command."""
         await self._async_cancel_position_target()
-        await self._async_cancel_calibration()
+        await self._async_cancel_calibration(reason=f"dep_action:{action}")
         await self._async_send_dep_action(action)
 
     async def async_write_dmp_register(
@@ -325,10 +342,15 @@ class NiceBidiDataUpdateCoordinator(
         size: int = 1,
     ) -> None:
         """Write a BusT4/DMP register and refresh extended status."""
+        block_reason = dmp_write_block_reason(self.device_info, group, parameter)
+        if block_reason is not None:
+            raise HomeAssistantError(f"Nice DMP write is disabled for this controller: {block_reason}")
         if self.data is not None and self.data.is_moving:
             raise HomeAssistantError("Nice DMP writes are blocked while the gate is moving")
         await self._async_cancel_position_target()
-        await self._async_cancel_calibration()
+        await self._async_cancel_calibration(
+            reason=f"config_write:{group:02X}/{parameter:02X}"
+        )
         await self._async_write_dmp_register(group, parameter, value, size=size)
 
     async def _async_send_action(
@@ -345,6 +367,7 @@ class NiceBidiDataUpdateCoordinator(
             self._position_simulation_action is not None
             or (self.data is not None and self.data.is_moving)
         )
+        stop_display_position = self.display_position if stop_started_from_motion else None
         try:
             await self.hass.async_add_executor_job(self.client.send_action, action)
         except NiceBidiAuthError as err:
@@ -375,6 +398,8 @@ class NiceBidiDataUpdateCoordinator(
         if action in {"open", "close"} and simulate:
             self._start_position_simulation(action, target_position=simulation_target_position)
         elif action == "stop":
+            if stop_display_position is not None:
+                self._last_known_position = max(0.0, min(100.0, stop_display_position))
             self._clear_position_simulation()
         if refresh:
             self._schedule_post_command_refresh()
@@ -407,10 +432,33 @@ class NiceBidiDataUpdateCoordinator(
             self._recent_stop_command_monotonic = None
             self._recent_stop_started_from_motion = False
         self.update_interval = MOVING_UPDATE_INTERVAL
-        self._clear_position_simulation()
+        if action in DEP_PARTIAL_OPEN_ACTIONS:
+            self._start_position_simulation(
+                "open",
+                target_position=self._partial_open_target_position(action),
+            )
+        else:
+            self._clear_position_simulation()
         if refresh:
             self._schedule_post_command_refresh()
             await self.async_request_refresh()
+
+    def _partial_open_target_position(self, action: str) -> float | None:
+        """Return a configured partial-open target as percent when available."""
+        status = self.data
+        if status is None:
+            return None
+        raw_by_action = {
+            DEP_ACTION_PARTIAL_OPEN_1: status.partial_open_1_position,
+            DEP_ACTION_PARTIAL_OPEN_2: status.partial_open_2_position,
+            DEP_ACTION_PARTIAL_OPEN_3: status.partial_open_3_position,
+        }
+        raw = raw_by_action.get(action)
+        if raw is None or status.closed_position is None or status.open_position is None:
+            return None
+        if status.closed_position == status.open_position:
+            return None
+        return self._percent_for_raw(status, raw)
 
     async def _async_write_dmp_register(
         self,
@@ -451,12 +499,12 @@ class NiceBidiDataUpdateCoordinator(
 
     async def async_reconnect(self) -> None:
         """Force the current NHK/TLS session to be recreated."""
-        await self._async_cancel_background_tasks()
+        await self._async_cancel_background_tasks(calibration_reason="reconnect")
         self.connection_state = CONNECTION_STATE_RECONNECTING
         await self.hass.async_add_executor_job(self.client.close)
         await self.async_request_refresh()
 
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
-        await self._async_cancel_background_tasks()
+        await self._async_cancel_background_tasks(calibration_reason="shutdown")
         await self.hass.async_add_executor_job(self.client.close)

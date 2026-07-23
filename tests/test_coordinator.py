@@ -303,6 +303,30 @@ async def test_send_action_records_command_metadata(hass: HomeAssistant) -> None
     await instance._async_cancel_position_simulation()
 
 
+async def test_stop_preserves_in_flight_estimated_position(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test Stop freezes the optimistic position instead of snapping to an endpoint."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    clock = 0.0
+    monkeypatch.setattr(position_module.time, "monotonic", lambda: clock)
+    monkeypatch.setattr(coordinator_module.time, "monotonic", lambda: clock)
+    instance.async_set_updated_data(make_status(state="closed", position=0.0, current_position=0))
+
+    await instance._async_send_action("open", refresh=False)
+    clock = 12.0
+    assert instance.display_position == 12.0
+
+    await instance._async_send_action("stop", refresh=False)
+
+    assert client.actions == ["open", "stop"]
+    assert instance._last_known_position == 12.0
+    assert instance.position_simulation_action is None
+
+
 async def test_recent_stop_command_masks_stale_open_status(hass: HomeAssistant) -> None:
     """Test stale CU_WIFI endpoint status is held as stopped after a local stop."""
     instance = _coordinator(hass)
@@ -315,9 +339,12 @@ async def test_recent_stop_command_masks_stale_open_status(hass: HomeAssistant) 
 
     client.read_status_result = make_status(state="open", position=100.0, current_position=None)
     result = await instance._async_update_data()
+    instance.async_set_updated_data(result)
 
     assert result.state == "stopped"
-    assert result.position == 55.0
+    assert result.position is None
+    assert instance.display_position == 55.0
+    assert instance.display_position_estimated is True
     assert result.registers["NHK/RecentStopOverride"] == "open"
 
 
@@ -333,9 +360,12 @@ async def test_recent_stop_command_masks_stale_closed_status(hass: HomeAssistant
 
     client.read_status_result = make_status(state="closed", position=0.0, current_position=None)
     result = await instance._async_update_data()
+    instance.async_set_updated_data(result)
 
     assert result.state == "stopped"
-    assert result.position == 35.0
+    assert result.position is None
+    assert instance.display_position == 35.0
+    assert instance.display_position_estimated is True
     assert result.registers["NHK/RecentStopOverride"] == "closed"
 
 
@@ -351,6 +381,7 @@ async def test_movement_command_clears_recent_stop_hint(hass: HomeAssistant) -> 
 
     client.read_status_result = make_status(state="opening", position=60.0, current_position=None)
     result = await instance._async_update_data()
+    instance.async_set_updated_data(result)
 
     assert result.state == "opening"
     assert "NHK/RecentStopOverride" not in result.registers
@@ -377,9 +408,12 @@ async def test_stopped_status_uses_last_known_position(hass: HomeAssistant) -> N
     instance._last_known_position = 44.0
 
     result = await instance._async_update_data()
+    instance.async_set_updated_data(result)
 
     assert result.state == "stopped"
-    assert result.position == 44.0
+    assert result.position is None
+    assert instance.display_position == 44.0
+    assert instance.display_position_estimated is True
     assert result.registers["NHK/LastKnownPositionFallback"] == "44.0"
 
 
@@ -471,6 +505,7 @@ async def test_send_dep_action_records_command_metadata(hass: HomeAssistant) -> 
     instance = _coordinator(hass)
     client = FakeClient()
     instance.client = client
+    instance.async_set_updated_data(make_status(state="closed", position=0.0, current_position=0))
 
     await instance._async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_1, refresh=False)
 
@@ -479,7 +514,36 @@ async def test_send_dep_action_records_command_metadata(hass: HomeAssistant) -> 
     assert instance.last_command == DEP_ACTION_PARTIAL_OPEN_1
     assert isinstance(instance.last_command_latency_ms, int)
     assert instance.update_interval == coordinator_module.MOVING_UPDATE_INTERVAL
+    assert instance.display_position_estimated is True
+    assert instance.position_simulation_action == "open"
+
+    await instance._async_cancel_position_simulation()
+
+
+async def test_partial_open_without_reported_position_never_simulates(
+    hass: HomeAssistant,
+) -> None:
+    """Test a state-only gate never exposes an invented partial-open position."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.async_set_updated_data(
+        make_status(
+            state="closed",
+            position=None,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        )
+    )
+
+    await instance._async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_1, refresh=False)
+
+    assert client.dep_actions == [DEP_ACTION_PARTIAL_OPEN_1]
+    assert instance.position_reporting_observed is False
+    assert instance.display_position is None
     assert instance.display_position_estimated is False
+    assert instance.position_simulation_action is None
 
 
 async def test_send_dep_action_uses_fast_poll_for_non_movement_actions(hass: HomeAssistant) -> None:
@@ -577,6 +641,25 @@ async def test_write_dmp_register_blocks_while_gate_is_moving(hass: HomeAssistan
 
     with pytest.raises(HomeAssistantError, match="blocked while the gate is moving"):
         await instance.async_write_dmp_register(0x04, 0x80, 1)
+
+    assert client.dmp_writes == []
+
+
+async def test_write_dmp_register_blocks_aria_clbox_speed_at_backend(
+    hass: HomeAssistant,
+) -> None:
+    """Test the coordinator enforces the CLBOX safety rule independently of entities."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.device_info = make_device_info(
+        device_product="ARIA200S",
+        device_description="CLBOX",
+    )
+    instance.async_set_updated_data(make_status(state="open"))
+
+    with pytest.raises(HomeAssistantError, match="ARIA200S / CLBOX"):
+        await instance.async_write_dmp_register(0x04, 0x42, 75)
 
     assert client.dmp_writes == []
 
@@ -697,6 +780,32 @@ def test_calibration_source_detection_handles_live_percent_and_scalar(
         },
     )
     assert instance._calibration_percent_for_status(reverse_midpoint, reverse_source) == 50.0
+
+
+def test_live_position_calibration_requires_dense_monotonic_coverage(
+    hass: HomeAssistant,
+) -> None:
+    """Test coarse position events cannot be mistaken for target-grade feedback."""
+    instance = _coordinator(hass)
+    seed = make_status(
+        state="opening",
+        position=0.0,
+        current_position=None,
+        closed_position=None,
+        open_position=None,
+    )
+    seed.registers["NHK/T4InstantPositionScale"] = "percent"
+    source = instance._calibration_position_source_for_status(seed)
+    source.observed_values = {0.0, 25.0, 50.0, 75.0, 100.0}
+    source.monotonic_transitions = 4
+
+    assert instance._calibration_source_can_measure_targets(source) is False
+    assert instance._calibration_source_quality(source)["max_gap_percent"] == 25.0
+
+    source.observed_values = {float(value) for value in range(0, 101, 10)}
+    source.monotonic_transitions = 10
+
+    assert instance._calibration_source_can_measure_targets(source) is True
 
 
 def test_live_scalar_status_uses_calibration_bounds_for_display(
@@ -1149,7 +1258,45 @@ async def test_timed_set_position_ignores_stale_position_until_delay(
     await instance._async_stop_at_position(50, "open", stop_delay_seconds=2.0)
 
     assert actions == ["stop"]
-    assert reads == 3
+    assert reads == 1
+
+
+@pytest.mark.parametrize("reported_state", ["stopped", "open", "closed", None])
+async def test_timed_set_position_stops_even_if_status_is_stale(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+    reported_state: str | None,
+) -> None:
+    """Test the hard stop timer is not cancelled by a stale terminal state."""
+    instance = _coordinator(hass)
+    actions: list[str] = []
+    clock = 0.0
+
+    async def fake_sleep(delay: float) -> None:
+        nonlocal clock
+        clock += delay
+
+    async def fake_read_motion_status() -> Any:
+        return make_status(
+            state=reported_state,
+            position=None,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        )
+
+    async def fake_send_action(action: str, **_kwargs: Any) -> None:
+        actions.append(action)
+
+    monkeypatch.setattr(position_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(position_module.time, "monotonic", lambda: clock)
+    instance._async_read_motion_status = fake_read_motion_status
+    instance._async_send_action = fake_send_action
+
+    await instance._async_stop_at_position(50, "open", stop_delay_seconds=2.0)
+
+    assert actions == ["stop"]
+    assert clock == pytest.approx(2.0)
 
 
 async def test_timed_set_position_rebases_deadline_from_live_position(
@@ -1264,6 +1411,8 @@ async def test_standardized_calibration_promotes_live_percent_to_target_sequence
 
     async def fake_measure(action: str, source_arg: Any, **_kwargs: Any) -> dict[str, Any]:
         source_arg.mode = "live_percent"
+        source_arg.observed_values.update({0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0})
+        source_arg.monotonic_transitions = 10
         measured_actions.append(action)
         return {
             "action": action,
@@ -1343,6 +1492,41 @@ async def test_load_calibration_handles_empty_stored_profile(
     assert instance.calibration_report is None
     assert instance.calibration_state == coordinator_module.CALIBRATION_STATE_NOT_CALIBRATED
     assert instance.calibration_last_error is None
+
+
+async def test_calibration_cancellation_records_reason_and_final_outcome(
+    hass: HomeAssistant,
+) -> None:
+    """Test cancellation produces a useful report instead of a generic error."""
+    instance = _coordinator(hass)
+    started = calibration_module.asyncio.Event()
+    never_finishes = calibration_module.asyncio.Event()
+    logged: list[tuple[dict[str, Any], str]] = []
+
+    async def fake_build_position_calibration() -> dict[str, Any]:
+        started.set()
+        await never_finishes.wait()
+        raise AssertionError("unreachable")
+
+    instance._async_build_position_calibration = fake_build_position_calibration
+    instance._log_calibration_report = lambda report, reason: logged.append((report, reason))
+
+    await instance.async_start_position_calibration()
+    await started.wait()
+    await instance._async_cancel_calibration(reason="reconnect", stop=False)
+
+    assert instance.calibration_state == calibration_module.CALIBRATION_STATE_CANCELLED
+    assert instance.calibration_last_error == "cancelled: reconnect"
+    assert instance.calibration_cancel_reason == "reconnect"
+    assert instance.calibration_cancel_stop_requested is False
+    assert instance.calibration_cancel_stop_sent is False
+    assert instance.calibration_report["events"][-1]["details"] == {
+        "cancellation_reason": "reconnect",
+        "stop_requested": False,
+        "stop_sent": False,
+        "stop_error": None,
+    }
+    assert logged[-1][1] == "cancelled (reconnect)"
 
 
 async def test_load_calibration_builds_report_from_stored_profile(
