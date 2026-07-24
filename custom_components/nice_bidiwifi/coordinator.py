@@ -85,6 +85,7 @@ from .models.commands import (
 )
 from .models.config import NiceEntryConfig
 from .protocol.t4.settings import DmpSetting
+from .protocol.t4.actions import T4_ACTION_BY_KEY
 from .write_policy import dmp_write_block_reason
 
 _LOGGER = logging.getLogger(__name__)
@@ -359,9 +360,25 @@ class NiceBidiDataUpdateCoordinator(
 
     async def async_send_dep_action(self, action: str) -> None:
         """Send a low-level DEP action command."""
+        if not self.t4_action_supported(action):
+            raise HomeAssistantError(
+                f"Nice T4 action {action!r} is not advertised by this device"
+            )
         await self._async_cancel_position_target()
         await self._async_cancel_calibration(reason=f"dep_action:{action}")
         await self._async_send_dep_action(action)
+
+    def t4_action_supported(self, action: str) -> bool:
+        """Return whether a reviewed action is safe to offer and execute."""
+        definition = T4_ACTION_BY_KEY.get(action)
+        if definition is None:
+            return False
+        if self.capabilities is None:
+            return definition.compatibility_entity
+        advertised = self.capabilities.supports_t4_action(definition.code)
+        if advertised is None:
+            return definition.compatibility_entity
+        return advertised
 
     async def async_write_dmp_register(
         self,
@@ -463,6 +480,10 @@ class NiceBidiDataUpdateCoordinator(
 
     async def _async_send_dep_action(self, action: str, *, refresh: bool = True) -> None:
         """Send a low-level DEP action command."""
+        if not self.t4_action_supported(action):
+            raise HomeAssistantError(
+                f"Nice T4 action {action!r} is not advertised by this device"
+            )
         started = time.monotonic()
         command = NiceCommand(key=action, kind=CommandKind.T4_ACTION)
         try:

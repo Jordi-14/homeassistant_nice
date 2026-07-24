@@ -168,33 +168,37 @@ One confirmed workaround is to use LDPlayer with root mode enabled:
 5. Keep each SQLite database together with its `-wal` and `-shm` companion
    files. The app uses SQLite WAL mode, so the main database file alone can be
    incomplete.
-6. Query `nhk_extra`. The useful Android table is `nhk_credentials`:
+6. Run the credential extractor against the pulled app-data directory:
 
    ```bash
-   sqlite3 nhk_extra
+   python3 scripts/extract_mynice_credentials.py "C:\BidiNice"
    ```
 
-   Then in the SQLite shell:
+   You can also point it directly at the database:
 
-   ```sql
-   PRAGMA wal_checkpoint(TRUNCATE);
-   .tables
-   SELECT device_id, nhk_username, nhk_password, nhk_controller_id
-     FROM nhk_credentials;
+   ```bash
+   python3 scripts/extract_mynice_credentials.py \
+     "C:\BidiNice\databases\nhk_extra"
    ```
 
-Use these values in Home Assistant:
+The extractor reads the Android `nhk_credentials` table, automatically uses
+the adjacent `nhk_extra-wal` and `nhk_extra-shm` files, and produces the same
+normalized field names used for iPhone exports. If the pulled app data is
+stored in a zip archive, keep the database and sidecars at the same relative
+path inside the archive.
 
-- `device_id` -> **BiDi MAC address**
-- `nhk_username` -> **NHK username**
-- `nhk_password` -> **NHK password hex**
-- `nhk_controller_id` -> **Source/controller ID**
+Use the resulting values in Home Assistant:
+
+- `target_mac` -> **BiDi MAC address**
+- `username` -> **NHK username**
+- `password` -> **NHK password hex**
+- `source_id` -> **Source/controller ID**
 
 For normal MyNice credentials and the final Home Assistant integration setup,
-do not leave the source/controller ID empty when `nhk_controller_id` is present.
-Several Android extractions need that exact value for authentication. The client
-does have a source fallback for MyNice Pro simulation/research tooling, but that
-fallback should not be treated as the recommended Home Assistant setup path.
+do not leave the source/controller ID empty. Several Android extractions need
+that exact value for authentication. The client does have a source fallback for
+MyNice Pro simulation/research tooling, but that fallback should not be treated
+as the recommended Home Assistant setup path.
 
 The `my_nice_general` database may also contain an `accessory_table` with module
 metadata such as the product type. `nhk_web` contains cloud credentials and is
@@ -220,8 +224,7 @@ table names, but redact all secrets.
    - Interface MAC address from `target_mac`
    - NHK username from `username`
    - NHK password hex from `password`
-   - Source/controller ID from `source_id` on iOS exports or
-     `nhk_controller_id` on Android extractions
+   - Source/controller ID from `source_id`
 4. Close MyNice/MyNice Pro before pressing submit.
 
 The integration stores these values in Home Assistant's normal config entry

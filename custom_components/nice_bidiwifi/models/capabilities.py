@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from .device import NiceDeviceInfo, NiceServiceCapability
+from ..protocol.t4.allowed import T4Allowed, decode_t4_allowed
+from ..protocol.t4.actions import T4_ACTION_BY_CODE
 
 
 class ProductFamily(StrEnum):
@@ -65,17 +67,12 @@ def _matching_capability(
 def _decode_t4_allowed(
     properties: tuple[NiceServiceCapability, ...],
     device_id: int,
-) -> int | None:
+) -> T4Allowed:
     capability = _matching_capability(properties, "T4_allowed", device_id)
-    raw = capability.values_raw if capability is not None else None
-    if not raw:
-        return None
-    token = raw.split(",", 1)[0].strip()
-    try:
-        value = int(token, 16)
-    except ValueError:
-        return None
-    return value if value >= 0 else None
+    return decode_t4_allowed(
+        capability.values_raw if capability is not None else None,
+        advertised=capability is not None,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +83,7 @@ class NiceCapabilities:
     device_id: int
     services: tuple[NiceServiceCapability, ...]
     properties: tuple[NiceServiceCapability, ...]
-    t4_allowed_mask: int | None
+    t4_allowed: T4Allowed
     high_level_actions: bool | None
     readable_status: bool | None
     obstruction: bool | None
@@ -123,7 +120,7 @@ class NiceCapabilities:
             device_id=device_id,
             services=info.services,
             properties=info.properties,
-            t4_allowed_mask=_decode_t4_allowed(
+            t4_allowed=_decode_t4_allowed(
                 (*info.properties, *info.services),
                 device_id,
             ),
@@ -150,19 +147,27 @@ class NiceCapabilities:
 
     def supports_t4_action(self, action_code: int) -> bool | None:
         """Return support for a T4 action, or unknown when no mask is advertised."""
-        if self.t4_allowed_mask is None:
-            return None
-        if action_code < 0:
-            return False
-        return bool(self.t4_allowed_mask & (1 << action_code))
+        return self.t4_allowed.supports(action_code)
+
+    @property
+    def t4_allowed_mask(self) -> int | None:
+        """Return the decoded mask when valid."""
+        return self.t4_allowed.mask
+
+    @property
+    def t4_allowed_valid(self) -> bool | None:
+        """Return validity, or unknown when the property is absent."""
+        return self.t4_allowed.valid
 
     @property
     def supported_t4_action_codes(self) -> frozenset[int] | None:
-        """Return all advertised T4 action codes."""
-        if self.t4_allowed_mask is None:
+        """Return advertised action codes that exist in the reviewed catalog."""
+        if not self.t4_allowed.advertised:
             return None
+        if not self.t4_allowed.valid or self.t4_allowed.mask is None:
+            return frozenset()
         return frozenset(
             code
-            for code in range(self.t4_allowed_mask.bit_length())
-            if self.t4_allowed_mask & (1 << code)
+            for code in T4_ACTION_BY_CODE
+            if self.t4_allowed.mask & (1 << code)
         )

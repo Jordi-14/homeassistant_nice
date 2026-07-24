@@ -13,12 +13,13 @@ from pathlib import Path, PurePosixPath
 
 _KNOWN_SQLITE_NAMES = {
     "cacheddata.sqlite": 0,
-    "mynicepro.sqlite": 1,
+    "nhk_extra": 1,
+    "mynicepro.sqlite": 2,
 }
 _SQLITE_SUFFIXES = (".sqlite", ".sqlite3", ".db")
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 
-_CREDENTIAL_COLUMNS = """
+_IOS_CREDENTIAL_COLUMNS = """
     ZACCESSORYMACADDRESS, ZACCESSORYUSER, ZACCESSORYPASSWORD,
     ZCONTROLLERID, ZPERMISSIONLEVEL, ZMAINTENANCESTATE
 """
@@ -30,8 +31,8 @@ def parse_args() -> argparse.Namespace:
         "backup",
         type=Path,
         help=(
-            "Path to the MyNice/MyNice Pro credential SQLite database, an extracted "
-            "app-data folder, or a zip-like iMazing app-data export"
+            "Path to a MyNice/MyNice Pro iOS or Android credential database, "
+            "an extracted app-data folder, or a zip-like app-data export"
         ),
     )
     parser.add_argument("--mac", help="Optional BiDi MAC address to select")
@@ -56,39 +57,8 @@ def _find_sqlite_candidates(root: Path) -> list[Path]:
     )
 
 
-def _read_credentials_from_database(path: Path, mac: str | None) -> dict[str, object] | None:
-    with closing(
-        sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
-    ) as db:
-        db.row_factory = sqlite3.Row
-        if mac:
-            row = db.execute(
-                f"""
-                SELECT {_CREDENTIAL_COLUMNS}
-                FROM ZACCESSORYCREDENTIALENTITY
-                WHERE ZACCESSORYMACADDRESS = ?
-                  AND ZACCESSORYUSER IS NOT NULL
-                  AND ZACCESSORYPASSWORD IS NOT NULL
-                ORDER BY Z_PK DESC
-                LIMIT 1
-                """,
-                (mac.upper(),),
-            ).fetchone()
-        else:
-            row = db.execute(
-                f"""
-                SELECT {_CREDENTIAL_COLUMNS}
-                FROM ZACCESSORYCREDENTIALENTITY
-                WHERE ZACCESSORYUSER IS NOT NULL
-                  AND ZACCESSORYPASSWORD IS NOT NULL
-                ORDER BY Z_PK DESC
-                LIMIT 1
-                """
-            ).fetchone()
-
-    if row is None:
-        return None
-
+def _ios_credentials(row: sqlite3.Row) -> dict[str, object]:
+    """Normalize one iOS Core Data credential row."""
     return {
         "target_mac": row["ZACCESSORYMACADDRESS"],
         "username": row["ZACCESSORYUSER"],
@@ -97,6 +67,86 @@ def _read_credentials_from_database(path: Path, mac: str | None) -> dict[str, ob
         "permission": row["ZPERMISSIONLEVEL"],
         "maintenance_state": row["ZMAINTENANCESTATE"],
     }
+
+
+def _android_credentials(row: sqlite3.Row) -> dict[str, object]:
+    """Normalize one Android Room credential row."""
+    return {
+        "target_mac": row["device_id"],
+        "username": row["nhk_username"],
+        "password": row["nhk_password"],
+        "source_id": row["nhk_controller_id"],
+        "permission": None,
+        "maintenance_state": None,
+    }
+
+
+def _read_ios_credentials(
+    db: sqlite3.Connection,
+    mac: str | None,
+) -> dict[str, object] | None:
+    parameters: tuple[str, ...] = ()
+    mac_filter = ""
+    if mac:
+        mac_filter = "AND UPPER(ZACCESSORYMACADDRESS) = ?"
+        parameters = (mac.upper(),)
+    row = db.execute(
+        f"""
+        SELECT {_IOS_CREDENTIAL_COLUMNS}
+        FROM ZACCESSORYCREDENTIALENTITY
+        WHERE ZACCESSORYUSER IS NOT NULL
+          AND ZACCESSORYPASSWORD IS NOT NULL
+          {mac_filter}
+        ORDER BY Z_PK DESC
+        LIMIT 1
+        """,
+        parameters,
+    ).fetchone()
+    return _ios_credentials(row) if row is not None else None
+
+
+def _read_android_credentials(
+    db: sqlite3.Connection,
+    mac: str | None,
+) -> dict[str, object] | None:
+    parameters: tuple[str, ...] = ()
+    mac_filter = ""
+    if mac:
+        mac_filter = "AND UPPER(device_id) = ?"
+        parameters = (mac.upper(),)
+    row = db.execute(
+        f"""
+        SELECT device_id, nhk_username, nhk_password, nhk_controller_id
+        FROM nhk_credentials
+        WHERE nhk_username IS NOT NULL
+          AND nhk_password IS NOT NULL
+          {mac_filter}
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        parameters,
+    ).fetchone()
+    return _android_credentials(row) if row is not None else None
+
+
+def _read_credentials_from_database(path: Path, mac: str | None) -> dict[str, object] | None:
+    with closing(
+        sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    ) as db:
+        db.row_factory = sqlite3.Row
+        tables = {
+            row[0]
+            for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        if "ZACCESSORYCREDENTIALENTITY" in tables:
+            credentials = _read_ios_credentials(db, mac)
+            if credentials is not None:
+                return credentials
+        if "nhk_credentials" in tables:
+            return _read_android_credentials(db, mac)
+    return None
 
 
 def _try_read_credentials_from_database(path: Path, mac: str | None) -> dict[str, object] | None:
@@ -179,9 +229,9 @@ def main() -> int:
     credentials = _read_credentials(args.backup, args.mac)
     if credentials is None:
         raise SystemExit(
-            "No credential row found in ZACCESSORYCREDENTIALENTITY. "
-            "Pass the extracted MyNice app-data folder, the iMazing app-data export, "
-            "or Container/Library/Application Support/CachedData.sqlite."
+            "No local credential row found in the supported iOS or Android "
+            "MyNice databases. Pass the extracted app-data folder, an app-data "
+            "archive, CachedData.sqlite, or Android nhk_extra with its WAL sidecars."
         )
 
     print(json.dumps(credentials, indent=2, sort_keys=True))

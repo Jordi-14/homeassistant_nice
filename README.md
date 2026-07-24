@@ -148,7 +148,8 @@ Then restart Home Assistant.
 1. Configure the BiDi-WiFi with the normal **MyNice** app.
 2. Reserve the BiDi-WiFi IP address in DHCP.
 3. Confirm Home Assistant can reach the BiDi-WiFi on TCP 443.
-4. Extract the local MyNice NHK credentials.
+4. Extract the local MyNice NHK credentials from an iPhone app-data export or
+   a rooted Android app-data directory.
 5. Add **Nice** from **Settings -> Devices & services**.
 6. Close MyNice/MyNice Pro before submitting the config flow.
 

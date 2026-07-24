@@ -2,21 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+from homeassistant.exceptions import HomeAssistantError
+
 from custom_components.nice_bidiwifi.button import (
     BUTTONS,
     NiceBidiButton,
     async_setup_entry,
 )
-from custom_components.nice_bidiwifi.client import (
-    DEP_ACTION_COURTESY_LIGHT,
-    DEP_ACTION_COURTESY_LIGHT_TIMER,
-    DEP_ACTION_LOCK,
-    DEP_ACTION_PARTIAL_OPEN_1,
-    DEP_ACTION_PARTIAL_OPEN_2,
-    DEP_ACTION_PARTIAL_OPEN_3,
-    DEP_ACTION_STEP_STEP,
-    DEP_ACTION_UNLOCK,
-)
+from custom_components.nice_bidiwifi.client import DEP_ACTION_PARTIAL_OPEN_1
 from tests.conftest import FakeCoordinator, config_entry, make_status
 
 
@@ -45,19 +39,16 @@ async def test_buttons_delegate_to_expected_coordinator_methods() -> None:
     for entity in buttons:
         await entity.async_press()
 
-    assert coordinator.calls == [
-        ("dep_action", DEP_ACTION_PARTIAL_OPEN_1),
-        ("dep_action", DEP_ACTION_PARTIAL_OPEN_2),
-        ("dep_action", DEP_ACTION_PARTIAL_OPEN_3),
-        ("dep_action", DEP_ACTION_STEP_STEP),
-        ("dep_action", DEP_ACTION_COURTESY_LIGHT),
-        ("dep_action", DEP_ACTION_COURTESY_LIGHT_TIMER),
-        ("dep_action", DEP_ACTION_LOCK),
-        ("dep_action", DEP_ACTION_UNLOCK),
-        ("refresh", None),
-        ("reconnect", None),
-        ("calibrate", None),
+    assert [
+        value for call, value in coordinator.calls if call == "dep_action"
+    ] == [
+        description.t4_action_key
+        for description in BUTTONS
+        if description.t4_action_key is not None
     ]
+    assert ("refresh", None) in coordinator.calls
+    assert ("reconnect", None) in coordinator.calls
+    assert ("calibrate", None) in coordinator.calls
 
 
 def test_button_unique_ids() -> None:
@@ -67,17 +58,8 @@ def test_button_unique_ids() -> None:
     buttons = [NiceBidiButton(coordinator, entry, description) for description in BUTTONS]
 
     assert [entity.unique_id for entity in buttons] == [
-        "aabbccddeeff_1_partial_open_1",
-        "aabbccddeeff_1_partial_open_2",
-        "aabbccddeeff_1_partial_open_3",
-        "aabbccddeeff_1_step_step",
-        "aabbccddeeff_1_courtesy_light",
-        "aabbccddeeff_1_courtesy_light_timer",
-        "aabbccddeeff_1_lock",
-        "aabbccddeeff_1_unlock",
-        "aabbccddeeff_1_refresh_status",
-        "aabbccddeeff_1_reconnect",
-        "aabbccddeeff_1_calibrate_positions",
+        f"aabbccddeeff_1_{description.key}"
+        for description in BUTTONS
     ]
 
 
@@ -113,3 +95,19 @@ def test_optional_partial_open_buttons_require_known_configuration() -> None:
     assert buttons["partial_open_1"].available is True
     assert buttons["partial_open_2"].available is False
     assert buttons["partial_open_3"].available is False
+
+
+async def test_t4_buttons_recheck_advertised_support_before_execution() -> None:
+    """A stale or unsupported T4 button cannot execute a command."""
+    coordinator = FakeCoordinator()
+    coordinator.supported_t4_actions = {DEP_ACTION_PARTIAL_OPEN_1}
+    entry = config_entry()
+    buttons = {
+        description.key: NiceBidiButton(coordinator, entry, description)
+        for description in BUTTONS
+    }
+
+    assert buttons[DEP_ACTION_PARTIAL_OPEN_1].available is True
+    assert buttons["open_and_block"].available is False
+    with pytest.raises(HomeAssistantError, match="not advertised"):
+        await buttons["open_and_block"].async_press()

@@ -310,6 +310,7 @@ class FakeCoordinator:
         self.calibration_quality = "good"
         self.calibration_report_summary = "good: 8/8 repeatable targets"
         self.calibration_report_attributes = {"quality": "good", "point_count": 8}
+        self.supported_t4_actions: set[str] | None = None
         self.calls: list[tuple[str, object | None]] = []
 
     @property
@@ -363,6 +364,13 @@ class FakeCoordinator:
     async def async_send_dep_action(self, action: str) -> None:
         """Record a DEP action."""
         self.calls.append(("dep_action", action))
+
+    def t4_action_supported(self, action: str) -> bool:
+        """Return configurable action support for entity tests."""
+        return (
+            self.supported_t4_actions is None
+            or action in self.supported_t4_actions
+        )
 
     async def async_set_position(self, position: int) -> None:
         """Record a set-position request."""

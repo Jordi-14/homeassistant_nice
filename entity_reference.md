@@ -93,6 +93,13 @@ The defaults are intentionally split by expected use:
 
 Writable BusT4 configuration entities are unavailable while the gate is moving.
 
+T4 action buttons follow the controller's advertised `T4_allowed` bitmask.
+Existing compatibility buttons remain registered but become unavailable when a
+valid mask excludes them. Additional advanced buttons are created only when
+their reviewed action bit is advertised. The integration rechecks support
+before execution, so a stale entity cannot send an action excluded by the
+current device profile.
+
 | Platform | Entity | Key | Purpose | Visibility default | Enabled default | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | Cover | Gate cover | `cover` | Main gate entity with open, stop, close, displayed position, and set-position support when position is available. | Visible | Enabled | Primary daily-use entity. |
@@ -110,11 +117,28 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Button | Step-step | `step_step` | Sends the controller step-step action. | Visible | Enabled | Common remote-control style action. |
 | Button | Courtesy light | `courtesy_light` | Sends the courtesy-light action. | Hidden | Enabled | Optional wiring/output; useful only on some installations. |
 | Button | Courtesy light timer | `courtesy_light_timer` | Sends the courtesy-light timer action. | Hidden | Enabled | Optional wiring/output; useful only on some installations. |
-| Button | Lock | `lock` | Sends the controller lock action. | Hidden | Enabled | Advanced action with stronger operational impact. |
-| Button | Unlock | `unlock` | Sends the controller unlock action. | Hidden | Enabled | Pair for the advanced lock action. |
+| Button | Lock | `lock` | Sends T4 action `0x0F`, whose protocol meaning is block the automation. | Hidden | Disabled | Existing entity key retained for compatibility. Enabling it can prevent normal movement commands until released. |
+| Button | Unlock | `unlock` | Sends T4 action `0x10`, whose protocol meaning is release the automation. | Hidden | Disabled | Existing entity key retained for compatibility. This is the protocol pair for the block action; it is not a physical lock-state sensor. |
 | Button | Refresh status | `refresh_status` | Requests an immediate coordinator refresh. | Hidden | Enabled | Troubleshooting button, not a normal dashboard control. |
 | Button | Reconnect | `reconnect` | Forces the local connection to reconnect. | Hidden | Enabled | Troubleshooting button, not a normal dashboard control. |
 | Button | Calibrate positions | `calibrate_positions` | Runs the position calibration routine for intermediate set-position accuracy or time-based travel measurement. | Hidden | Disabled | Moves the gate repeatedly; users should enable it deliberately. |
+| Button | Stop as remote | `stop_remote` | Sends the controller's remote-style stop action. | Hidden | Disabled | Redundant with the primary cover stop command; created only when advertised. |
+| Button | Open as remote | `open_remote` | Sends the controller's remote-style open action. | Hidden | Disabled | Redundant with the primary cover open command; created only when advertised. |
+| Button | Close as remote | `close_remote` | Sends the controller's remote-style close action. | Hidden | Disabled | Redundant with the primary cover close command; created only when advertised. |
+| Button | Apartment step-step | `apartment_step_step` | Sends the apartment step-step action. | Hidden | Enabled | Device-specific action created only when advertised. |
+| Button | Step-step high priority | `step_step_hp` | Sends the high-priority step-step action. | Hidden | Enabled | Device-specific action created only when advertised. |
+| Button | Open and block | `open_and_block` | Opens and then blocks the automation. | Hidden | Disabled | Safety-sensitive action; enable deliberately only when its controller behavior is understood. |
+| Button | Close and block | `close_and_block` | Closes and then blocks the automation. | Hidden | Disabled | Safety-sensitive action; enable deliberately only when its controller behavior is understood. |
+| Button | Master door step-step | `master_step_step` | Sends step-step to the master door. | Hidden | Enabled | Multi-door action created only when advertised. |
+| Button | Open master door | `master_open` | Opens the master door. | Hidden | Enabled | Multi-door action created only when advertised. |
+| Button | Close master door | `master_close` | Closes the master door. | Hidden | Enabled | Multi-door action created only when advertised. |
+| Button | Slave door step-step | `slave_step_step` | Sends step-step to the slave door. | Hidden | Enabled | Multi-door action created only when advertised. |
+| Button | Open slave door | `slave_open` | Opens the slave door. | Hidden | Enabled | Multi-door action created only when advertised. |
+| Button | Close slave door | `slave_close` | Closes the slave door. | Hidden | Enabled | Multi-door action created only when advertised. |
+| Button | Release and open | `release_and_open` | Releases a blocked automation and opens it. | Hidden | Disabled | Safety-sensitive action created only when advertised. |
+| Button | Release and close | `release_and_close` | Releases a blocked automation and closes it. | Hidden | Disabled | Safety-sensitive action created only when advertised. |
+| Button | Enable BlueBUS inputs | `enable_bluebus_inputs` | Enables the controller's BlueBUS inputs. | Hidden | Disabled | Changes controller input behavior; enable only with the gate visible and the original state known. |
+| Button | Disable BlueBUS inputs | `disable_bluebus_inputs` | Disables the controller's BlueBUS inputs. | Hidden | Disabled | Changes controller input behavior; enable only with the gate visible and the original state known. |
 | Binary sensor | Closed limit switch | `limit_closed` | Experimental decoded closed-limit bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |
 | Binary sensor | Open limit switch | `limit_open` | Experimental decoded open-limit bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |
 | Binary sensor | Photocell | `photocell` | Experimental decoded photocell bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |
