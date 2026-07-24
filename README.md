@@ -29,6 +29,11 @@ Latest stable release: `v0.7.0`
 ## Features
 
 - Open, stop, and close using the local `DoorAction` service.
+- Automatic discovery of compatible operational Nice interfaces over zeroconf,
+  including in-place address updates without duplicate devices.
+- A connection-policy setup step that exposes only transports available in the
+  installed version. Local + cloud fallback is the recommended policy when
+  cloud transport is present; fully local remains available.
 - Native Home Assistant cover position support when the controller reports a
   numeric position source.
 - Live position percentage while the gate moves when the controller exposes a
@@ -146,11 +151,13 @@ Then restart Home Assistant.
 ## Quick Setup
 
 1. Configure the BiDi-WiFi with the normal **MyNice** app.
-2. Reserve the BiDi-WiFi IP address in DHCP.
-3. Confirm Home Assistant can reach the BiDi-WiFi on TCP 443.
+2. Let Home Assistant discover the interface, or find its address for manual
+   setup. A DHCP reservation is optional when zeroconf works across the network.
+3. Confirm Home Assistant can reach the interface on TCP 443.
 4. Extract the local MyNice NHK credentials from an iPhone app-data export or
    a rooted Android app-data directory.
-5. Add **Nice** from **Settings -> Devices & services**.
+5. Select the discovered **Nice** card, or add **Nice** manually from
+   **Settings -> Devices & services**.
 6. Close MyNice/MyNice Pro before submitting the config flow.
 
 Detailed setup and credential extraction instructions are in

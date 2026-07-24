@@ -3,28 +3,64 @@
     "step": {
       "user": {
         "title": "Nice",
-        "description": "Set up local control for a compatible Nice gate or garage-door interface. Close MyNice/MyNice Pro before validating the connection.",
+        "description": "Choose an available connection mode. Local + cloud fallback is the recommended policy when cloud transport is available.",
+        "data": {
+          "connection_mode": "Connection mode"
+        },
+        "data_description": {
+          "connection_mode": "How Home Assistant should reach this Nice device. Only modes supported by this version are shown."
+        }
+      },
+      "local": {
+        "title": "Connect locally",
+        "description": "Enter the local NHK credentials for the Nice interface. Close MyNice/MyNice Pro before validating the connection.",
         "data": {
           "name": "Name",
-          "host": "Interface IP address",
-          "port": "Port",
+          "host": "Interface IP address or hostname",
           "target_mac": "Interface MAC address",
           "username": "NHK username",
           "password": "NHK password hex",
+          "advanced": "Show advanced settings"
+        },
+        "data_description": {
+          "name": "Display name for this gate in Home Assistant.",
+          "host": "Address that Home Assistant uses to reach the Nice interface on the local network.",
+          "target_mac": "Interface MAC address from the extracted MyNice credentials.",
+          "username": "NHK username from the extracted MyNice credentials.",
+          "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
+          "advanced": "Configure the source/controller ID, port, device ID, or T4 timeout."
+        }
+      },
+      "local_advanced": {
+        "title": "Advanced local settings",
+        "description": "Keep the defaults unless your extracted credentials or device require different protocol settings.",
+        "data": {
           "source_id": "Source/controller ID",
+          "port": "Port",
           "device_id": "Device ID",
           "t4_timeout_ms": "T4 timeout in milliseconds"
         },
         "data_description": {
-          "name": "Display name for this gate in Home Assistant.",
-          "host": "IP address or hostname that Home Assistant uses to reach the Nice interface on the local network.",
-          "port": "Local Nice interface TLS port. The default is 443.",
-          "target_mac": "Interface MAC address from the extracted MyNice credentials.",
-          "username": "NHK username from the extracted MyNice credentials.",
-          "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
           "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
+          "port": "Local Nice interface TLS port. The default is 443.",
           "device_id": "NHK device ID to control. Leave at 1 unless troubleshooting a different device.",
           "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "Set up {name}",
+        "description": "Discovered {model} at {host}. Enter its local NHK credentials. Close MyNice/MyNice Pro before validating the connection.",
+        "data": {
+          "name": "Name",
+          "username": "NHK username",
+          "password": "NHK password hex",
+          "advanced": "Show advanced settings"
+        },
+        "data_description": {
+          "name": "Display name for this gate in Home Assistant.",
+          "username": "NHK username from the extracted MyNice credentials.",
+          "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
+          "advanced": "Configure the source/controller ID, port, device ID, or T4 timeout."
         }
       },
       "reauth_confirm": {
@@ -32,7 +68,7 @@
         "description": "Update the local credentials for this Nice interface. The MAC address must match the existing device.",
         "data": {
           "name": "Name",
-          "host": "Interface IP address",
+          "host": "Interface IP address or hostname",
           "port": "Port",
           "target_mac": "Interface MAC address",
           "username": "NHK username",
@@ -43,7 +79,7 @@
         },
         "data_description": {
           "name": "Display name for this gate in Home Assistant.",
-          "host": "IP address or hostname that Home Assistant uses to reach the Nice interface on the local network.",
+          "host": "Address that Home Assistant uses to reach the Nice interface on the local network.",
           "port": "Local Nice interface TLS port. The default is 443.",
           "target_mac": "Interface MAC address from the extracted MyNice credentials.",
           "username": "NHK username from the extracted MyNice credentials.",
@@ -58,7 +94,7 @@
         "description": "Update the local connection settings for this Nice interface. The MAC address must match the existing device.",
         "data": {
           "name": "Name",
-          "host": "Interface IP address",
+          "host": "Interface IP address or hostname",
           "port": "Port",
           "target_mac": "Interface MAC address",
           "username": "NHK username",
@@ -69,7 +105,7 @@
         },
         "data_description": {
           "name": "Display name for this gate in Home Assistant.",
-          "host": "IP address or hostname that Home Assistant uses to reach the Nice interface on the local network.",
+          "host": "Address that Home Assistant uses to reach the Nice interface on the local network.",
           "port": "Local Nice interface TLS port. The default is 443.",
           "target_mac": "Interface MAC address from the extracted MyNice credentials.",
           "username": "NHK username from the extracted MyNice credentials.",
@@ -82,14 +118,32 @@
     },
     "error": {
       "cannot_connect": "Failed to validate the local connection. Check LAN access to the configured TCP port, close MyNice/MyNice Pro, then check Home Assistant logs for the exact failure.",
+      "connection_mode_unavailable": "This connection mode is not available in the installed version.",
       "invalid_auth": "Authentication failed. Check the extracted username, source ID, target MAC, and password.",
+      "invalid_connection_mode": "Select a valid connection mode.",
+      "invalid_device_id": "Enter a valid 12-digit hexadecimal interface MAC address.",
+      "invalid_protocol": "The device returned a malformed or unsupported local protocol response.",
+      "unsupported_device": "The device authenticated but does not expose a compatible local control protocol.",
       "unknown": "Unexpected error",
       "wrong_device": "The MAC address does not match this configured Nice interface."
     },
     "abort": {
       "already_configured": "This Nice interface is already configured",
+      "missing_identity": "The discovered interface did not advertise a stable hardware identity",
+      "not_operational": "This advertisement is for device provisioning and cannot accept control commands",
       "reauth_successful": "Reauthentication successful",
-      "reconfigure_successful": "Reconfiguration successful"
+      "reconfigure_successful": "Reconfiguration successful",
+      "unsupported_device": "This Nice product family does not yet have a compatible transport",
+      "unsupported_service": "This Nice network service is not supported"
+    }
+  },
+  "selector": {
+    "connection_mode": {
+      "options": {
+        "local_with_cloud_fallback": "Local + cloud fallback (recommended)",
+        "local_only": "Fully local",
+        "cloud_only": "Fully cloud"
+      }
     }
   }
 }

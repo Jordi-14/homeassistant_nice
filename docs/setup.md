@@ -31,10 +31,11 @@ stored by **MyNice**.
    point.
 8. Put the iPhone back on the normal Wi-Fi and confirm that MyNice can still
    control the gate.
-9. Find the BiDi-WiFi IP address in your router, DHCP server, or network
-   controller.
-10. Reserve that IP address in DHCP so Home Assistant keeps using the same
-    address.
+9. Home Assistant can normally discover the interface automatically. If it
+   does not, find its IP address in your router, DHCP server, or network
+   controller for manual setup.
+10. A DHCP reservation is optional. When zeroconf is available, the integration
+    updates an existing entry if the interface address changes.
 11. From a machine on the same network as Home Assistant, confirm TCP 443 is
     reachable:
 
@@ -218,18 +219,31 @@ table names, but redact all secrets.
 ## Add the Integration in Home Assistant
 
 1. Go to **Settings -> Devices & services**.
-2. Add **Nice**.
-3. Enter:
-   - Interface IP address
+2. Use a discovered **Nice** card if one is shown, or select **Add integration**
+   and choose **Nice**.
+3. For manual setup, choose a connection mode. The flow only offers modes whose
+   transport is available in the installed version. Fully local is available
+   with the local integration. Local + cloud fallback is the recommended policy
+   when a version with cloud transport is installed.
+4. For fully local setup, enter:
+   - Interface IP address or hostname
    - Interface MAC address from `target_mac`
    - NHK username from `username`
    - NHK password hex from `password`
-   - Source/controller ID from `source_id`
-4. Close MyNice/MyNice Pro before pressing submit.
+5. If the extracted `source_id` differs from the username, enable **Show
+   advanced settings** and enter it as **Source/controller ID**. Port, NHK
+   device ID, and T4 timeout are also under Advanced.
+6. Close MyNice/MyNice Pro before pressing submit.
+
+For a discovered interface, Home Assistant supplies the advertised host, port,
+MAC identity, model, protocol version, and IPv4/IPv6 addresses. You only need to
+confirm the name and enter the local credentials. Provisioning-only
+advertisements are ignored because they cannot accept normal control commands.
 
 The integration stores these values in Home Assistant's normal config entry
 storage. They are entered by the user during setup and are not hard-coded in the
-integration.
+integration. Existing entries are migrated to the explicit **Fully local**
+policy without changing their entities or enabling cloud traffic.
 
 ## Troubleshooting Setup
 

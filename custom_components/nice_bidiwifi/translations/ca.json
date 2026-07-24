@@ -3,28 +3,64 @@
     "step": {
       "user": {
         "title": "Nice",
-        "description": "Configura el control local per a una interfície Nice compatible de porta o porta de garatge. Tanca MyNice/MyNice Pro abans de validar la connexió.",
+        "description": "Tria un mode de connexió disponible. Local amb alternativa al núvol és la política recomanada quan el transport al núvol està disponible.",
+        "data": {
+          "connection_mode": "Mode de connexió"
+        },
+        "data_description": {
+          "connection_mode": "Com ha d'accedir Home Assistant a aquest dispositiu Nice. Només es mostren els modes compatibles amb aquesta versió."
+        }
+      },
+      "local": {
+        "title": "Connexió local",
+        "description": "Introdueix les credencials NHK locals de la interfície Nice. Tanca MyNice/MyNice Pro abans de validar la connexió.",
         "data": {
           "name": "Nom",
-          "host": "Adreça IP de la interfície",
-          "port": "Port",
+          "host": "Adreça IP o nom d'amfitrió de la interfície",
           "target_mac": "Adreça MAC de la interfície",
           "username": "Nom d'usuari NHK",
           "password": "Contrasenya NHK en hexadecimal",
+          "advanced": "Mostra la configuració avançada"
+        },
+        "data_description": {
+          "name": "Nom visible d'aquesta porta a Home Assistant.",
+          "host": "Adreça que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
+          "target_mac": "Adreça MAC de la interfície extreta de les credencials de MyNice.",
+          "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
+          "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
+          "advanced": "Configura l'ID d'origen/controlador, el port, l'ID del dispositiu o el temps d'espera T4."
+        }
+      },
+      "local_advanced": {
+        "title": "Configuració local avançada",
+        "description": "Mantén els valors predeterminats tret que les credencials extretes o el dispositiu requereixin una configuració de protocol diferent.",
+        "data": {
           "source_id": "ID d'origen/controlador",
+          "port": "Port",
           "device_id": "ID del dispositiu",
           "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons"
         },
         "data_description": {
-          "name": "Nom visible d'aquesta porta a Home Assistant.",
-          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
-          "port": "Port TLS local de la interfície Nice. El valor per defecte és 443.",
-          "target_mac": "Adreça MAC de la interfície extreta de les credencials de MyNice.",
-          "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
-          "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
           "source_id": "ID d'origen/controlador extret de les credencials de MyNice. Deixa'l buit per utilitzar el nom d'usuari.",
+          "port": "Port TLS local de la interfície Nice. El valor predeterminat és 443.",
           "device_id": "ID de dispositiu NHK que es vol controlar. Mantén 1 excepte si estàs diagnosticant un altre dispositiu.",
           "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons."
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "Configura {name}",
+        "description": "S'ha descobert {model} a {host}. Introdueix-ne les credencials NHK locals. Tanca MyNice/MyNice Pro abans de validar la connexió.",
+        "data": {
+          "name": "Nom",
+          "username": "Nom d'usuari NHK",
+          "password": "Contrasenya NHK en hexadecimal",
+          "advanced": "Mostra la configuració avançada"
+        },
+        "data_description": {
+          "name": "Nom visible d'aquesta porta a Home Assistant.",
+          "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
+          "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
+          "advanced": "Configura l'ID d'origen/controlador, el port, l'ID del dispositiu o el temps d'espera T4."
         }
       },
       "reauth_confirm": {
@@ -32,7 +68,7 @@
         "description": "Actualitza les credencials locals d'aquesta interfície Nice. L'adreça MAC ha de coincidir amb el dispositiu existent.",
         "data": {
           "name": "Nom",
-          "host": "Adreça IP de la interfície",
+          "host": "Adreça IP o nom d'amfitrió de la interfície",
           "port": "Port",
           "target_mac": "Adreça MAC de la interfície",
           "username": "Nom d'usuari NHK",
@@ -43,8 +79,8 @@
         },
         "data_description": {
           "name": "Nom visible d'aquesta porta a Home Assistant.",
-          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
-          "port": "Port TLS local de la interfície Nice. El valor per defecte és 443.",
+          "host": "Adreça que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
+          "port": "Port TLS local de la interfície Nice. El valor predeterminat és 443.",
           "target_mac": "Adreça MAC de la interfície extreta de les credencials de MyNice.",
           "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
@@ -58,7 +94,7 @@
         "description": "Actualitza la configuració de connexió local d'aquesta interfície Nice. L'adreça MAC ha de coincidir amb el dispositiu existent.",
         "data": {
           "name": "Nom",
-          "host": "Adreça IP de la interfície",
+          "host": "Adreça IP o nom d'amfitrió de la interfície",
           "port": "Port",
           "target_mac": "Adreça MAC de la interfície",
           "username": "Nom d'usuari NHK",
@@ -69,8 +105,8 @@
         },
         "data_description": {
           "name": "Nom visible d'aquesta porta a Home Assistant.",
-          "host": "Adreça IP o nom d'amfitrió que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
-          "port": "Port TLS local de la interfície Nice. El valor per defecte és 443.",
+          "host": "Adreça que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
+          "port": "Port TLS local de la interfície Nice. El valor predeterminat és 443.",
           "target_mac": "Adreça MAC de la interfície extreta de les credencials de MyNice.",
           "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
@@ -82,14 +118,32 @@
     },
     "error": {
       "cannot_connect": "No s'ha pogut validar la connexió local. Comprova l'accés LAN al port TCP configurat, tanca MyNice/MyNice Pro i consulta els registres de Home Assistant per veure l'error exacte.",
+      "connection_mode_unavailable": "Aquest mode de connexió no està disponible a la versió instal·lada.",
       "invalid_auth": "L'autenticació ha fallat. Comprova el nom d'usuari extret, l'ID d'origen, la MAC de destinació i la contrasenya.",
+      "invalid_connection_mode": "Selecciona un mode de connexió vàlid.",
+      "invalid_device_id": "Introdueix una adreça MAC d'interfície hexadecimal vàlida de 12 dígits.",
+      "invalid_protocol": "El dispositiu ha retornat una resposta de protocol local malformada o no compatible.",
+      "unsupported_device": "El dispositiu s'ha autenticat però no exposa un protocol de control local compatible.",
       "unknown": "Error inesperat",
       "wrong_device": "L'adreça MAC no coincideix amb aquesta interfície Nice configurada."
     },
     "abort": {
       "already_configured": "Aquesta interfície Nice ja està configurada",
+      "missing_identity": "La interfície descoberta no ha anunciat una identitat de maquinari estable",
+      "not_operational": "Aquest anunci és per provisionar el dispositiu i no pot acceptar ordres de control",
       "reauth_successful": "Reautenticació correcta",
-      "reconfigure_successful": "Reconfiguració correcta"
+      "reconfigure_successful": "Reconfiguració correcta",
+      "unsupported_device": "Aquesta família de productes Nice encara no té un transport compatible",
+      "unsupported_service": "Aquest servei de xarxa Nice no és compatible"
+    }
+  },
+  "selector": {
+    "connection_mode": {
+      "options": {
+        "local_with_cloud_fallback": "Local amb alternativa al núvol (recomanat)",
+        "local_only": "Completament local",
+        "cloud_only": "Completament al núvol"
+      }
     }
   }
 }

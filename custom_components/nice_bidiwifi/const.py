@@ -6,7 +6,18 @@ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PASSWORD, CONF_PORT, 
 
 DOMAIN = "nice_bidiwifi"
 
+CONFIG_ENTRY_VERSION = 2
+
+CONF_CONNECTION_MODE = "connection_mode"
 CONF_DEVICE_ID = "device_id"
+CONF_DISCOVERY_ADDRESSES = "discovery_addresses"
+CONF_DISCOVERY_HARDWARE = "discovery_hardware"
+CONF_DISCOVERY_MANUFACTURER = "discovery_manufacturer"
+CONF_DISCOVERY_MODEL = "discovery_model"
+CONF_DISCOVERY_NAME = "discovery_name"
+CONF_DISCOVERY_PROTOCOL = "discovery_protocol"
+CONF_DISCOVERY_SERVICE_TYPE = "discovery_service_type"
+CONF_DISCOVERY_STATUS_FLAG = "discovery_status_flag"
 CONF_SOURCE_ID = "source_id"
 CONF_TARGET_MAC = "target_mac"
 CONF_T4_TIMEOUT_MS = "t4_timeout_ms"
@@ -22,6 +33,7 @@ MOVING_UPDATE_INTERVAL = timedelta(seconds=1)
 ERROR_UPDATE_INTERVAL = timedelta(seconds=60)
 
 CONFIG_FIELDS = {
+    CONF_CONNECTION_MODE,
     CONF_NAME,
     CONF_HOST,
     CONF_PORT,
@@ -31,4 +43,12 @@ CONFIG_FIELDS = {
     CONF_TARGET_MAC,
     CONF_DEVICE_ID,
     CONF_T4_TIMEOUT_MS,
+    CONF_DISCOVERY_ADDRESSES,
+    CONF_DISCOVERY_HARDWARE,
+    CONF_DISCOVERY_MANUFACTURER,
+    CONF_DISCOVERY_MODEL,
+    CONF_DISCOVERY_NAME,
+    CONF_DISCOVERY_PROTOCOL,
+    CONF_DISCOVERY_SERVICE_TYPE,
+    CONF_DISCOVERY_STATUS_FLAG,
 }

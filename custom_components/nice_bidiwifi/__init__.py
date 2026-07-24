@@ -11,7 +11,15 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import slugify
 
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .const import DEFAULT_NAME, DOMAIN
+from .const import (
+    CONFIG_ENTRY_VERSION,
+    CONF_CONNECTION_MODE,
+    CONF_TARGET_MAC,
+    DEFAULT_NAME,
+    DOMAIN,
+)
+from .models.config import ConnectionMode
+from .models.discovery import normalize_device_id
 from .runtime import NiceRuntimeData, get_coordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,6 +32,35 @@ PLATFORMS: list[Platform] = [
     Platform.SWITCH,
     Platform.NUMBER,
 ]
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> bool:
+    """Migrate legacy local entries without changing entity identity."""
+    if entry.version > CONFIG_ENTRY_VERSION:
+        return False
+    if entry.version == CONFIG_ENTRY_VERSION:
+        return True
+
+    data = dict(entry.data)
+    data.setdefault(
+        CONF_CONNECTION_MODE,
+        ConnectionMode.LOCAL_ONLY.value,
+    )
+    unique_id = entry.unique_id
+    if normalized := normalize_device_id(
+        unique_id or str(data.get(CONF_TARGET_MAC) or "")
+    ):
+        unique_id = normalized
+    hass.config_entries.async_update_entry(
+        entry,
+        data=data,
+        unique_id=unique_id,
+        version=CONFIG_ENTRY_VERSION,
+    )
+    return True
 
 
 def _async_migrate_default_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -> None:
