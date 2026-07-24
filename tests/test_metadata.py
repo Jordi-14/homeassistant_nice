@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +22,21 @@ def test_manifest_matches_hacs_metadata() -> None:
     assert manifest["iot_class"] == "local_polling"
     assert manifest["requirements"] == []
     assert hacs["homeassistant"] >= "2024.11.0"
+
+
+def test_manifest_and_project_versions_match() -> None:
+    """Release metadata uses one integration version."""
+    manifest = json.loads(
+        (
+            ROOT
+            / "custom_components"
+            / "nice_bidiwifi"
+            / "manifest.json"
+        ).read_text()
+    )
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+
+    assert manifest["version"] == project["project"]["version"]
 
 
 def test_required_brand_assets_exist() -> None:

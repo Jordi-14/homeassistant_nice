@@ -17,6 +17,15 @@ Do not commit or attach:
 
 Use fake values in examples and redact logs before opening issues.
 
+For larger requests involving Nice CORE, specialist Home Assistant platforms,
+installer writes, binding, schedules, or firmware, start with
+[Optional Future Additions](docs/future_additions.md). Those features require
+sanitized fixtures and hardware testing before implementation; installer and
+firmware work may still be declined when safe recovery cannot be proven.
+
+Prerelease installation, regression checks, reporting, and rollback are covered
+in [Beta Testing](docs/beta_testing.md).
+
 ## Discovery Toolbox
 
 This section collects the reusable discovery techniques that helped build the

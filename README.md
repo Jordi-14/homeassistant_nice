@@ -4,17 +4,19 @@
 [![Hassfest](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml/badge.svg)](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/Jordi-14/homeassistant_nice)](https://github.com/Jordi-14/homeassistant_nice/releases/latest)
 
-Custom Home Assistant integration for local control of compatible Nice gates
-and garage doors.
+Custom Home Assistant integration for local and optional verified-relay control
+of compatible Nice gates and garage doors.
 
-This integration talks directly to compatible local NHK/T4 services over
-TLS/TCP 443 and creates one `cover` entity plus helper diagnostic entities. The
-local TLS endpoint on tested BiDi-WiFi firmware uses a device certificate that
-cannot be validated against Home Assistant's normal trust store. The integration
-therefore keeps certificate verification disabled for this local socket and
-relies on LAN isolation plus the NHK credentials for access control.
+The integration uses the shared Nice NHK/T4 protocol over either a local
+TLS/TCP connection, the verified Nice relay, or the recommended local
+connection with cloud fallback. It creates a primary `cover` plus
+capability-driven control and diagnostic entities. The local endpoint on tested
+BiDi-WiFi firmware uses a device certificate that cannot be validated against
+Home Assistant's normal trust store, so local mode relies on LAN isolation and
+NHK credentials. Relay mode uses normal public certificate and hostname
+verification.
 
-Latest stable release: `v0.7.0`
+Latest stable release: `v0.7.5`
 
 ## Documentation
 
@@ -24,6 +26,8 @@ Latest stable release: `v0.7.0`
 | Run capability or CU_WIFI diagnostic probes | [Diagnostic Probes](docs/probes.md) |
 | Understand position, state, calibration, and the cover slider | [Position, State, and Calibration](docs/position_calibration.md) |
 | Choose which entities to show or enable | [Entity Reference](entity_reference.md) |
+| Install and report a prerelease | [Beta Testing](docs/beta_testing.md) |
+| Understand optional CORE, specialist, installer, or firmware work | [Optional Future Additions](docs/future_additions.md) |
 | Contribute new protocol findings or entities | [Contributing](CONTRIBUTING.md) |
 
 ## Features
@@ -146,12 +150,16 @@ break the integration.
 
 ## Requirements
 
-- The BiDi-WiFi must be reachable from Home Assistant on TCP 443.
-- The BiDi-WiFi should keep its normal network/cloud configuration.
-- MyNice/MyNice Pro should be closed while Home Assistant is using local control.
-- Network ACLs must allow Home Assistant to reach the BiDi IP on TCP 443.
+- Fully local and local-with-cloud-fallback entries need LAN reachability to the
+  Nice interface on TCP 443.
+- Fully cloud and fallback entries need outbound reachability to the configured
+  Nice relay with its public TLS certificate and hostname intact.
+- The Nice interface should keep its normal network/cloud configuration.
+- MyNice/MyNice Pro should be closed while Home Assistant is using local
+  control.
+- Network ACLs must allow only the routes selected for the entry.
 - No local IP address, MAC address, username, source/controller ID, or password
-  should be shared on github.
+  should be shared on GitHub.
 
 If Home Assistant and the BiDi-WiFi are on different VLANs, the firewall must
 allow Home Assistant to initiate TCP 443 connections to the BiDi-WiFi.
@@ -175,6 +183,9 @@ Integration
 
 Download it through HACS, restart Home Assistant, then add **Nice** from
 **Settings -> Devices & services**.
+
+Prereleases are available for deliberate testing. See
+[Beta Testing](docs/beta_testing.md) before installing one.
 
 ### Manual
 
@@ -283,6 +294,12 @@ safely.
 
 To map a new MyNice Pro control or diagnostic value, follow the discovery and
 capability-capture workflow in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Larger optional additions for CORE controllers, specialist platforms,
+installer workflows, and firmware are documented in
+[Optional Future Additions](docs/future_additions.md). They are feasible future
+work, not scheduled commitments, and require a feature request plus sanitized
+real-device evidence.
 
 ## Safety
 
