@@ -904,7 +904,13 @@ def test_live_position_calibration_requires_dense_monotonic_coverage(
         closed_position=None,
         open_position=None,
     )
-    seed.registers["NHK/T4InstantPositionScale"] = "percent"
+    seed = replace(
+        seed,
+        registers={
+            **seed.registers,
+            "NHK/T4InstantPositionScale": "percent",
+        },
+    )
     source = instance._calibration_position_source_for_status(seed)
     source.observed_values = {0.0, 25.0, 50.0, 75.0, 100.0}
     source.monotonic_transitions = 4
@@ -1649,7 +1655,9 @@ async def test_load_calibration_builds_report_from_stored_profile(
 
     await instance.async_load_calibration()
 
-    assert instance.calibration_profile is profile
+    assert instance.calibration_profile is not profile
+    assert instance.calibration_profile["mode"] == "encoder"
+    assert instance._calibration_store.saved == instance.calibration_profile
     assert instance.calibration_state == coordinator_module.CALIBRATION_STATE_CALIBRATED
     assert instance.calibration_report["point_count"] == 2
     assert instance.calibration_updated_at.isoformat() == profile["updated_at"]

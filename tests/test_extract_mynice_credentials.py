@@ -7,13 +7,14 @@ import sqlite3
 import subprocess
 import sys
 import zipfile
+from contextlib import closing
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "extract_mynice_credentials.py"
 
 
 def _create_db(path: Path) -> None:
-    with sqlite3.connect(path) as db:
+    with closing(sqlite3.connect(path)) as db, db:
         db.execute(
             """
             CREATE TABLE ZACCESSORYCREDENTIALENTITY (

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -11,6 +10,13 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_SOURCE_ID, CONF_TARGET_MAC
+from .redaction import (
+    SENSITIVE_CONFIG_KEYS,
+    allowed_config_diagnostics,
+    bounded_protocol_observations,
+    configured_secrets,
+    redact_text,
+)
 from .runtime import get_coordinator
 
 TO_REDACT = {
@@ -23,7 +29,51 @@ TO_REDACT = {
     "device_serial",
     "interface_serial",
     "serial_number",
+    *SENSITIVE_CONFIG_KEYS,
 }
+
+
+def _capability_diagnostics(capability) -> dict[str, Any]:
+    """Serialize one advertised capability through an explicit allowlist."""
+    return {
+        "owner": capability.owner,
+        "owner_id": capability.owner_id,
+        "name": capability.name,
+        "path": capability.path,
+        "value_type": capability.value_type,
+        "permission": capability.permission,
+        "values": capability.values,
+    }
+
+
+def _device_info_diagnostics(device_info) -> dict[str, Any] | None:
+    """Serialize INFO metadata through an explicit allowlist."""
+    if device_info is None:
+        return None
+    return {
+        "interface_hw_version": device_info.interface_hw_version,
+        "interface_fw_version": device_info.interface_fw_version,
+        "interface_manufacturer": device_info.interface_manufacturer,
+        "interface_product": device_info.interface_product,
+        "interface_serial": device_info.interface_serial,
+        "device_type": device_info.device_type,
+        "device_manufacturer": device_info.device_manufacturer,
+        "device_product": device_info.device_product,
+        "device_description": device_info.device_description,
+        "device_hw_version": device_info.device_hw_version,
+        "device_fw_version": device_info.device_fw_version,
+        "device_serial": device_info.device_serial,
+        "device_product_detail": device_info.device_product_detail,
+        "protocol_version": device_info.protocol_version,
+        "services": [
+            _capability_diagnostics(capability)
+            for capability in device_info.services
+        ],
+        "properties": [
+            _capability_diagnostics(capability)
+            for capability in device_info.properties
+        ],
+    }
 
 
 async def async_get_config_entry_diagnostics(
@@ -34,13 +84,16 @@ async def async_get_config_entry_diagnostics(
     coordinator = get_coordinator(entry)
     status = coordinator.data
     device_info = coordinator.device_info
+    command_result = getattr(coordinator, "last_command_result", None)
+    capabilities = getattr(coordinator, "capabilities", None)
+    secrets = configured_secrets(entry.data)
 
     diagnostics: dict[str, Any] = {
-        "entry": dict(entry.data),
+        "entry": allowed_config_diagnostics(entry.data),
         "connection": {
             "state": coordinator.connection_state,
             "status_polling_supported": coordinator.status_polling_supported,
-            "last_error": coordinator.last_error,
+            "last_error": redact_text(coordinator.last_error, secrets),
             "last_successful_update": (
                 coordinator.last_successful_update.isoformat()
                 if coordinator.last_successful_update
@@ -51,6 +104,16 @@ async def async_get_config_entry_diagnostics(
         "command": {
             "last_command": coordinator.last_command,
             "last_command_latency_ms": coordinator.last_command_latency_ms,
+            "acknowledgement": (
+                command_result.acknowledgement
+                if command_result is not None
+                else None
+            ),
+            "error_code": (
+                command_result.error_code
+                if command_result is not None
+                else None
+            ),
         },
         "status": {
             "state": status.state if status else None,
@@ -69,6 +132,11 @@ async def async_get_config_entry_diagnostics(
                 coordinator.position_simulation_speed_percent_per_second
             ),
             "is_moving": status.is_moving if status else None,
+            "protocol_observations": (
+                bounded_protocol_observations(status.registers)
+                if status
+                else {}
+            ),
             "bus_t4": {
                 "max_open_position": status.max_open_position if status else None,
                 "partial_open_1_position": status.partial_open_1_position if status else None,
@@ -107,7 +175,32 @@ async def async_get_config_entry_diagnostics(
                 "oxi_description": status.oxi_description if status else None,
             },
         },
-        "device_info": asdict(device_info) if device_info else None,
+        "device_info": _device_info_diagnostics(device_info),
+        "capabilities": (
+            {
+                "family": capabilities.family,
+                "profile_key": capabilities.profile_key,
+                "device_id": capabilities.device_id,
+                "high_level_actions": capabilities.high_level_actions,
+                "readable_status": capabilities.readable_status,
+                "obstruction": capabilities.obstruction,
+                "t4_allowed_mask": capabilities.t4_allowed_mask,
+                "supported_t4_action_codes": (
+                    sorted(capabilities.supported_t4_action_codes)
+                    if capabilities.supported_t4_action_codes is not None
+                    else None
+                ),
+                "observed_dmp_registers": sorted(
+                    capabilities.observed_dmp_registers
+                ),
+                "status_sources": sorted(capabilities.status_sources),
+                "position_sources": sorted(capabilities.position_sources),
+                "local_available": capabilities.local_available,
+                "relay_available": capabilities.relay_available,
+            }
+            if capabilities is not None
+            else None
+        ),
         "calibration": {
             "state": coordinator.calibration_state,
             "quality": coordinator.calibration_quality,

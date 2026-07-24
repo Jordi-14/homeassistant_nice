@@ -14,6 +14,8 @@ from custom_components.nice_bidiwifi import (
     async_unload_entry,
 )
 from custom_components.nice_bidiwifi.const import DOMAIN
+from custom_components.nice_bidiwifi.models.config import NiceEntryConfig
+from custom_components.nice_bidiwifi.runtime import NiceRuntimeData
 from tests.conftest import config_entry_data
 
 
@@ -25,6 +27,7 @@ class FakeCoordinator:
     def __init__(self, hass: HomeAssistant, entry: MockConfigEntry) -> None:
         self.hass = hass
         self.entry = entry
+        self.entry_config = NiceEntryConfig.from_mapping(entry.data, title=entry.title)
         self.loaded = False
         self.refreshed = False
         self.shutdown = False
@@ -58,7 +61,9 @@ async def test_setup_entry_loads_coordinator_and_forwards_platforms(
         result = await async_setup_entry(hass, entry)
 
     assert result is True
-    assert entry.runtime_data is FakeCoordinator.instances[0]
+    assert isinstance(entry.runtime_data, NiceRuntimeData)
+    assert entry.runtime_data.coordinator is FakeCoordinator.instances[0]
+    assert entry.runtime_data.config is FakeCoordinator.instances[0].entry_config
     assert FakeCoordinator.instances[0].loaded is True
     assert FakeCoordinator.instances[0].refreshed is True
     mock_forward.assert_called_once_with(entry, PLATFORMS)

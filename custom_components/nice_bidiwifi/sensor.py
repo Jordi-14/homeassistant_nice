@@ -13,16 +13,22 @@ from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfTempe
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
+from .entities.factory import (
+    NiceEntityDescriptionMixin,
+    build_described_entities,
+)
+from .entity import NiceCoordinatorEntity
 from .runtime import get_coordinator
 
 
 @dataclass(frozen=True, kw_only=True)
-class NiceBidiSensorEntityDescription(SensorEntityDescription):
+class NiceBidiSensorEntityDescription(
+    NiceEntityDescriptionMixin,
+    SensorEntityDescription,
+):
     """Description for a Nice sensor."""
 
     value_fn: Callable[[NiceBidiDataUpdateCoordinator], datetime | float | int | str | None]
@@ -37,33 +43,6 @@ def _hex_byte(value: int | None) -> str | None:
     if value is None:
         return None
     return f"0x{value:02X}"
-
-
-def _diagnostics_parameter_bytes(coordinator: NiceBidiDataUpdateCoordinator) -> bytes | None:
-    status = _status(coordinator)
-    if not status or not status.diagnostics_parameters:
-        return None
-    try:
-        value = bytes.fromhex(status.diagnostics_parameters)
-    except ValueError:
-        return None
-    if not value or all(byte in {0x00, 0xFF} for byte in value):
-        return None
-    return value
-
-
-def _diagnostics_u8(coordinator: NiceBidiDataUpdateCoordinator, index: int) -> int | None:
-    value = _diagnostics_parameter_bytes(coordinator)
-    if value is None or len(value) <= index:
-        return None
-    return value[index]
-
-
-def _motor_temperature(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
-    raw = _diagnostics_u8(coordinator, 15)
-    if raw is None:
-        return None
-    return raw - 9
 
 
 SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
@@ -324,7 +303,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=_motor_temperature,
+        value_fn=lambda coordinator: (
+            _status(coordinator).motor_temperature
+            if _status(coordinator)
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="service_voltage",
@@ -335,7 +318,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _diagnostics_u8(coordinator, 9),
+        value_fn=lambda coordinator: (
+            _status(coordinator).service_voltage
+            if _status(coordinator)
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="diagnostics_io_byte",
@@ -459,10 +446,17 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors from a config entry."""
     coordinator = get_coordinator(entry)
-    async_add_entities(NiceBidiSensor(coordinator, entry, description) for description in SENSORS)
+    async_add_entities(
+        build_described_entities(
+            coordinator,
+            entry,
+            SENSORS,
+            NiceBidiSensor,
+        )
+    )
 
 
-class NiceBidiSensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SensorEntity):
+class NiceBidiSensor(NiceCoordinatorEntity, SensorEntity):
     """Nice diagnostic sensor."""
 
     _attr_has_entity_name = True
@@ -476,24 +470,21 @@ class NiceBidiSensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SensorEnt
         description: NiceBidiSensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-        self._entry = entry
+        super().__init__(
+            coordinator,
+            entry,
+            platform_domain=SENSOR_DOMAIN,
+            unique_id_suffix=description.key,
+            name=description.name,
+            suggested_id_suffix=description.name,
+            description=description,
+        )
         self.entity_description = description
-        self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self._attr_name = description.name
-        self.entity_id = bidi_suggested_entity_id(SENSOR_DOMAIN, entry, description.name)
-        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
-        self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 
     @property
     def available(self) -> bool:
         """Return true if this sensor has a known value."""
         return self.native_value is not None
-
-    @property
-    def device_info(self):
-        """Return device info, enriched with INFO metadata when available."""
-        return bidi_device_info(self._entry, self.coordinator.device_info)
 
     @property
     def native_value(self) -> datetime | float | int | str | None:

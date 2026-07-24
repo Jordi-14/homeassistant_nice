@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
-from .client import NiceBidiAuthError, NiceBidiClient, NiceBidiConnectionError, NiceBidiCredentials
+from .client import NiceBidiAuthError, NiceBidiClient, NiceBidiConnectionError
 from .const import (
     CONF_SOURCE_ID,
     CONF_DEVICE_ID,
@@ -26,6 +26,8 @@ from .const import (
     DEFAULT_TIMEOUT,
     DOMAIN,
 )
+from .redaction import configured_secrets, redact_text
+from .models.config import NiceEntryConfig
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,19 +96,17 @@ def _merge_entry_data(entry: ConfigEntry, user_input: dict[str, Any]) -> dict[st
 
 
 def _test_connection(data: dict[str, Any]) -> None:
-    credentials = NiceBidiCredentials(
-        username=data[CONF_USERNAME],
-        password_hex=data[CONF_PASSWORD],
-        target_mac=data[CONF_TARGET_MAC],
-        source_id=data.get(CONF_SOURCE_ID) or None,
-    )
+    config = NiceEntryConfig.from_mapping(data)
+    endpoint = config.connection.local
+    if endpoint is None:
+        raise ValueError("Local setup requires a local endpoint")
     client = NiceBidiClient(
-        host=data[CONF_HOST],
-        port=data[CONF_PORT],
-        credentials=credentials,
-        device_id=data.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID),
+        host=endpoint.host,
+        port=endpoint.port,
+        credentials=config.credentials,
+        device_id=config.device_id,
         timeout=DEFAULT_TIMEOUT,
-        t4_timeout_ms=data.get(CONF_T4_TIMEOUT_MS, DEFAULT_T4_TIMEOUT_MS),
+        t4_timeout_ms=config.t4_timeout_ms,
     )
     try:
         client.test_connection()
@@ -126,15 +126,6 @@ def _error_from_exception(err: Exception) -> str:
     return "unknown"
 
 
-def _redact_known_values(message: str, data: dict[str, Any]) -> str:
-    redacted = message
-    for key in (CONF_USERNAME, CONF_PASSWORD, CONF_SOURCE_ID, CONF_TARGET_MAC):
-        value = data.get(key)
-        if value:
-            redacted = redacted.replace(str(value), "<redacted>")
-    return redacted
-
-
 def _log_validation_failure(step: str, data: dict[str, Any], err: Exception) -> None:
     """Log a setup validation failure without exposing extracted credentials."""
     _LOGGER.warning(
@@ -146,7 +137,7 @@ def _log_validation_failure(step: str, data: dict[str, Any], err: Exception) -> 
         data.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID),
         data.get(CONF_T4_TIMEOUT_MS, DEFAULT_T4_TIMEOUT_MS),
         err.__class__.__name__,
-        _redact_known_values(str(err), data),
+        redact_text(str(err), configured_secrets(data)),
     )
 
 

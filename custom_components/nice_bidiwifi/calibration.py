@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import json
 import logging
@@ -38,6 +37,17 @@ from .calibration_constants import (
     CALIBRATION_TARGETS,
     CALIBRATION_TIME_FULL_TRAVEL_ATTEMPTS,
 )
+from .calibration_estimator import (
+    calibration_attempt_abs_error,
+    calibration_attempt_successful,
+    calibration_attempt_valid,
+    calibration_attempts_stable,
+    calibration_success_count,
+    interpolate_stop_percent,
+    median_time_travel_duration_ms,
+    select_calibration_sample,
+    select_time_travel_sample,
+)
 from .calibration_report import (
     build_calibration_report,
     build_live_calibration_report,
@@ -47,6 +57,8 @@ from .calibration_report import (
     format_calibration_report,
 )
 from .calibration_types import CalibrationEvent, CalibrationProfile, CalibrationReport
+from .calibration_state import CalibrationState, CalibrationStateMachine
+from .calibration_storage import migrate_calibration_profile
 from .client import (
     NiceBidiAuthError,
     NiceBidiConnectionError,
@@ -59,6 +71,9 @@ from .client import (
 )
 from .connection import CONNECTION_STATE_AUTH_FAILED, CONNECTION_STATE_FAILED
 from .const import DOMAIN, ERROR_UPDATE_INTERVAL
+from .controllers.base import OwnerBoundController
+from .errors import NiceCalibrationError
+from .models.calibration import CalibrationMode, CalibrationPositionSource
 from .position import (
     POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR,
     POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND,
@@ -68,38 +83,34 @@ from .position import (
 
 _LOGGER = logging.getLogger(__name__)
 
-CALIBRATION_MODE_ENCODER = "encoder"
-CALIBRATION_MODE_LIVE_PERCENT = "live_percent"
-CALIBRATION_MODE_LIVE_SCALAR = "live_scalar"
-CALIBRATION_MODE_TIME = "time"
+__all__ = [
+    "CALIBRATION_STATE_CALIBRATED",
+    "CALIBRATION_STATE_CANCELLED",
+    "CALIBRATION_STATE_FAILED",
+    "CALIBRATION_STATE_NOT_CALIBRATED",
+]
+
+CALIBRATION_MODE_ENCODER = CalibrationMode.ENCODER
+CALIBRATION_MODE_LIVE_PERCENT = CalibrationMode.LIVE_PERCENT
+CALIBRATION_MODE_LIVE_SCALAR = CalibrationMode.LIVE_SCALAR
+CALIBRATION_MODE_TIME = CalibrationMode.TIME
 CALIBRATION_LIVE_MIN_UNIQUE_SAMPLES = 6
 CALIBRATION_LIVE_MIN_MONOTONIC_TRANSITIONS = 4
 CALIBRATION_LIVE_MIN_SPAN_PERCENT = 60.0
 CALIBRATION_LIVE_MAX_GAP_PERCENT = 15.0
 
 
-@dataclass
-class _CalibrationPositionSource:
-    """Position source selected during one calibration run."""
-
-    mode: str
-    scalar_closed_raw: int | None = None
-    scalar_open_raw: int | None = None
-    scalar_min_raw: int | None = None
-    scalar_max_raw: int | None = None
-    observed_values: set[float] = field(default_factory=set)
-    last_moving_value: dict[str, float] = field(default_factory=dict)
-    monotonic_transitions: int = 0
-    direction_violations: int = 0
+_CalibrationPositionSource = CalibrationPositionSource
 
 
-class NiceBidiCalibrationMixin:
+class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoordinator"]):
     """Calibration state, movement routine, and report behavior."""
 
     def _init_calibration_state(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize calibration-related runtime state."""
         self._calibration_task: asyncio.Task[None] | None = None
-        self.calibration_state = CALIBRATION_STATE_NOT_CALIBRATED
+        self._calibration_state_machine = CalibrationStateMachine()
+        self.calibration_state = self._calibration_state_machine.state
         self.calibration_last_error: str | None = None
         self.calibration_updated_at: datetime | None = None
         self.calibration_profile: CalibrationProfile | None = None
@@ -123,7 +134,7 @@ class NiceBidiCalibrationMixin:
             self.calibration_profile = None
             self.calibration_report = None
             self.calibration_updated_at = None
-            self.calibration_state = CALIBRATION_STATE_NOT_CALIBRATED
+            self._set_calibration_state(CalibrationState.NOT_CALIBRATED)
             self.calibration_last_error = f"Stored calibration could not be loaded: {err}"
             _LOGGER.warning("Nice stored calibration could not be loaded: %s", err)
             return
@@ -132,14 +143,26 @@ class NiceBidiCalibrationMixin:
             self.calibration_profile = None
             self.calibration_report = None
             self.calibration_updated_at = None
-            self.calibration_state = CALIBRATION_STATE_NOT_CALIBRATED
+            self._set_calibration_state(CalibrationState.NOT_CALIBRATED)
             self.calibration_last_error = None
             return
 
-        self.calibration_profile = stored_profile
-        self.calibration_state = CALIBRATION_STATE_CALIBRATED
+        try:
+            profile, migrated = migrate_calibration_profile(stored_profile)
+        except ValueError as err:
+            self.calibration_profile = None
+            self.calibration_report = None
+            self.calibration_updated_at = None
+            self._set_calibration_state(CalibrationState.NOT_CALIBRATED)
+            self.calibration_last_error = f"Stored calibration is not supported: {err}"
+            return
+
+        self.calibration_profile = profile
+        self._set_calibration_state(CalibrationState.CALIBRATED)
         self.calibration_last_error = None
-        self.calibration_report = self._build_calibration_report(stored_profile)
+        self.calibration_report = self._build_calibration_report(profile)
+        if migrated:
+            await self._calibration_store.async_save(profile)
         updated_at = self.calibration_profile.get("updated_at")
         if isinstance(updated_at, str):
             with suppress(ValueError):
@@ -195,7 +218,7 @@ class NiceBidiCalibrationMixin:
         self.calibration_cancel_stop_requested = False
         self.calibration_cancel_stop_sent = False
         self._calibration_started_monotonic = time.monotonic()
-        self.calibration_state = CALIBRATION_STATE_RUNNING
+        self._set_calibration_state(CalibrationState.RUNNING)
         self.calibration_last_error = None
         self.calibration_report = self._build_live_calibration_report("Calibration started")
         self._add_calibration_event(
@@ -222,7 +245,7 @@ class NiceBidiCalibrationMixin:
             self._add_calibration_event("run", "Position calibration completed")
             profile["events"] = list(self._calibration_events)
             self.calibration_profile = profile
-            self.calibration_state = CALIBRATION_STATE_CALIBRATED
+            self._set_calibration_state(CalibrationState.CALIBRATED)
             self.calibration_last_error = None
             self.calibration_report = self._build_calibration_report(profile)
             updated_at = profile.get("updated_at")
@@ -239,7 +262,7 @@ class NiceBidiCalibrationMixin:
             )
             last_event = self._calibration_events[-1] if self._calibration_events else None
             status = self.data
-            self.calibration_state = CALIBRATION_STATE_CANCELLED
+            self._set_calibration_state(CalibrationState.CANCELLED)
             self.calibration_last_error = f"cancelled: {reason}"
             self._add_calibration_event(
                 "run",
@@ -256,8 +279,14 @@ class NiceBidiCalibrationMixin:
             if self.calibration_cancel_reason is None:
                 self._log_calibration_report(self.calibration_report, f"cancelled ({reason})")
             raise
-        except (NiceBidiAuthError, NiceBidiConnectionError, OSError, HomeAssistantError) as err:
-            self.calibration_state = CALIBRATION_STATE_FAILED
+        except (
+            NiceBidiAuthError,
+            NiceBidiConnectionError,
+            NiceCalibrationError,
+            OSError,
+            HomeAssistantError,
+        ) as err:
+            self._set_calibration_state(CalibrationState.FAILED)
             self.calibration_last_error = str(err)
             self._add_calibration_event("run", "Position calibration failed", error=str(err))
             self.calibration_report = self._build_live_calibration_report("Calibration failed")
@@ -268,6 +297,13 @@ class NiceBidiCalibrationMixin:
             if self._calibration_task is task:
                 self._calibration_task = None
             self.async_update_listeners()
+
+    def _set_calibration_state(
+        self,
+        state: CalibrationState | str,
+    ) -> None:
+        """Apply one validated calibration lifecycle transition."""
+        self.calibration_state = self._calibration_state_machine.transition(state)
 
     async def _async_build_position_calibration(self) -> CalibrationProfile:
         """Build a direction-specific calibration profile."""
@@ -806,45 +842,10 @@ class NiceBidiCalibrationMixin:
 
         raise HomeAssistantError(f"Timed out measuring full {action} speed")
 
-    @staticmethod
-    def _median_time_travel_duration_ms(samples: list[dict[str, Any]]) -> int | None:
-        """Return the median duration from time-based full-travel samples."""
-        durations = [
-            sample["duration_ms"]
-            for sample in samples
-            if isinstance(sample.get("duration_ms"), int) and sample["duration_ms"] > 0
-        ]
-        if not durations:
-            return None
-        sorted_durations = sorted(durations)
-        return sorted_durations[len(sorted_durations) // 2]
-
-    @staticmethod
-    def _select_time_travel_sample(action: str, samples: list[dict[str, Any]]) -> dict[str, Any]:
-        """Select the median duration sample for one time-calibrated direction."""
-        valid_samples = [
-            sample
-            for sample in samples
-            if isinstance(sample.get("duration_ms"), int) and sample["duration_ms"] > 0
-        ]
-        if not valid_samples:
-            raise HomeAssistantError(f"Position calibration produced no timed {action} samples")
-
-        selected = sorted(valid_samples, key=lambda sample: sample["duration_ms"])[len(valid_samples) // 2]
-        result = dict(selected)
-        result.update(
-            {
-                "selection_strategy": "median_duration",
-                "selected_attempt": selected.get("attempt"),
-                "measurement_count": len(valid_samples),
-                "duration_samples_ms": [sample["duration_ms"] for sample in valid_samples],
-                "speed_samples_percent_per_second": [
-                    sample.get("speed_percent_per_second") for sample in valid_samples
-                ],
-                "samples": valid_samples,
-            }
-        )
-        return result
+    _median_time_travel_duration_ms = staticmethod(
+        median_time_travel_duration_ms
+    )
+    _select_time_travel_sample = staticmethod(select_time_travel_sample)
 
     async def _async_move_to_end_with_position_source(
         self,
@@ -1553,148 +1554,49 @@ class NiceBidiCalibrationMixin:
             "attempts": attempts,
         }
 
-    @staticmethod
-    def _calibration_attempt_valid(attempt: dict[str, Any]) -> bool:
-        """Return true if an attempt should be used for learned stop thresholds."""
-        return attempt.get("valid", True) is not False
-
-    @staticmethod
-    def _calibration_attempt_abs_error(attempt: dict[str, Any]) -> float:
-        """Return an attempt's absolute percentage error."""
-        if not NiceBidiCalibrationMixin._calibration_attempt_valid(attempt):
-            return 1000.0
-        try:
-            return abs(float(attempt.get("error_percent", 1000.0)))
-        except (TypeError, ValueError):
-            return 1000.0
+    _calibration_attempt_valid = staticmethod(calibration_attempt_valid)
+    _calibration_attempt_abs_error = staticmethod(
+        calibration_attempt_abs_error
+    )
 
     @staticmethod
     def _calibration_attempt_successful(attempt: dict[str, Any]) -> bool:
-        """Return true if an attempt finished inside the target tolerance."""
-        return (
-            NiceBidiCalibrationMixin._calibration_attempt_valid(attempt)
-            and NiceBidiCalibrationMixin._calibration_attempt_abs_error(attempt)
-            <= CALIBRATION_TARGET_TOLERANCE_PERCENT
+        """Return whether an attempt is inside the configured tolerance."""
+        return calibration_attempt_successful(
+            attempt,
+            tolerance_percent=CALIBRATION_TARGET_TOLERANCE_PERCENT,
         )
 
     @staticmethod
     def _calibration_success_count(attempts: list[dict[str, Any]]) -> int:
-        """Return how many attempts finished inside the calibration tolerance."""
-        return sum(
-            1
-            for attempt in attempts
-            if NiceBidiCalibrationMixin._calibration_attempt_successful(attempt)
+        """Return the number of attempts inside the configured tolerance."""
+        return calibration_success_count(
+            attempts,
+            tolerance_percent=CALIBRATION_TARGET_TOLERANCE_PERCENT,
         )
 
     @staticmethod
-    def _calibration_attempts_stable(attempts: list[dict[str, Any]]) -> bool:
-        """Return true when any consecutive attempts show repeatable accuracy."""
-        if len(attempts) < CALIBRATION_STABILITY_ATTEMPTS:
-            return False
-        for start in range(0, len(attempts) - CALIBRATION_STABILITY_ATTEMPTS + 1):
-            window = attempts[start : start + CALIBRATION_STABILITY_ATTEMPTS]
-            if (
-                NiceBidiCalibrationMixin._calibration_success_count(window)
-                == CALIBRATION_STABILITY_ATTEMPTS
-            ):
-                return True
-        return False
+    def _calibration_attempts_stable(
+        attempts: list[dict[str, Any]],
+    ) -> bool:
+        """Return whether attempts satisfy the configured stability rule."""
+        return calibration_attempts_stable(
+            attempts,
+            tolerance_percent=CALIBRATION_TARGET_TOLERANCE_PERCENT,
+            stability_attempts=CALIBRATION_STABILITY_ATTEMPTS,
+        )
 
     @staticmethod
-    def _select_calibration_sample(attempts: list[dict[str, Any]]) -> dict[str, Any]:
-        """Choose the calibration result that should be stored for one target."""
-        if not attempts:
-            raise HomeAssistantError("Position calibration produced no attempts")
-
-        ignored_invalid_attempts = [
-            int(attempt["attempt"])
-            for attempt in attempts
-            if not NiceBidiCalibrationMixin._calibration_attempt_valid(attempt)
-            and isinstance(attempt.get("attempt"), int)
-        ]
-        valid_attempts = [
-            attempt
-            for attempt in attempts
-            if NiceBidiCalibrationMixin._calibration_attempt_valid(attempt)
-        ]
-        ignored_outliers = [
-            int(attempt["attempt"])
-            for attempt in valid_attempts
-            if NiceBidiCalibrationMixin._calibration_attempt_abs_error(attempt)
-            > CALIBRATION_OUTLIER_ERROR_PERCENT
-            and isinstance(attempt.get("attempt"), int)
-        ]
-        stable_windows: list[tuple[float, int, list[dict[str, Any]]]] = []
-        for start in range(0, len(attempts) - CALIBRATION_STABILITY_ATTEMPTS + 1):
-            window = attempts[start : start + CALIBRATION_STABILITY_ATTEMPTS]
-            if (
-                NiceBidiCalibrationMixin._calibration_success_count(window)
-                != CALIBRATION_STABILITY_ATTEMPTS
-            ):
-                continue
-            avg_abs_error = sum(
-                NiceBidiCalibrationMixin._calibration_attempt_abs_error(attempt)
-                for attempt in window
-            ) / len(window)
-            stable_windows.append((avg_abs_error, start, window))
-
-        if stable_windows:
-            avg_abs_error, _, selected_window = min(
-                stable_windows,
-                key=lambda item: (item[0], -item[1]),
-            )
-            selected_sample = min(
-                selected_window,
-                key=NiceBidiCalibrationMixin._calibration_attempt_abs_error,
-            )
-            return {
-                "sample": selected_sample,
-                "strategy": "stable_window",
-                "selected_attempt": selected_sample.get("attempt"),
-                "selected_attempts": [attempt.get("attempt") for attempt in selected_window],
-                "selected_window_avg_abs_error_percent": round(avg_abs_error, 2),
-                "selected_abs_error_percent": round(
-                    NiceBidiCalibrationMixin._calibration_attempt_abs_error(selected_sample), 2
-                ),
-                "ignored_outlier_attempts": ignored_outliers,
-                "ignored_invalid_attempts": ignored_invalid_attempts,
-            }
-
-        non_outlier_attempts = [
-            attempt
-            for attempt in valid_attempts
-            if NiceBidiCalibrationMixin._calibration_attempt_abs_error(attempt)
-            <= CALIBRATION_OUTLIER_ERROR_PERCENT
-        ]
-        candidates = non_outlier_attempts or valid_attempts
-        if not candidates:
-            selected_sample = attempts[-1]
-            return {
-                "sample": selected_sample,
-                "strategy": "no_valid_attempt",
-                "selected_attempt": selected_sample.get("attempt"),
-                "selected_attempts": [],
-                "selected_window_avg_abs_error_percent": None,
-                "selected_abs_error_percent": None,
-                "ignored_outlier_attempts": ignored_outliers,
-                "ignored_invalid_attempts": ignored_invalid_attempts,
-            }
-        selected_sample = min(
-            candidates,
-            key=NiceBidiCalibrationMixin._calibration_attempt_abs_error,
+    def _select_calibration_sample(
+        attempts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Select a sample using the configured estimator policy."""
+        return select_calibration_sample(
+            attempts,
+            tolerance_percent=CALIBRATION_TARGET_TOLERANCE_PERCENT,
+            stability_attempts=CALIBRATION_STABILITY_ATTEMPTS,
+            outlier_error_percent=CALIBRATION_OUTLIER_ERROR_PERCENT,
         )
-        return {
-            "sample": selected_sample,
-            "strategy": "best_non_outlier_attempt" if non_outlier_attempts else "best_attempt",
-            "selected_attempt": selected_sample.get("attempt"),
-            "selected_attempts": [selected_sample.get("attempt")],
-            "selected_window_avg_abs_error_percent": None,
-            "selected_abs_error_percent": round(
-                NiceBidiCalibrationMixin._calibration_attempt_abs_error(selected_sample), 2
-            ),
-            "ignored_outlier_attempts": ignored_outliers,
-            "ignored_invalid_attempts": ignored_invalid_attempts,
-        }
 
     async def _async_calibrate_target(
         self,
@@ -2247,19 +2149,7 @@ class NiceBidiCalibrationMixin:
             return None
         return sum(speeds) / len(speeds)
 
-    @staticmethod
-    def _interpolate_stop_percent(target: float, points: list[tuple[float, float]]) -> float:
-        """Interpolate a corrected stop percentage from calibration points."""
-        previous_target, previous_stop = points[0]
-        for next_target, next_stop in points[1:]:
-            if target <= next_target:
-                if next_target == previous_target:
-                    return max(0.0, min(100.0, next_stop))
-                ratio = (target - previous_target) / (next_target - previous_target)
-                stop = previous_stop + ((next_stop - previous_stop) * ratio)
-                return max(0.0, min(100.0, stop))
-            previous_target, previous_stop = next_target, next_stop
-        return max(0.0, min(100.0, points[-1][1]))
+    _interpolate_stop_percent = staticmethod(interpolate_stop_percent)
 
     def _calibration_position_source_for_status(
         self,

@@ -8,14 +8,27 @@ from homeassistant.components.cover import DOMAIN as COVER_DOMAIN, ATTR_POSITION
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_PARTIALLY_OPEN, STATE_STOPPED, NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
+from .entities.factory import (
+    NiceCapabilityKey,
+    NiceCoreEntityDescription,
+    build_described_entities,
+    entity_support,
+    EntitySupport,
+)
+from .entity import NiceCoordinatorEntity
 from .runtime import get_coordinator
 
 PARALLEL_UPDATES = 1
+
+COVERS = (
+    NiceCoreEntityDescription(
+        key="cover",
+        required_capability=NiceCapabilityKey.OPEN_CLOSE,
+    ),
+)
 
 
 async def async_setup_entry(
@@ -25,10 +38,20 @@ async def async_setup_entry(
 ) -> None:
     """Set up cover from a config entry."""
     coordinator = get_coordinator(entry)
-    async_add_entities([NiceBidiCover(coordinator, entry)])
+    async_add_entities(
+        build_described_entities(
+            coordinator,
+            entry,
+            COVERS,
+            lambda entity_coordinator, entity_entry, _description: NiceBidiCover(
+                entity_coordinator,
+                entity_entry,
+            ),
+        )
+    )
 
 
-class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntity):
+class NiceBidiCover(NiceCoordinatorEntity, CoverEntity):
     """Nice gate cover."""
 
     _attr_device_class = CoverDeviceClass.GATE
@@ -36,11 +59,14 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
 
     def __init__(self, coordinator: NiceBidiDataUpdateCoordinator, entry: ConfigEntry) -> None:
         """Initialize the cover."""
-        super().__init__(coordinator)
-        self._entry = entry
-        self._attr_unique_id = bidi_unique_id(entry, "cover")
-        self._attr_name = None
-        self.entity_id = bidi_suggested_entity_id(COVER_DOMAIN, entry)
+        super().__init__(
+            coordinator,
+            entry,
+            platform_domain=COVER_DOMAIN,
+            unique_id_suffix="cover",
+            name=None,
+            suggested_id_suffix=None,
+        )
 
     @property
     def supported_features(self) -> CoverEntityFeature:
@@ -51,14 +77,14 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
         return features
 
     @property
-    def device_info(self):
-        """Return device info, enriched with INFO metadata when available."""
-        return bidi_device_info(self._entry, self.coordinator.device_info)
-
-    @property
     def available(self) -> bool:
         """Return true if the latest coordinator update succeeded."""
-        return self.coordinator.last_update_success and self.status is not None
+        return (
+            self.coordinator.last_update_success
+            and self.status is not None
+            and entity_support(self.coordinator, COVERS[0])
+            is not EntitySupport.UNSUPPORTED
+        )
 
     @property
     def status(self) -> NiceBidiStatus | None:
@@ -128,7 +154,6 @@ class NiceBidiCover(CoordinatorEntity[NiceBidiDataUpdateCoordinator], CoverEntit
             "position_calibration_state": self.coordinator.calibration_state,
             "position_calibration_quality": self.coordinator.calibration_quality,
             "position_calibration_updated_at": self.coordinator.calibration_updated_at,
-            "dmp_registers": status.registers,
         }
 
     async def async_open_cover(self, **kwargs: Any) -> None:

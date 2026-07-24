@@ -17,12 +17,19 @@ def load_client_module(repo_root: Path) -> ModuleType:
         if err.name != "homeassistant" and not (err.name or "").startswith("homeassistant."):
             raise
 
-    module_name = "nice_bidiwifi_standalone_client"
+    package_name = "custom_components.nice_bidiwifi"
+    package_path = repo_root / "custom_components" / "nice_bidiwifi"
+    package = ModuleType(package_name)
+    package.__path__ = [str(package_path)]
+    package.__package__ = package_name
+    sys.modules[package_name] = package
+
+    module_name = f"{package_name}.client"
     existing = sys.modules.get(module_name)
     if existing is not None:
         return existing
 
-    client_path = repo_root / "custom_components" / "nice_bidiwifi" / "client.py"
+    client_path = package_path / "client.py"
     spec = importlib.util.spec_from_file_location(module_name, client_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load Nice client from {client_path}")

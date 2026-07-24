@@ -26,6 +26,8 @@ from custom_components.nice_bidiwifi.const import (
     CONF_T4_TIMEOUT_MS,
     CONF_TARGET_MAC,
 )
+from custom_components.nice_bidiwifi.protocol.t4.settings import DmpSetting
+from custom_components.nice_bidiwifi.write_policy import dmp_write_block_reason
 
 
 @pytest.fixture(autouse=True)
@@ -95,6 +97,11 @@ def make_status(
     oxi_product: str | None = "OXI",
 ) -> NiceBidiStatus:
     """Create a Nice status object."""
+    diagnostic_bytes = (
+        bytes.fromhex(diagnostics_parameters)
+        if diagnostics_parameters
+        else b""
+    )
     return NiceBidiStatus(
         state=state,
         position=position,
@@ -130,6 +137,16 @@ def make_status(
         key_lock=key_lock,
         last_stop_reason=last_stop_reason,
         diagnostics_parameters=diagnostics_parameters,
+        motor_temperature=(
+            diagnostic_bytes[15] - 9
+            if len(diagnostic_bytes) > 15
+            else None
+        ),
+        service_voltage=(
+            diagnostic_bytes[9]
+            if len(diagnostic_bytes) > 9
+            else None
+        ),
         oxi_detected=oxi_detected,
         oxi_product=oxi_product,
     )
@@ -373,3 +390,27 @@ class FakeCoordinator:
     ) -> None:
         """Record a DMP write."""
         self.calls.append(("dmp_write", (group, parameter, value, size)))
+
+    async def async_write_setting(
+        self,
+        setting: DmpSetting,
+        value: int,
+    ) -> None:
+        """Record a semantic DMP setting write."""
+        await self.async_write_dmp_register(
+            setting.group,
+            setting.parameter,
+            value,
+            size=setting.size,
+        )
+
+    def setting_write_block_reason(
+        self,
+        setting: DmpSetting,
+    ) -> str | None:
+        """Return the production device-specific setting block reason."""
+        return dmp_write_block_reason(
+            self.device_info,
+            setting.group,
+            setting.parameter,
+        )

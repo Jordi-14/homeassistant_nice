@@ -10,7 +10,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import (
     DEP_ACTION_COURTESY_LIGHT,
@@ -23,19 +22,25 @@ from .client import (
     DEP_ACTION_UNLOCK,
 )
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
+from .entities.factory import (
+    NiceEntityDescriptionMixin,
+    build_described_entities,
+)
+from .entity import NiceCoordinatorEntity
 from .runtime import get_coordinator
 
 PARALLEL_UPDATES = 1
 
 
 @dataclass(frozen=True, kw_only=True)
-class NiceBidiButtonEntityDescription(ButtonEntityDescription):
+class NiceBidiButtonEntityDescription(
+    NiceEntityDescriptionMixin,
+    ButtonEntityDescription,
+):
     """Description for a Nice button."""
 
     press_fn: Callable[[NiceBidiDataUpdateCoordinator], Awaitable[None]]
     available_when_offline: bool = False
-    supported_fn: Callable[[NiceBidiDataUpdateCoordinator], bool] | None = None
 
 
 def _partial_open_position_known(
@@ -139,10 +144,17 @@ async def async_setup_entry(
 ) -> None:
     """Set up buttons from a config entry."""
     coordinator = get_coordinator(entry)
-    async_add_entities(NiceBidiButton(coordinator, entry, description) for description in BUTTONS)
+    async_add_entities(
+        build_described_entities(
+            coordinator,
+            entry,
+            BUTTONS,
+            NiceBidiButton,
+        )
+    )
 
 
-class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEntity):
+class NiceBidiButton(NiceCoordinatorEntity, ButtonEntity):
     """Nice diagnostic button."""
 
     _attr_has_entity_name = True
@@ -156,19 +168,16 @@ class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEnt
         description: NiceBidiButtonEntityDescription,
     ) -> None:
         """Initialize the button."""
-        super().__init__(coordinator)
-        self._entry = entry
+        super().__init__(
+            coordinator,
+            entry,
+            platform_domain=BUTTON_DOMAIN,
+            unique_id_suffix=description.key,
+            name=description.name,
+            suggested_id_suffix=description.name,
+            description=description,
+        )
         self.entity_description = description
-        self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self._attr_name = description.name
-        self.entity_id = bidi_suggested_entity_id(BUTTON_DOMAIN, entry, description.name)
-        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
-        self._attr_entity_registry_visible_default = description.entity_registry_visible_default
-
-    @property
-    def device_info(self):
-        """Return device info, enriched with INFO metadata when available."""
-        return bidi_device_info(self._entry, self.coordinator.device_info)
 
     @property
     def available(self) -> bool:

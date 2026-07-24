@@ -8,6 +8,7 @@ import json
 import sqlite3
 import tempfile
 import zipfile
+from contextlib import closing
 from pathlib import Path, PurePosixPath
 
 _KNOWN_SQLITE_NAMES = {
@@ -56,7 +57,9 @@ def _find_sqlite_candidates(root: Path) -> list[Path]:
 
 
 def _read_credentials_from_database(path: Path, mac: str | None) -> dict[str, object] | None:
-    with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as db:
+    with closing(
+        sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    ) as db:
         db.row_factory = sqlite3.Row
         if mac:
             row = db.execute(

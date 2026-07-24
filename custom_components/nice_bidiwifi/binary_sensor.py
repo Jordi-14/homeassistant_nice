@@ -10,19 +10,27 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_PARTIALLY_OPEN, STATE_STOPPED, NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
+from .entities.factory import (
+    NiceCapabilityKey,
+    NiceEntityDescriptionMixin,
+    build_described_entities,
+)
+from .entity import NiceCoordinatorEntity
 from .runtime import get_coordinator
 
 
 @dataclass(frozen=True, kw_only=True)
-class NiceBidiBinarySensorEntityDescription(BinarySensorEntityDescription):
+class NiceBidiBinarySensorEntityDescription(
+    NiceEntityDescriptionMixin,
+    BinarySensorEntityDescription,
+):
     """Description for a Nice binary sensor."""
 
     value_fn: Callable[[NiceBidiStatus], bool | None]
+    required_capability: NiceCapabilityKey = NiceCapabilityKey.STATUS
 
 
 def _gate_open(status: NiceBidiStatus) -> bool | None:
@@ -166,10 +174,17 @@ async def async_setup_entry(
 ) -> None:
     """Set up binary sensors from a config entry."""
     coordinator = get_coordinator(entry)
-    async_add_entities(NiceBidiBinarySensor(coordinator, entry, description) for description in BINARY_SENSORS)
+    async_add_entities(
+        build_described_entities(
+            coordinator,
+            entry,
+            BINARY_SENSORS,
+            NiceBidiBinarySensor,
+        )
+    )
 
 
-class NiceBidiBinarySensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], BinarySensorEntity):
+class NiceBidiBinarySensor(NiceCoordinatorEntity, BinarySensorEntity):
     """Nice BusT4 binary diagnostic sensor."""
 
     _attr_has_entity_name = True
@@ -183,19 +198,16 @@ class NiceBidiBinarySensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Bin
         description: NiceBidiBinarySensorEntityDescription,
     ) -> None:
         """Initialize the binary sensor."""
-        super().__init__(coordinator)
-        self._entry = entry
+        super().__init__(
+            coordinator,
+            entry,
+            platform_domain=BINARY_SENSOR_DOMAIN,
+            unique_id_suffix=description.key,
+            name=description.name,
+            suggested_id_suffix=description.name,
+            description=description,
+        )
         self.entity_description = description
-        self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self._attr_name = description.name
-        self.entity_id = bidi_suggested_entity_id(BINARY_SENSOR_DOMAIN, entry, description.name)
-        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
-        self._attr_entity_registry_visible_default = description.entity_registry_visible_default
-
-    @property
-    def device_info(self):
-        """Return device info, enriched with INFO metadata when available."""
-        return bidi_device_info(self._entry, self.coordinator.device_info)
 
     @property
     def is_on(self) -> bool | None:

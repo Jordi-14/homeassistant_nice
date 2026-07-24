@@ -12,7 +12,7 @@ from homeassistant.util import slugify
 
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .const import DEFAULT_NAME, DOMAIN
-from .runtime import get_coordinator
+from .runtime import NiceRuntimeData, get_coordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -80,7 +80,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_load_calibration()
     await coordinator.async_config_entry_first_refresh()
 
-    entry.runtime_data = coordinator
+    entry.runtime_data = NiceRuntimeData(
+        coordinator=coordinator,
+        config=coordinator.entry_config,
+    )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

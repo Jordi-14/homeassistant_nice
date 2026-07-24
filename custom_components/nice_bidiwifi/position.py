@@ -25,6 +25,8 @@ from .client import (
 )
 from .connection import CONNECTION_STATE_AUTH_FAILED, CONNECTION_STATE_FAILED
 from .const import DOMAIN, ERROR_UPDATE_INTERVAL, IDLE_UPDATE_INTERVAL, MOVING_UPDATE_INTERVAL
+from .controllers.base import OwnerBoundController
+from .models.position import NicePosition, resolve_position
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,7 +44,7 @@ POSITION_TARGET_LIVE_POSITION_TOLERANCE = 0.5
 POSITION_TARGET_LIVE_SPEED_MARGIN = 3.0
 
 
-class NiceBidiPositionMixin:
+class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordinator"]):
     """Position display, simulation, and target-position behavior."""
 
     def _init_position_state(self) -> None:
@@ -224,15 +226,19 @@ class NiceBidiPositionMixin:
         return replace(status, position=round(percent, 1), registers=updated_registers)
 
     @property
+    def position_snapshot(self) -> NicePosition | None:
+        """Return the normalized position with provenance and confidence."""
+        return resolve_position(
+            self.data,
+            simulated=self._current_simulated_position(),
+            last_known=self._last_known_position,
+        )
+
+    @property
     def display_position(self) -> float | None:
-        """Return the position HA should display, using simulation while active."""
-        simulated = self._current_simulated_position()
-        if simulated is not None:
-            return round(simulated, 1)
-        status = self.data
-        if status is None:
-            return None
-        return status.position if status.position is not None else self._last_known_position
+        """Return the position HA should display."""
+        position = self.position_snapshot
+        return round(position.value, 1) if position is not None else None
 
     @property
     def position_reporting_observed(self) -> bool:
@@ -245,10 +251,8 @@ class NiceBidiPositionMixin:
     @property
     def display_position_estimated(self) -> bool:
         """Return true when the displayed position is currently estimated."""
-        if self._current_simulated_position() is not None:
-            return True
-        status = self.data
-        return bool(status is not None and status.position is None and self._last_known_position is not None)
+        position = self.position_snapshot
+        return bool(position and position.estimated)
 
     @property
     def position_simulation_action(self) -> str | None:
@@ -287,45 +291,14 @@ class NiceBidiPositionMixin:
     @property
     def position_source(self) -> str | None:
         """Return the source currently responsible for displayed position."""
-        if self._current_simulated_position() is not None:
-            return "time_simulation"
-        status = self.data
-        if status is None:
-            return None
-        registers = status.registers
-        if "NHK/ConfirmedEndpointPosition" in registers:
-            return "confirmed_endpoint"
-        if status.position is None and self._last_known_position is not None:
-            return "held_last_known"
-        if "NHK/T4CalibratedPosition" in registers:
-            return "t4_live_scalar_calibrated"
-        if "NHK/T4InstantPosition" in registers:
-            return "t4_04_40"
-        if (
-            status.position is not None
-            and status.current_position is not None
-            and status.closed_position is not None
-            and status.open_position is not None
-            and status.closed_position != status.open_position
-        ):
-            return "dmp_encoder"
-        if status.position is not None and status.state in {STATE_OPEN, STATE_CLOSED}:
-            return "confirmed_endpoint"
-        return "controller_reported" if status.position is not None else None
+        position = self.position_snapshot
+        return position.source if position is not None else None
 
     @property
     def position_confidence(self) -> str | None:
         """Return whether displayed position is measured, live, or estimated."""
-        source = self.position_source
-        if source is None:
-            return None
-        if source == "dmp_encoder":
-            return "measured"
-        if source in {"t4_04_40", "t4_live_scalar_calibrated", "confirmed_endpoint"}:
-            return "observed"
-        if source in {"time_simulation", "held_last_known"}:
-            return "estimated"
-        return "reported"
+        position = self.position_snapshot
+        return position.confidence if position is not None else None
 
     def _start_position_simulation(self, action: str, *, target_position: float | None = None) -> None:
         """Start or restart optimistic position animation after a movement command."""
