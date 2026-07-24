@@ -169,16 +169,16 @@ current device profile.
 | Button | Stop as remote | `stop_remote` | Sends the controller's remote-style stop action. | Hidden | Disabled | Redundant with the primary cover stop command; created only when advertised. |
 | Button | Open as remote | `open_remote` | Sends the controller's remote-style open action. | Hidden | Disabled | Redundant with the primary cover open command; created only when advertised. |
 | Button | Close as remote | `close_remote` | Sends the controller's remote-style close action. | Hidden | Disabled | Redundant with the primary cover close command; created only when advertised. |
-| Button | Apartment step-step | `apartment_step_step` | Sends the apartment step-step action. | Hidden | Enabled | Device-specific action created only when advertised. |
+| Button | Apartment step-step | `apartment_step_step` | Sends the apartment step-step action. | Hidden | Disabled | Shared-access action created only when advertised; enable deliberately when the controller uses apartment/condominium mode. |
 | Button | Step-step high priority | `step_step_hp` | Sends the high-priority step-step action. | Hidden | Enabled | Device-specific action created only when advertised. |
 | Button | Open and block | `open_and_block` | Opens and then blocks the automation. | Hidden | Disabled | Safety-sensitive action; enable deliberately only when its controller behavior is understood. |
 | Button | Close and block | `close_and_block` | Closes and then blocks the automation. | Hidden | Disabled | Safety-sensitive action; enable deliberately only when its controller behavior is understood. |
-| Button | Master door step-step | `master_step_step` | Sends step-step to the master door. | Hidden | Enabled | Multi-door action created only when advertised. |
-| Button | Open master door | `master_open` | Opens the master door. | Hidden | Enabled | Multi-door action created only when advertised. |
-| Button | Close master door | `master_close` | Closes the master door. | Hidden | Enabled | Multi-door action created only when advertised. |
-| Button | Slave door step-step | `slave_step_step` | Sends step-step to the slave door. | Hidden | Enabled | Multi-door action created only when advertised. |
-| Button | Open slave door | `slave_open` | Opens the slave door. | Hidden | Enabled | Multi-door action created only when advertised. |
-| Button | Close slave door | `slave_close` | Closes the slave door. | Hidden | Enabled | Multi-door action created only when advertised. |
+| Button | Master door step-step | `master_step_step` | Sends step-step to the master door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
+| Button | Open master door | `master_open` | Opens the master door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
+| Button | Close master door | `master_close` | Closes the master door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
+| Button | Slave door step-step | `slave_step_step` | Sends step-step to the slave door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
+| Button | Open slave door | `slave_open` | Opens the slave door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
+| Button | Close slave door | `slave_close` | Closes the slave door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
 | Button | Release and open | `release_and_open` | Releases a blocked automation and opens it. | Hidden | Disabled | Safety-sensitive action created only when advertised. |
 | Button | Release and close | `release_and_close` | Releases a blocked automation and closes it. | Hidden | Disabled | Safety-sensitive action created only when advertised. |
 | Button | Enable BlueBUS inputs | `enable_bluebus_inputs` | Enables the controller's BlueBUS inputs. | Hidden | Disabled | Changes controller input behavior; enable only with the gate visible and the original state known. |

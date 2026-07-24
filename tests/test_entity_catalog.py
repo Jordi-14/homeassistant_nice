@@ -146,3 +146,24 @@ def test_dynamic_t4_entities_follow_only_reviewed_advertised_bits() -> None:
         "stop_remote",
         "apartment_step_step",
     }
+
+
+def test_apartment_and_multi_door_buttons_default_disabled() -> None:
+    """Specialist routing buttons require explicit registry enablement."""
+    expected = {
+        "apartment_step_step",
+        "master_step_step",
+        "master_open",
+        "master_close",
+        "slave_step_step",
+        "slave_open",
+        "slave_close",
+    }
+    descriptions = {
+        description.key: description for description in BUTTONS
+    }
+
+    assert all(
+        descriptions[key].entity_registry_enabled_default is False
+        for key in expected
+    )

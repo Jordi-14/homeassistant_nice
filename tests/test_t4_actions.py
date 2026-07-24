@@ -157,11 +157,32 @@ def test_missing_mask_keeps_only_compatibility_actions() -> None:
     )
 
 
-def test_dangerous_and_redundant_actions_default_disabled() -> None:
-    """Risky and duplicate actions require deliberate registry enablement."""
+def test_non_default_actions_require_deliberate_registry_enablement() -> None:
+    """Risky, duplicate, and specialist actions start disabled."""
     for action in T4_ACTIONS:
-        if action.dangerous or action.redundant:
+        if action.default_disabled or action.dangerous or action.redundant:
             assert action.enabled_by_default is False
+
+
+def test_apartment_and_multi_door_actions_default_disabled() -> None:
+    """Apartment and master/slave commands must be enabled deliberately."""
+    expected = {
+        "apartment_step_step",
+        "master_step_step",
+        "master_open",
+        "master_close",
+        "slave_step_step",
+        "slave_open",
+        "slave_close",
+    }
+
+    assert {
+        action.key for action in T4_ACTIONS if action.default_disabled
+    } == expected
+    assert all(
+        T4_ACTION_BY_KEY[key].enabled_by_default is False
+        for key in expected
+    )
 
 
 def test_t4_catalog_keys_and_codes_are_unique() -> None:

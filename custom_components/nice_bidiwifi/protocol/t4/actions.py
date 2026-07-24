@@ -23,6 +23,7 @@ class T4Action:
     key: str
     code: int
     name: str
+    default_disabled: bool = False
     dangerous: bool = False
     redundant: bool = False
     compatibility_entity: bool = False
@@ -30,7 +31,11 @@ class T4Action:
     @property
     def enabled_by_default(self) -> bool:
         """Return the safe entity-registry default."""
-        return not self.dangerous and not self.redundant
+        return (
+            not self.default_disabled
+            and not self.dangerous
+            and not self.redundant
+        )
 
 
 T4_ACTIONS = (
@@ -61,7 +66,12 @@ T4_ACTIONS = (
         "Partial open 3",
         compatibility_entity=True,
     ),
-    T4Action("apartment_step_step", 0x0B, "Apartment step-step"),
+    T4Action(
+        "apartment_step_step",
+        0x0B,
+        "Apartment step-step",
+        default_disabled=True,
+    ),
     T4Action("step_step_hp", 0x0C, "Step-step high priority"),
     T4Action(
         "open_and_block",
@@ -101,12 +111,42 @@ T4_ACTIONS = (
         "Courtesy light",
         compatibility_entity=True,
     ),
-    T4Action("master_step_step", 0x13, "Master door step-step"),
-    T4Action("master_open", 0x14, "Open master door"),
-    T4Action("master_close", 0x15, "Close master door"),
-    T4Action("slave_step_step", 0x16, "Slave door step-step"),
-    T4Action("slave_open", 0x17, "Open slave door"),
-    T4Action("slave_close", 0x18, "Close slave door"),
+    T4Action(
+        "master_step_step",
+        0x13,
+        "Master door step-step",
+        default_disabled=True,
+    ),
+    T4Action(
+        "master_open",
+        0x14,
+        "Open master door",
+        default_disabled=True,
+    ),
+    T4Action(
+        "master_close",
+        0x15,
+        "Close master door",
+        default_disabled=True,
+    ),
+    T4Action(
+        "slave_step_step",
+        0x16,
+        "Slave door step-step",
+        default_disabled=True,
+    ),
+    T4Action(
+        "slave_open",
+        0x17,
+        "Open slave door",
+        default_disabled=True,
+    ),
+    T4Action(
+        "slave_close",
+        0x18,
+        "Close slave door",
+        default_disabled=True,
+    ),
     T4Action(
         "release_and_open",
         0x19,
