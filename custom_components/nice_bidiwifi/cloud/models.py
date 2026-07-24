@@ -37,32 +37,24 @@ _MAX_TEXT_LENGTH = 256
 
 @dataclass(slots=True, repr=False)
 class NiceCloudLogin:
-    """Secrets used for a single cloud bootstrap request."""
+    """MyNice account secrets used for a single bootstrap request."""
 
     account_username: str
     account_password: str
-    oauth_client_id: str
-    oauth_client_secret: str
 
     def __post_init__(self) -> None:
         """Reject incomplete or unreasonably large secret values."""
         for value in (
             self.account_username,
             self.account_password,
-            self.oauth_client_id,
-            self.oauth_client_secret,
         ):
             if not value or len(value) > _MAX_TEXT_LENGTH:
                 raise ValueError("Cloud authentication fields must be 1-256 characters")
-        if ":" in self.oauth_client_id:
-            raise ValueError("The OAuth client ID cannot contain a colon")
 
     def clear(self) -> None:
-        """Release references to account and OAuth secrets."""
+        """Release references to account secrets."""
         self.account_username = ""
         self.account_password = ""
-        self.oauth_client_id = ""
-        self.oauth_client_secret = ""
 
 
 @dataclass(slots=True, repr=False)

@@ -18,8 +18,8 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import selector
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .client import NiceBidiAuthError, NiceBidiClient, NiceBidiConnectionError
@@ -71,8 +71,6 @@ CONF_CLOUD_ACCOUNT = "cloud_account"
 CONF_CLOUD_ACCOUNT_PASSWORD = "cloud_account_password"
 CONF_CLOUD_ACCESSORIES = "cloud_accessories"
 CONF_CLOUD_CONFIRM = "cloud_confirm"
-CONF_OAUTH_CLIENT_ID = "oauth_client_id"
-CONF_OAUTH_CLIENT_SECRET = "oauth_client_secret"
 
 CREDENTIAL_SOURCE_MANUAL = "manual"
 CREDENTIAL_SOURCE_MYNICE = "mynice"
@@ -151,13 +149,11 @@ def _mode_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
 
 
 def _cloud_auth_schema() -> vol.Schema:
-    """Return transient account and independently supplied OAuth fields."""
+    """Return transient MyNice account fields."""
     return vol.Schema(
         {
             vol.Required(CONF_CLOUD_ACCOUNT): _TEXT_SELECTOR,
             vol.Required(CONF_CLOUD_ACCOUNT_PASSWORD): _PASSWORD_SELECTOR,
-            vol.Required(CONF_OAUTH_CLIENT_ID): _TEXT_SELECTOR,
-            vol.Required(CONF_OAUTH_CLIENT_SECRET): _PASSWORD_SELECTOR,
             vol.Required(CONF_CLOUD_CONFIRM, default=False): _ADVANCED_SELECTOR,
         }
     )
@@ -202,43 +198,51 @@ def _cloud_local_schema(
     """Return route endpoint fields for one imported accessory."""
     user_input = user_input or {}
     fields: dict[vol.Marker, object] = {
-            vol.Required(
-                CONF_NAME,
-                default=user_input.get(CONF_NAME, accessory.name),
-            ): _TEXT_SELECTOR,
-            vol.Required(
+        vol.Required(
+            CONF_NAME,
+            default=user_input.get(CONF_NAME, accessory.name),
+        ): _TEXT_SELECTOR,
+        vol.Required(
+            CONF_DEVICE_ID,
+            default=user_input.get(
                 CONF_DEVICE_ID,
-                default=user_input.get(
-                    CONF_DEVICE_ID,
-                    accessory.device_id,
-                ),
-            ): _DEVICE_ID_SELECTOR,
-            vol.Required(
+                accessory.device_id,
+            ),
+        ): _DEVICE_ID_SELECTOR,
+        vol.Required(
+            CONF_T4_TIMEOUT_MS,
+            default=user_input.get(
                 CONF_T4_TIMEOUT_MS,
-                default=user_input.get(
-                    CONF_T4_TIMEOUT_MS,
-                    DEFAULT_T4_TIMEOUT_MS,
-                ),
-            ): _TIMEOUT_SELECTOR,
+                DEFAULT_T4_TIMEOUT_MS,
+            ),
+        ): _TIMEOUT_SELECTOR,
     }
     if mode is not ConnectionMode.CLOUD_ONLY:
-        fields[vol.Required(
+        fields[
+            vol.Required(
                 CONF_HOST,
                 default=user_input.get(CONF_HOST, ""),
-            )] = _TEXT_SELECTOR
-        fields[vol.Required(
+            )
+        ] = _TEXT_SELECTOR
+        fields[
+            vol.Required(
                 CONF_PORT,
                 default=user_input.get(CONF_PORT, DEFAULT_PORT),
-            )] = _PORT_SELECTOR
+            )
+        ] = _PORT_SELECTOR
     if mode is not ConnectionMode.LOCAL_ONLY:
-        fields[vol.Required(
-            CONF_RELAY_HOST,
-            default=user_input.get(CONF_RELAY_HOST, DEFAULT_RELAY_HOST),
-        )] = _TEXT_SELECTOR
-        fields[vol.Required(
-            CONF_RELAY_PORT,
-            default=user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT),
-        )] = _PORT_SELECTOR
+        fields[
+            vol.Required(
+                CONF_RELAY_HOST,
+                default=user_input.get(CONF_RELAY_HOST, DEFAULT_RELAY_HOST),
+            )
+        ] = _TEXT_SELECTOR
+        fields[
+            vol.Required(
+                CONF_RELAY_PORT,
+                default=user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT),
+            )
+        ] = _PORT_SELECTOR
     return vol.Schema(fields)
 
 
@@ -661,12 +665,6 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                         account_password=str(
                             user_input.get(CONF_CLOUD_ACCOUNT_PASSWORD, "")
                         ),
-                        oauth_client_id=str(
-                            user_input.get(CONF_OAUTH_CLIENT_ID, "")
-                        ).strip(),
-                        oauth_client_secret=str(
-                            user_input.get(CONF_OAUTH_CLIENT_SECRET, "")
-                        ),
                     )
                     result = await _async_fetch_cloud_accessories(
                         self.hass,
@@ -711,8 +709,6 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                     for key in (
                         CONF_CLOUD_ACCOUNT,
                         CONF_CLOUD_ACCOUNT_PASSWORD,
-                        CONF_OAUTH_CLIENT_ID,
-                        CONF_OAUTH_CLIENT_SECRET,
                     ):
                         if key in user_input:
                             user_input[key] = ""

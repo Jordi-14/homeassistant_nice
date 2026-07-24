@@ -1,4 +1,4 @@
-"""Route NHK operations between local and verified relay connections."""
+"""Route NHK operations between local and Nice relay connections."""
 
 from __future__ import annotations
 

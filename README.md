@@ -4,17 +4,18 @@
 [![Hassfest](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml/badge.svg)](https://github.com/Jordi-14/homeassistant_nice/actions/workflows/hassfest.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/Jordi-14/homeassistant_nice)](https://github.com/Jordi-14/homeassistant_nice/releases/latest)
 
-Custom Home Assistant integration for local and optional verified-relay control
-of compatible Nice gates and garage doors.
+Custom Home Assistant integration for local and optional Nice-relay control of
+compatible Nice gates and garage doors.
 
 The integration uses the shared Nice NHK/T4 protocol over either a local
-TLS/TCP connection, the verified Nice relay, or the recommended local
+TLS/TCP connection, the Nice Internet relay, or the recommended local
 connection with cloud fallback. It creates a primary `cover` plus
-capability-driven control and diagnostic entities. The local endpoint on tested
-BiDi-WiFi firmware uses a device certificate that cannot be validated against
-Home Assistant's normal trust store, so local mode relies on LAN isolation and
-NHK credentials. Relay mode uses normal public certificate and hostname
-verification.
+capability-driven control and diagnostic entities. Both the tested BiDi-WiFi
+LAN endpoint and the Nice relay use certificates that cannot be validated
+against Home Assistant's normal trust store. TLS still encrypts traffic, but
+certificate and hostname verification are disabled for those NHK connections.
+Local mode also relies on LAN isolation; both routes require the per-device NHK
+credentials.
 
 Latest stable release: `v0.7.5`
 
@@ -36,7 +37,13 @@ Latest stable release: `v0.7.5`
 - Automatic discovery of compatible operational Nice interfaces over zeroconf,
   including in-place address updates without duplicate devices.
 - Three connection policies: recommended local + cloud fallback, fully local,
-  and fully cloud. Relay TLS uses system certificate and hostname verification.
+  and fully cloud. Relay traffic is TLS-encrypted without certificate or
+  hostname verification because the production Nice relay presents a
+  self-signed, expired certificate.
+- Optional one-time MyNice account import retrieves the same per-device NHK
+  credentials used by manual setup through the built-in MyNice client
+  registration. The account password and temporary access token are discarded
+  after import; users do not need to supply an OAuth client ID or secret.
 - Bounded LAN failover and hysteretic recovery avoid route flapping. Commands
   with an ambiguous outcome are never replayed on a second route.
 - Native Home Assistant cover position support when the controller reports a
@@ -153,13 +160,23 @@ break the integration.
 - Fully local and local-with-cloud-fallback entries need LAN reachability to the
   Nice interface on TCP 443.
 - Fully cloud and fallback entries need outbound reachability to the configured
-  Nice relay with its public TLS certificate and hostname intact.
+  Nice relay on its configured TLS port.
 - The Nice interface should keep its normal network/cloud configuration.
 - MyNice/MyNice Pro should be closed while Home Assistant is using local
   control.
 - Network ACLs must allow only the routes selected for the entry.
 - No local IP address, MAC address, username, source/controller ID, or password
   should be shared on GitHub.
+
+Cloud transport is explicitly opt-in through the selected connection policy.
+The current Nice relay presents a self-signed certificate that expired in
+2021, and its certificate identity does not match the configured relay
+hostname. For compatibility, the integration follows the official client
+behavior: the relay connection remains TLS-encrypted, but certificate and
+hostname verification are disabled. This means an active network attacker
+could impersonate the relay. Use fully local mode if that risk is unacceptable,
+and restrict outbound access from Home Assistant to the configured relay and
+port where practical.
 
 If Home Assistant and the BiDi-WiFi are on different VLANs, the firewall must
 allow Home Assistant to initiate TCP 443 connections to the BiDi-WiFi.
@@ -204,7 +221,7 @@ Then restart Home Assistant.
    setup. A DHCP reservation is optional when zeroconf works across the network.
 3. Confirm Home Assistant can reach the interface on TCP 443.
 4. Enter NHK device credentials manually, or use the optional one-time MyNice
-   import with OAuth application credentials you are authorized to use.
+   account import.
 5. Select the discovered **Nice** card, or add **Nice** manually from
    **Settings -> Devices & services**.
 6. Close MyNice/MyNice Pro before submitting the config flow.
@@ -212,10 +229,9 @@ Then restart Home Assistant.
 The recommended mode uses the LAN while it is healthy, fails over to the Nice
 relay after bounded connection failures, and returns only after repeated
 successful LAN probes. Fully local never opens a cloud connection. Fully cloud
-never opens a LAN connection. The account password, OAuth client credentials,
-and access token used by the optional import are not stored; the imported NHK
-device credentials are stored because both local and relay sessions require
-them.
+never opens a LAN connection. The account password and access token used by the
+optional import are not stored; the imported NHK device credentials are stored
+because both local and relay sessions require them.
 
 Detailed setup and credential extraction instructions are in
 [Setup and Credential Extraction](docs/setup.md).

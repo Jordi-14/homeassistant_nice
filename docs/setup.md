@@ -211,8 +211,10 @@ Android app-private storage generally blocks normal ADB backup, file browsing,
 and `run-as` for this app. A rooted emulator such as LDPlayer remains the known
 local workaround. If extracting credentials is impractical, the integration can
 optionally retrieve the same per-device NHK credentials in a one-time MyNice
-session. This requires account credentials plus OAuth application credentials
-you are independently authorized to use.
+session. This requires only the normal MyNice account and password. The
+integration uses the MyNice client registration internally, then discards the
+account password and access token as soon as the credentials have been
+imported.
 
 Do not publish the extracted app data, SQLite databases, WAL files, or extracted
 NHK credentials. If the Android app schema changes, open an issue with the
@@ -231,36 +233,44 @@ table names, but redact all secrets.
    - **Fully local** never opens a cloud connection.
    - **Fully cloud** never opens a LAN connection.
 4. Choose manual NHK credential entry or the optional one-time MyNice import.
-   The import sends account and OAuth credentials to Nice, uses the response
-   only to obtain per-device NHK credentials, and discards the account
-   password, OAuth credentials, and access token when the step ends.
+   The import sends the account credentials to Nice, uses the response only to
+   obtain per-device NHK credentials, and discards the account password and
+   access token when the step ends. Users do not need to provide an OAuth
+   client ID or secret.
 5. For local or fallback setup, enter:
    - Interface IP address or hostname
    - Interface MAC address from `target_mac`
    - NHK username from `username`
    - NHK password hex from `password`
 6. For cloud or fallback setup, confirm the relay hostname and TLS port. The
-   default endpoint is prefilled. Internet relay TLS certificates and hostnames
-   are verified against the Home Assistant host's system trust store.
+   default endpoint is prefilled. Relay traffic is TLS-encrypted, but
+   certificate and hostname verification are disabled because the production
+   Nice relay presents a self-signed, expired certificate.
 7. If the extracted `source_id` differs from the username, enable **Show
    advanced settings** and enter it as **Source/controller ID**. Port, NHK
    device ID, and T4 timeout are also under Advanced.
 8. Close MyNice/MyNice Pro before pressing submit when a local route is used.
 
-The relay is a private Nice service and may change without notice. The
-integration does not disable TLS verification and does not bundle OAuth
-application secrets. A fallback entry can be created while the LAN endpoint is
-temporarily unavailable if relay validation succeeds.
+The relay is a private Nice service and may change without notice. Its current
+self-signed certificate expired in 2021 and does not match the configured relay
+hostname, so it cannot be validated through the Home Assistant host's normal
+trust store. For compatibility with the service and official client, the
+integration keeps TLS encryption but disables certificate and hostname
+verification for relay connections. An active network attacker could therefore
+impersonate the relay. Cloud use is opt-in through the selected connection
+policy; choose **Fully local** if this risk is unacceptable. A fallback entry
+can be created while the LAN endpoint is temporarily unavailable if relay
+authentication succeeds.
 
 For a discovered interface, Home Assistant supplies the advertised host, port,
 MAC identity, model, protocol version, and IPv4/IPv6 addresses. You only need to
 confirm the name and enter the local credentials. Provisioning-only
 advertisements are ignored because they cannot accept normal control commands.
 
-The integration stores these values in Home Assistant's normal config entry
-storage. They are entered by the user during setup and are not hard-coded in the
-integration. Existing entries are migrated to the explicit **Fully local**
-policy without changing their entities or enabling cloud traffic.
+The integration stores the per-device NHK and route values in Home Assistant's
+normal config entry storage. They are entered manually or returned by the
+one-time MyNice import. Existing entries are migrated to the explicit **Fully
+local** policy without changing their entities or enabling cloud traffic.
 
 ## Troubleshooting Setup
 

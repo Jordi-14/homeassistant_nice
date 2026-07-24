@@ -46,9 +46,15 @@ Test the parts relevant to your setup:
   duplicate entry.
 - Fully local mode never requires the Nice relay.
 - Fully cloud mode works without LAN reachability.
+- One-time MyNice import asks only for the normal account login, creates entries
+  with the returned per-device NHK credentials, and does not retain the account
+  password or access token.
 - Recommended local plus cloud fallback normally uses LAN, changes to cloud
   only after bounded failures, and returns to LAN after stable recovery.
 - Active-route, local-route, and cloud-route sensors reflect actual behavior.
+- Cloud diagnostics report TLS encryption enabled and relay certificate and
+  hostname verification disabled. This is required by the current Nice relay;
+  test cloud modes only if you accept the documented impersonation risk.
 - Persistent events improve updates without breaking polling after reconnect.
 - Existing BusT4 settings retain their values and moving-state safety checks.
 - Optional interface logs, access groups, interface naming, clock sync, and

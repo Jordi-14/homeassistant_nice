@@ -8,6 +8,8 @@ from typing import Any
 import pytest
 
 from custom_components.nice_bidiwifi.cloud.client import (
+    MYNICE_OAUTH_CLIENT_ID,
+    MYNICE_OAUTH_CLIENT_SECRET,
     NiceCloudBootstrapClient,
 )
 from custom_components.nice_bidiwifi.cloud.models import (
@@ -133,16 +135,13 @@ def test_entry_builder_preserves_identity_across_connection_modes() -> None:
 
 
 def test_transient_login_can_be_cleared_and_has_safe_repr() -> None:
-    """Test account and OAuth secrets are releasable and omitted from repr."""
-    login = NiceCloudLogin("account", "account-secret", "client", "client-secret")
+    """Test account secrets are releasable and omitted from repr."""
+    login = NiceCloudLogin("account", "account-secret")
 
     assert "account-secret" not in repr(login)
-    assert "client-secret" not in repr(login)
     login.clear()
     assert not login.account_username
     assert not login.account_password
-    assert not login.oauth_client_id
-    assert not login.oauth_client_secret
 
 
 class _FakeContent:
@@ -192,10 +191,10 @@ class _FakeSession:
 
 
 def _login() -> NiceCloudLogin:
-    return NiceCloudLogin("account", "account-secret", "client", "client-secret")
+    return NiceCloudLogin("account", "account-secret")
 
 
-async def test_client_fetches_once_and_discards_all_cloud_secrets() -> None:
+async def test_client_uses_builtin_registration_and_discards_account_session() -> None:
     """Test a successful bootstrap leaves no account or token session behind."""
     session = _FakeSession(
         _FakeResponse(
@@ -216,8 +215,9 @@ async def test_client_fetches_once_and_discards_all_cloud_secrets() -> None:
     assert len(result.accessories) == 1
     assert client._active_token is None
     assert not login.account_password
-    assert not login.oauth_client_secret
     assert session.get_calls == 1
+    assert session.post_kwargs["auth"].login == MYNICE_OAUTH_CLIENT_ID
+    assert session.post_kwargs["auth"].password == MYNICE_OAUTH_CLIENT_SECRET
     assert (
         session.get_kwargs["headers"]["Authorization"]
         == "Bearer short-lived-token"

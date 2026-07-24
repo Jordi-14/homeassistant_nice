@@ -7,7 +7,11 @@ from datetime import UTC, datetime
 
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 
-from custom_components.nice_bidiwifi.const import CONF_SOURCE_ID, CONF_TARGET_MAC
+from custom_components.nice_bidiwifi.const import (
+    CONF_CONNECTION_MODE,
+    CONF_SOURCE_ID,
+    CONF_TARGET_MAC,
+)
 from custom_components.nice_bidiwifi.diagnostics import (
     async_get_config_entry_diagnostics,
 )
@@ -73,6 +77,13 @@ async def test_diagnostics_redacts_sensitive_data(hass) -> None:
     assert diagnostics["connection"]["active_route"] == "local"
     assert diagnostics["connection"]["local_state"] == "connected"
     assert diagnostics["connection"]["cloud_state"] == "not_configured"
+    assert diagnostics["connection"]["relay_tls"] == {
+        "configured": False,
+        "encrypted": False,
+        "certificate_verification": None,
+        "hostname_verification": None,
+        "compatibility_reason": None,
+    }
     assert diagnostics["device_info"]["interface_serial"] == "**REDACTED**"
     assert diagnostics["device_info"]["device_serial"] == "**REDACTED**"
     assert diagnostics["status"]["state"] == "opening"
@@ -104,3 +115,23 @@ async def test_diagnostics_redacts_sensitive_data(hass) -> None:
     ]
     assert diagnostics["administration"]["operation_history"][0]["latency_ms"] == 42
     assert "dmp_registers" not in diagnostics["status"]
+
+
+async def test_diagnostics_reports_unverified_relay_tls(hass) -> None:
+    """Cloud diagnostics must make the relay trust limitation explicit."""
+    coordinator = FakeCoordinator()
+    coordinator.cloud_connection_state = "connected"
+    entry = config_entry(
+        **{CONF_CONNECTION_MODE: "local_with_cloud_fallback"},
+    )
+    entry.runtime_data = coordinator
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diagnostics["connection"]["relay_tls"] == {
+        "configured": True,
+        "encrypted": True,
+        "certificate_verification": False,
+        "hostname_verification": False,
+        "compatibility_reason": "nice_relay_unverifiable_certificate",
+    }

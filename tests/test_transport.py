@@ -225,10 +225,10 @@ def test_transport_distinguishes_peer_close_from_idle_timeout() -> None:
         closed.read_frame(0.01)
 
 
-def test_relay_tls_context_verifies_certificate_and_hostname() -> None:
-    """Internet relay transport must retain the system trust boundary."""
+def test_relay_tls_context_uses_encryption_without_peer_verification() -> None:
+    """Relay TLS must match the self-signed production service."""
     context = make_relay_tls_context()
 
-    assert context.verify_mode is ssl.CERT_REQUIRED
-    assert context.check_hostname is True
+    assert context.verify_mode is ssl.CERT_NONE
+    assert context.check_hostname is False
     assert context.minimum_version >= ssl.TLSVersion.TLSv1_2

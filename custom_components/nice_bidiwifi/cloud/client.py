@@ -22,10 +22,19 @@ from .models import (
 )
 
 MYNICE_BASE_URL = "https://integration.niceappdomain.com/myNiceCloud/"
+MYNICE_OAUTH_CLIENT_ID = "android-client-id"
+MYNICE_OAUTH_CLIENT_SECRET = "android-client-id_21"
 TOKEN_PATH = "oauth/token"
 MACRO_USER_PATH = "api/v1/macrouser/user"
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
+MYNICE_HEADERS = {
+    "OS": "Android",
+    "OSVersion": "13",
+    "DeviceModel": "Google Pixel pixel",
+    "Accept-Language": "en",
+    "Accept-Encoding": "gzip, deflate",
+}
 
 
 class NiceCloudBootstrapClient:
@@ -73,20 +82,23 @@ class NiceCloudBootstrapClient:
                     "password": login.account_password,
                 },
                 auth=aiohttp.BasicAuth(
-                    login.oauth_client_id,
-                    login.oauth_client_secret,
+                    MYNICE_OAUTH_CLIENT_ID,
+                    MYNICE_OAUTH_CLIENT_SECRET,
                 ),
-                headers={"Accept": "application/json"},
+                headers={
+                    **MYNICE_HEADERS,
+                    "Accept": "application/json",
+                },
                 timeout=REQUEST_TIMEOUT,
                 allow_redirects=False,
             ) as response:
                 if response.status in {400, 401}:
                     raise NiceCloudAuthError(
-                        "The cloud account or OAuth application credentials were rejected"
+                        "The MyNice account credentials were rejected"
                     )
                 if response.status == 403:
                     raise NiceCloudAccessError(
-                        "The OAuth application is not allowed to access MyNice"
+                        "The MyNice client registration cannot access this service"
                     )
                 if response.status != 200:
                     raise NiceCloudConnectionError(
@@ -131,6 +143,7 @@ class NiceCloudBootstrapClient:
             async with self._session.get(
                 self._url(MACRO_USER_PATH),
                 headers={
+                    **MYNICE_HEADERS,
                     "Accept": "application/json",
                     "Authorization": token.authorization,
                 },

@@ -585,13 +585,18 @@ async def test_mynice_import_can_create_cloud_only_entry(
                 ),
             },
         )
+        assert {
+            key.schema for key in result["data_schema"].schema
+        } == {
+            config_flow.CONF_CLOUD_ACCOUNT,
+            config_flow.CONF_CLOUD_ACCOUNT_PASSWORD,
+            config_flow.CONF_CLOUD_CONFIRM,
+        }
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {
                 config_flow.CONF_CLOUD_ACCOUNT: "person@example.com",
                 config_flow.CONF_CLOUD_ACCOUNT_PASSWORD: "account-secret",
-                config_flow.CONF_OAUTH_CLIENT_ID: "authorized-client",
-                config_flow.CONF_OAUTH_CLIENT_SECRET: "authorized-secret",
                 config_flow.CONF_CLOUD_CONFIRM: True,
             },
         )
@@ -667,8 +672,6 @@ async def test_cloud_bootstrap_creates_multiple_local_entries_without_cloud_secr
             {
                 "account": login.account_username,
                 "account_password": login.account_password,
-                "client_id": login.oauth_client_id,
-                "client_secret": login.oauth_client_secret,
             }
         )
         return _cloud_result()
@@ -692,8 +695,6 @@ async def test_cloud_bootstrap_creates_multiple_local_entries_without_cloud_secr
             {
                 config_flow.CONF_CLOUD_ACCOUNT: "account@example.test",
                 config_flow.CONF_CLOUD_ACCOUNT_PASSWORD: "account-secret",
-                config_flow.CONF_OAUTH_CLIENT_ID: "approved-client",
-                config_flow.CONF_OAUTH_CLIENT_SECRET: "client-secret",
                 config_flow.CONF_CLOUD_CONFIRM: True,
             },
         )
@@ -735,8 +736,6 @@ async def test_cloud_bootstrap_creates_multiple_local_entries_without_cloud_secr
     assert observed_login == {
         "account": "account@example.test",
         "account_password": "account-secret",
-        "client_id": "approved-client",
-        "client_secret": "client-secret",
     }
     entries = hass.config_entries.async_entries(DOMAIN)
     assert len(entries) == 2
@@ -747,8 +746,6 @@ async def test_cloud_bootstrap_creates_multiple_local_entries_without_cloud_secr
     forbidden = {
         config_flow.CONF_CLOUD_ACCOUNT,
         config_flow.CONF_CLOUD_ACCOUNT_PASSWORD,
-        config_flow.CONF_OAUTH_CLIENT_ID,
-        config_flow.CONF_OAUTH_CLIENT_SECRET,
         "access_token",
         "refresh_token",
     }
@@ -792,8 +789,6 @@ async def test_cloud_bootstrap_errors_are_clear_and_secrets_are_not_logged(
             {
                 config_flow.CONF_CLOUD_ACCOUNT: "private-account",
                 config_flow.CONF_CLOUD_ACCOUNT_PASSWORD: "private-password",
-                config_flow.CONF_OAUTH_CLIENT_ID: "private-client",
-                config_flow.CONF_OAUTH_CLIENT_SECRET: "private-secret",
                 config_flow.CONF_CLOUD_CONFIRM: True,
             },
         )
@@ -805,8 +800,6 @@ async def test_cloud_bootstrap_errors_are_clear_and_secrets_are_not_logged(
     for secret in (
         "private-account",
         "private-password",
-        "private-client",
-        "private-secret",
     ):
         assert secret not in caplog.text
 
@@ -826,8 +819,6 @@ async def test_cloud_bootstrap_requires_explicit_confirmation(
             {
                 config_flow.CONF_CLOUD_ACCOUNT: "account",
                 config_flow.CONF_CLOUD_ACCOUNT_PASSWORD: "password",
-                config_flow.CONF_OAUTH_CLIENT_ID: "client",
-                config_flow.CONF_OAUTH_CLIENT_SECRET: "secret",
                 config_flow.CONF_CLOUD_CONFIRM: False,
             },
         )
@@ -859,8 +850,6 @@ async def test_cloud_bootstrap_omits_already_configured_accessories(
             {
                 config_flow.CONF_CLOUD_ACCOUNT: "account",
                 config_flow.CONF_CLOUD_ACCOUNT_PASSWORD: "password",
-                config_flow.CONF_OAUTH_CLIENT_ID: "client",
-                config_flow.CONF_OAUTH_CLIENT_SECRET: "secret",
                 config_flow.CONF_CLOUD_CONFIRM: True,
             },
         )

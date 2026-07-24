@@ -33,21 +33,19 @@ def test_free_text_redaction_is_case_insensitive_and_complete() -> None:
     )
 
 
-def test_cloud_bootstrap_fields_are_always_treated_as_secrets() -> None:
-    """Transient account and OAuth values use the central redaction boundary."""
+def test_cloud_bootstrap_account_fields_are_always_treated_as_secrets() -> None:
+    """Transient MyNice account values use the central redaction boundary."""
     config = {
         "cloud_account": "account@example.test",
         "cloud_account_password": "account-secret",
-        "oauth_client_id": "client-id",
-        "oauth_client_secret": "client-secret",
     }
 
     redacted = redact_text(
-        "account@example.test account-secret client-id client-secret",
+        "account@example.test account-secret",
         configured_secrets(config),
     )
 
-    assert redacted == "<redacted> <redacted> <redacted> <redacted>"
+    assert redacted == "<redacted> <redacted>"
 
 
 def test_diagnostic_config_and_protocol_data_are_allowlisted_and_bounded() -> None:

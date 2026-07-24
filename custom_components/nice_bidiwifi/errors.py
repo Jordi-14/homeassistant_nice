@@ -46,7 +46,7 @@ class NiceCloudError(NiceBidiError):
 
 
 class NiceCloudAuthError(NiceCloudError):
-    """The MyNice account or OAuth application credentials were rejected."""
+    """The MyNice account credentials or access token were rejected."""
 
 
 class NiceCloudAccessError(NiceCloudError):

@@ -9,7 +9,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_SOURCE_ID, CONF_TARGET_MAC
+from .const import (
+    CONF_CONNECTION_MODE,
+    CONF_SOURCE_ID,
+    CONF_TARGET_MAC,
+)
+from .models.config import ConnectionMode
 from .controllers.administration import ADMINISTRATION_HISTORY_LIMIT
 from .protocol.nhk.administration import (
     LOG_EVENTS_PER_SCOPE,
@@ -26,6 +31,12 @@ from .redaction import (
     redact_text,
 )
 from .runtime import get_coordinator
+from .transport.relay import (
+    RELAY_TLS_CERTIFICATE_VERIFICATION,
+    RELAY_TLS_COMPATIBILITY_REASON,
+    RELAY_TLS_ENCRYPTED,
+    RELAY_TLS_HOSTNAME_VERIFICATION,
+)
 
 TO_REDACT = {
     CONF_HOST,
@@ -105,6 +116,13 @@ async def async_get_config_entry_diagnostics(
         (),
     )
     secrets = configured_secrets(entry.data)
+    connection_mode = str(
+        entry.data.get(CONF_CONNECTION_MODE, ConnectionMode.LOCAL_ONLY.value)
+    )
+    relay_configured = connection_mode in {
+        ConnectionMode.LOCAL_WITH_CLOUD_FALLBACK.value,
+        ConnectionMode.CLOUD_ONLY.value,
+    }
 
     diagnostics: dict[str, Any] = {
         "entry": allowed_config_diagnostics(entry.data),
@@ -113,6 +131,19 @@ async def async_get_config_entry_diagnostics(
             "active_route": coordinator.active_connection_route,
             "local_state": coordinator.local_connection_state,
             "cloud_state": coordinator.cloud_connection_state,
+            "relay_tls": {
+                "configured": relay_configured,
+                "encrypted": RELAY_TLS_ENCRYPTED if relay_configured else False,
+                "certificate_verification": (
+                    RELAY_TLS_CERTIFICATE_VERIFICATION if relay_configured else None
+                ),
+                "hostname_verification": (
+                    RELAY_TLS_HOSTNAME_VERIFICATION if relay_configured else None
+                ),
+                "compatibility_reason": (
+                    RELAY_TLS_COMPATIBILITY_REASON if relay_configured else None
+                ),
+            },
             "status_polling_supported": coordinator.status_polling_supported,
             "last_error": redact_text(coordinator.last_error, secrets),
             "last_successful_update": (
