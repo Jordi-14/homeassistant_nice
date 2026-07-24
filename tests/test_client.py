@@ -950,6 +950,34 @@ def test_run_with_reconnect_retries_once(monkeypatch: pytest.MonkeyPatch) -> Non
     assert client.reconnect_count == 1
 
 
+def test_command_runner_never_replays_ambiguous_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed write is closed and returned without a second invocation."""
+    client = _client()
+    calls = 0
+    closes = 0
+
+    monkeypatch.setattr(client, "_ensure_connected_locked", lambda: None)
+
+    def close() -> None:
+        nonlocal closes
+        closes += 1
+
+    monkeypatch.setattr(client, "_close_locked", close)
+
+    def operation() -> None:
+        nonlocal calls
+        calls += 1
+        raise OSError("response lost")
+
+    with pytest.raises(NiceBidiConnectionError):
+        client._run_command_once(operation)
+
+    assert calls == 1
+    assert closes == 1
+
+
 def test_send_action_rejects_invalid_action() -> None:
     """Test action validation."""
     with pytest.raises(ValueError, match="action must be open"):

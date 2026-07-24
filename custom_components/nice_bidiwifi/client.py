@@ -85,6 +85,7 @@ from .transport.dispatcher import (
     ReaderFailureCallback,
     ResponseDispatcher,
 )
+from .transport.base import FrameTransport
 from .transport.lan import (
     LanTlsTransport,
     SocketFrameTransport,
@@ -118,10 +119,11 @@ __all__ = [
 ]
 
 NHK_STATUS_POST_RESPONSE_LISTEN_SECONDS = 0.75
+TransportFactory = Callable[[str, int, float], FrameTransport]
 
 
 class NiceBidiClient:
-    """Persistent local NHK client for a Nice interface."""
+    """Persistent NHK client for a Nice interface."""
 
     def __init__(
         self,
@@ -132,6 +134,8 @@ class NiceBidiClient:
         device_id: int = 1,
         timeout: float = 10.0,
         t4_timeout_ms: int = 200,
+        transport_factory: TransportFactory = LanTlsTransport.connect,
+        route_name: str = "local",
     ) -> None:
         self.host = host
         self.port = port
@@ -139,7 +143,9 @@ class NiceBidiClient:
         self.device_id = device_id
         self.timeout = timeout
         self.t4_timeout_ms = t4_timeout_ms
-        self._transport: SocketFrameTransport | None = None
+        self._transport_factory = transport_factory
+        self._route_name = route_name
+        self._transport: FrameTransport | None = None
         self._dispatcher: ResponseDispatcher | None = None
         self._event_callbacks: list[RawEventCallback] = []
         self._event_failure_callbacks: list[ReaderFailureCallback] = []
@@ -152,7 +158,11 @@ class NiceBidiClient:
     @property
     def _socket(self) -> SocketLike | None:
         """Return the underlying socket for backward-compatible diagnostics."""
-        return self._transport.socket if self._transport is not None else None
+        return (
+            getattr(self._transport, "socket", None)
+            if self._transport is not None
+            else None
+        )
 
     @_socket.setter
     def _socket(self, connected_socket: SocketLike | None) -> None:
@@ -162,7 +172,7 @@ class NiceBidiClient:
             return
         self._set_transport(SocketFrameTransport(connected_socket))
 
-    def _set_transport(self, transport: SocketFrameTransport) -> None:
+    def _set_transport(self, transport: FrameTransport) -> None:
         """Set the active transport and its sole reader."""
         self._transport = transport
         self._dispatcher = ResponseDispatcher(transport)
@@ -252,14 +262,14 @@ class NiceBidiClient:
         """Send a high-level DoorAction command."""
         if action not in {"open", "stop", "close"}:
             raise ValueError("action must be open, stop, or close")
-        self._run_with_reconnect(lambda: self._send_action_locked(action))
+        self._run_command_once(lambda: self._send_action_locked(action))
 
     def send_dep_action(self, action: str) -> None:
         """Send a low-level DEP action command."""
         if action not in DEP_ACTION_COMMANDS:
             valid = ", ".join(sorted(DEP_ACTION_COMMANDS))
             raise ValueError(f"action must be one of: {valid}")
-        self._run_with_reconnect(lambda: self._send_dep_action_locked(action))
+        self._run_command_once(lambda: self._send_dep_action_locked(action))
 
     def write_dmp_register(
         self,
@@ -277,7 +287,7 @@ class NiceBidiClient:
         if value > (1 << (size * 8)) - 1:
             raise ValueError(f"value must fit in {size} byte(s)")
         payload = value.to_bytes(size, "big")
-        self._run_with_reconnect(
+        self._run_command_once(
             lambda: self._write_dmp_register_locked(group, parameter, payload)
         )
 
@@ -318,7 +328,8 @@ class NiceBidiClient:
                     self._close_locked()
                     if attempt == 0:
                         _LOGGER.debug(
-                            "Nice local operation failed; reconnecting once: %s",
+                            "Nice %s operation failed; reconnecting once: %s",
+                            self._route_name,
                             exc.__class__.__name__,
                         )
                         self._reconnect_count += 1
@@ -326,21 +337,36 @@ class NiceBidiClient:
             assert last_error is not None
             raise NiceBidiConnectionError(str(last_error)) from last_error
 
+    def _run_command_once(self, operation: Callable[[], Any]) -> Any:
+        """Run a write once so an ambiguous response cannot duplicate movement."""
+        with self._lock:
+            try:
+                self._ensure_connected_locked()
+                return operation()
+            except NiceBidiAuthError:
+                self._close_locked()
+                raise
+            except (OSError, ssl.SSLError, NiceBidiConnectionError) as exc:
+                self._close_locked()
+                raise NiceBidiConnectionError(str(exc)) from exc
+
     def _open_locked(self) -> None:
         last_error: Exception | None = None
         for attempt in range(3):
             try:
                 _LOGGER.debug(
-                    "Opening Nice local TLS connection to %s:%s (attempt %s/3)",
+                    "Opening Nice %s TLS connection to %s:%s (attempt %s/3)",
+                    self._route_name,
                     self.host,
                     self.port,
                     attempt + 1,
                 )
                 self._set_transport(
-                    LanTlsTransport.connect(self.host, self.port, self.timeout)
+                    self._transport_factory(self.host, self.port, self.timeout)
                 )
                 _LOGGER.debug(
-                    "Nice local TLS connection established to %s:%s",
+                    "Nice %s TLS connection established to %s:%s",
+                    self._route_name,
                     self.host,
                     self.port,
                 )
@@ -349,7 +375,8 @@ class NiceBidiClient:
                 last_error = exc
                 if attempt < 2:
                     _LOGGER.debug(
-                        "Nice local TLS connection attempt %s failed: %s: %s",
+                        "Nice %s TLS connection attempt %s failed: %s: %s",
+                        self._route_name,
                         attempt + 1,
                         exc.__class__.__name__,
                         exc,
@@ -385,12 +412,17 @@ class NiceBidiClient:
             _reverse_hex(client_challenge),
         )
         _LOGGER.debug(
-            "Nice local NHK authentication succeeded with session id %s",
+            "Nice %s NHK authentication succeeded with session id %s",
+            self._route_name,
             self._session_id,
         )
 
     def _ensure_connected_locked(self) -> None:
-        if self._socket and self._session_key is not None:
+        if (
+            self._transport is not None
+            and self._transport.connected
+            and self._session_key is not None
+        ):
             return
         self._close_locked()
         self._open_locked()
@@ -488,7 +520,8 @@ class NiceBidiClient:
         if dispatcher is None:
             raise NiceBidiConnectionError("socket is not open")
         _LOGGER.debug(
-            "Sending Nice local request type=%s id=%s to %s:%s",
+            "Sending Nice %s request type=%s id=%s to %s:%s",
+            self._route_name,
             expected_type or "unknown",
             expected_id if expected_id is not None else "unknown",
             self.host,
@@ -503,7 +536,8 @@ class NiceBidiClient:
         )
         if frames:
             _LOGGER.debug(
-                "Returning Nice local exchange with %s frame(s), last=%s",
+                "Returning Nice %s exchange with %s frame(s), last=%s",
+                self._route_name,
                 len(frames),
                 _response_summary(frames[-1]),
             )

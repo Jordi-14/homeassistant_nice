@@ -53,7 +53,7 @@ Quick recommendations:
 | Remote-control style action | Step-step | Follows the controller's configured step-step cycle. |
 | Alarm open/not closed state | Gate open | Read-only binary sensor; on means the gate is not fully closed. |
 | Pedestrian or partial opening | Partial open 1/2/3 | Partial open 1 is the common action; optional slots 2/3 are available only when their configuration registers are reported. Position follows the same measured-first rules as normal movement. |
-| Local connection health | Connection state, last successful update, reconnect count | Useful for troubleshooting Wi-Fi or local API issues. |
+| Connection route health | Overall connection state, active route, local/cloud route state, last successful update, reconnect count | Shows which configured routes are reachable and whether LAN or cloud is currently carrying traffic. |
 | Controller tuning | Entities ending in `setting` | Advanced; these write controller registers. |
 | Raw diagnostics | Diagnostics I/O byte and diagnostics parameters | Developer/debug data for comparing controllers. |
 | Radio receiver info | OXI entities | Metadata from the OXI/radio endpoint when it answers locally. |
@@ -190,9 +190,12 @@ current device profile.
 | Number | Partial open 3 position setting | `bus_t4_partial_open_3_position` | Writes BusT4 partial-open 3 encoder position to register `04/23` as a two-byte value. | Visible | Enabled | Advanced but useful when partial-open positions need adjustment. |
 | Number | Maintenance threshold setting | `bus_t4_maintenance_threshold` | Writes BusT4 maintenance threshold to register `04/B1` as a two-byte value. | Hidden | Disabled | Advanced but low operational risk. |
 | Sensor | Connection state | `connection_state` | Current integration connection state. | Visible | Enabled | Primary health sensor. |
+| Sensor | Active connection route | `active_connection_route` | Route currently carrying NHK protocol traffic: `local`, `cloud`, or `none`. | Visible | Enabled | Stable across all connection modes and updates when fallback changes route. |
+| Sensor | Local connection state | `local_connection_state` | Current LAN route state: `connected`, `disconnected`, `unknown`, or `not_configured`. | Visible | Enabled | Distinguishes an unavailable LAN route from one that is not part of the selected mode. |
+| Sensor | Cloud connection state | `cloud_connection_state` | Current Nice relay route state: `connected`, `disconnected`, `unknown`, or `not_configured`. | Visible | Enabled | Reports `not_configured` for fully local entries. |
 | Sensor | Last successful update | `last_successful_update` | Timestamp of the last successful coordinator update. | Hidden | Enabled | Useful health diagnostic. |
 | Sensor | Last error | `last_error` | Last coordinator error, or `none`. | Hidden | Enabled | Useful troubleshooting diagnostic. |
-| Sensor | Reconnect count | `reconnect_count` | Number of local reconnects performed by the client. | Hidden | Enabled | Useful health diagnostic. |
+| Sensor | Reconnect count | `reconnect_count` | Number of reconnects performed across configured routes. | Hidden | Enabled | Useful health diagnostic. |
 | Sensor | Last command | `last_command` | Last local command sent by the integration. | Hidden | Disabled | Developer/debug signal. |
 | Sensor | Last command latency | `last_command_latency` | Latency of the last local command in milliseconds. | Hidden | Disabled | Developer/debug signal. |
 | Sensor | Position calibration state | `position_calibration_state` | Current position calibration state. | Hidden | Enabled | Optional calibration detail; should not clutter default dashboards. |

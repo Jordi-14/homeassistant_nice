@@ -10,7 +10,11 @@ from custom_components.nice_bidiwifi.binary_sensor import (
 )
 from custom_components.nice_bidiwifi.button import BUTTONS
 from custom_components.nice_bidiwifi.number import NUMBERS
-from custom_components.nice_bidiwifi.sensor import EVENT_SENSORS, SENSORS
+from custom_components.nice_bidiwifi.sensor import (
+    EVENT_SENSORS,
+    ROUTE_SENSORS,
+    SENSORS,
+)
 from custom_components.nice_bidiwifi.switch import CONFIG_SWITCHES
 
 REFERENCE_PATH = Path(__file__).parents[1] / "entity_reference.md"
@@ -54,6 +58,7 @@ def _code_defaults() -> dict[str, tuple[bool, bool]]:
         *EVENT_BINARY_SENSORS,
         *NUMBERS,
         *SENSORS,
+        *ROUTE_SENSORS,
         *EVENT_SENSORS,
     ):
         defaults[description.key] = (

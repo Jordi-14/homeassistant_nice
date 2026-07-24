@@ -15,6 +15,10 @@ SENSITIVE_CONFIG_KEYS = frozenset(
         "username",
         "relay_host",
         "access_token",
+        "cloud_account",
+        "cloud_account_password",
+        "oauth_client_id",
+        "oauth_client_secret",
         "refresh_token",
     }
 )

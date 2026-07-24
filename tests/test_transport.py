@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 import threading
 from queue import Empty, Queue
 
@@ -12,6 +13,7 @@ from custom_components.nice_bidiwifi.transport.dispatcher import (
     ResponseDispatcher,
 )
 from custom_components.nice_bidiwifi.transport.lan import SocketFrameTransport
+from custom_components.nice_bidiwifi.transport.relay import make_relay_tls_context
 
 
 class FakeSocket:
@@ -221,3 +223,12 @@ def test_transport_distinguishes_peer_close_from_idle_timeout() -> None:
     closed = SocketFrameTransport(FakeSocket([b""]))
     with pytest.raises(OSError, match="closed by peer"):
         closed.read_frame(0.01)
+
+
+def test_relay_tls_context_verifies_certificate_and_hostname() -> None:
+    """Internet relay transport must retain the system trust boundary."""
+    context = make_relay_tls_context()
+
+    assert context.verify_mode is ssl.CERT_REQUIRED
+    assert context.check_hostname is True
+    assert context.minimum_version >= ssl.TLSVersion.TLSv1_2

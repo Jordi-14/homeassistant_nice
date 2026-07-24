@@ -90,6 +90,9 @@ async def async_get_config_entry_diagnostics(
         "entry": allowed_config_diagnostics(entry.data),
         "connection": {
             "state": coordinator.connection_state,
+            "active_route": coordinator.active_connection_route,
+            "local_state": coordinator.local_connection_state,
+            "cloud_state": coordinator.cloud_connection_state,
             "status_polling_supported": coordinator.status_polling_supported,
             "last_error": redact_text(coordinator.last_error, secrets),
             "last_successful_update": (
@@ -98,6 +101,26 @@ async def async_get_config_entry_diagnostics(
                 else None
             ),
             "reconnect_count": coordinator.client.reconnect_count,
+            "selected_route": getattr(
+                coordinator.client,
+                "selected_route",
+                coordinator.active_connection_route,
+            ),
+            "local_failure_count": getattr(
+                coordinator.client,
+                "local_failure_count",
+                0,
+            ),
+            "local_recovery_success_count": getattr(
+                coordinator.client,
+                "local_recovery_success_count",
+                0,
+            ),
+            "local_probe_interval_seconds": getattr(
+                coordinator.client,
+                "local_probe_interval_seconds",
+                None,
+            ),
         },
         "command": {
             "last_command": coordinator.last_command,

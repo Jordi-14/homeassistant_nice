@@ -28,12 +28,13 @@ Latest stable release: `v0.7.0`
 
 ## Features
 
-- Open, stop, and close using the local `DoorAction` service.
+- Open, stop, and close using the NHK `DoorAction` service.
 - Automatic discovery of compatible operational Nice interfaces over zeroconf,
   including in-place address updates without duplicate devices.
-- A connection-policy setup step that exposes only transports available in the
-  installed version. Local + cloud fallback is the recommended policy when
-  cloud transport is present; fully local remains available.
+- Three connection policies: recommended local + cloud fallback, fully local,
+  and fully cloud. Relay TLS uses system certificate and hostname verification.
+- Bounded LAN failover and hysteretic recovery avoid route flapping. Commands
+  with an ambiguous outcome are never replayed on a second route.
 - Native Home Assistant cover position support when the controller reports a
   numeric position source.
 - Live position percentage while the gate moves when the controller exposes a
@@ -162,11 +163,19 @@ Then restart Home Assistant.
 2. Let Home Assistant discover the interface, or find its address for manual
    setup. A DHCP reservation is optional when zeroconf works across the network.
 3. Confirm Home Assistant can reach the interface on TCP 443.
-4. Extract the local MyNice NHK credentials from an iPhone app-data export or
-   a rooted Android app-data directory.
+4. Enter NHK device credentials manually, or use the optional one-time MyNice
+   import with OAuth application credentials you are authorized to use.
 5. Select the discovered **Nice** card, or add **Nice** manually from
    **Settings -> Devices & services**.
 6. Close MyNice/MyNice Pro before submitting the config flow.
+
+The recommended mode uses the LAN while it is healthy, fails over to the Nice
+relay after bounded connection failures, and returns only after repeated
+successful LAN probes. Fully local never opens a cloud connection. Fully cloud
+never opens a LAN connection. The account password, OAuth client credentials,
+and access token used by the optional import are not stored; the imported NHK
+device credentials are stored because both local and relay sessions require
+them.
 
 Detailed setup and credential extraction instructions are in
 [Setup and Credential Extraction](docs/setup.md).
@@ -211,7 +220,7 @@ Good dashboard candidates:
 | Step-step | Normal remote-control style action. |
 | Partial open 1/2/3 | Pedestrian, delivery, or vehicle-width openings. |
 | Courtesy light / timer | Only when the control unit has a courtesy light output wired and configured. |
-| Connection state / last successful update | Basic health checks for the local BiDi-WiFi connection. |
+| Connection and route state | Overall health, active local/cloud route, per-route reachability, and last successful update. |
 
 `Hidden` in Home Assistant does not mean broken or unavailable. In this
 integration it usually means the entity is diagnostic, advanced, or not normally

@@ -202,14 +202,17 @@ MyNice Pro simulation/research tooling, but that fallback should not be treated
 as the recommended Home Assistant setup path.
 
 The `my_nice_general` database may also contain an `accessory_table` with module
-metadata such as the product type. `nhk_web` contains cloud credentials and is
-not needed for this local integration.
+metadata such as the product type. The local extractor does not read
+`nhk_web`; cloud-assisted setup uses the bounded one-time account flow instead
+of importing that database.
 
 There is currently no confirmed non-root Android local extraction path. Modern
 Android app-private storage generally blocks normal ADB backup, file browsing,
 and `run-as` for this app. A rooted emulator such as LDPlayer remains the known
-local workaround. If you cannot or do not want to extract local credentials, use
-one of the cloud-capable beta builds instead of sharing private app data.
+local workaround. If extracting credentials is impractical, the integration can
+optionally retrieve the same per-device NHK credentials in a one-time MyNice
+session. This requires account credentials plus OAuth application credentials
+you are independently authorized to use.
 
 Do not publish the extracted app data, SQLite databases, WAL files, or extracted
 NHK credentials. If the Android app schema changes, open an issue with the
@@ -221,19 +224,33 @@ table names, but redact all secrets.
 1. Go to **Settings -> Devices & services**.
 2. Use a discovered **Nice** card if one is shown, or select **Add integration**
    and choose **Nice**.
-3. For manual setup, choose a connection mode. The flow only offers modes whose
-   transport is available in the installed version. Fully local is available
-   with the local integration. Local + cloud fallback is the recommended policy
-   when a version with cloud transport is installed.
-4. For fully local setup, enter:
+3. Choose one connection mode:
+   - **Local + cloud fallback (recommended)** uses the LAN while healthy,
+     switches to the configured relay after bounded LAN failures, and requires
+     repeated successful LAN probes before returning.
+   - **Fully local** never opens a cloud connection.
+   - **Fully cloud** never opens a LAN connection.
+4. Choose manual NHK credential entry or the optional one-time MyNice import.
+   The import sends account and OAuth credentials to Nice, uses the response
+   only to obtain per-device NHK credentials, and discards the account
+   password, OAuth credentials, and access token when the step ends.
+5. For local or fallback setup, enter:
    - Interface IP address or hostname
    - Interface MAC address from `target_mac`
    - NHK username from `username`
    - NHK password hex from `password`
-5. If the extracted `source_id` differs from the username, enable **Show
+6. For cloud or fallback setup, confirm the relay hostname and TLS port. The
+   default endpoint is prefilled. Internet relay TLS certificates and hostnames
+   are verified against the Home Assistant host's system trust store.
+7. If the extracted `source_id` differs from the username, enable **Show
    advanced settings** and enter it as **Source/controller ID**. Port, NHK
    device ID, and T4 timeout are also under Advanced.
-6. Close MyNice/MyNice Pro before pressing submit.
+8. Close MyNice/MyNice Pro before pressing submit when a local route is used.
+
+The relay is a private Nice service and may change without notice. The
+integration does not disable TLS verification and does not bundle OAuth
+application secrets. A fallback entry can be created while the LAN endpoint is
+temporarily unavailable if relay validation succeeds.
 
 For a discovered interface, Home Assistant supplies the advertised host, port,
 MAC identity, model, protocol version, and IPv4/IPv6 addresses. You only need to

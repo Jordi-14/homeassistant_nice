@@ -41,6 +41,26 @@ class NiceCalibrationError(NiceBidiError):
     """Calibration data or state is invalid."""
 
 
+class NiceCloudError(NiceBidiError):
+    """Base error for the optional MyNice credential bootstrap."""
+
+
+class NiceCloudAuthError(NiceCloudError):
+    """The MyNice account or OAuth application credentials were rejected."""
+
+
+class NiceCloudAccessError(NiceCloudError):
+    """The authenticated account cannot access its bootstrap data."""
+
+
+class NiceCloudConnectionError(NiceCloudError):
+    """The MyNice bootstrap service could not be reached."""
+
+
+class NiceCloudSchemaError(NiceCloudError):
+    """The MyNice bootstrap response does not have a supported shape."""
+
+
 def nice_error_code(err: Exception | str) -> str | None:
     """Return a Nice XML error code from an exception or response string."""
     match = re.search(r"<Code>\s*([^<\s]+)\s*</Code>", str(err))

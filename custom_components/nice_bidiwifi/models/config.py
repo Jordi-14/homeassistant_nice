@@ -72,8 +72,21 @@ class NiceEntryConfig:
     ) -> NiceEntryConfig:
         """Build the validated runtime configuration from stored entry data."""
         mode = ConnectionMode(str(data.get("connection_mode", ConnectionMode.LOCAL_ONLY)))
-        local = _endpoint_from_mapping(data, "host", "port", default_port=443)
-        relay = _endpoint_from_mapping(data, "relay_host", "relay_port", default_port=443)
+        local = (
+            _endpoint_from_mapping(data, "host", "port", default_port=443)
+            if mode is not ConnectionMode.CLOUD_ONLY
+            else None
+        )
+        relay = (
+            _endpoint_from_mapping(
+                data,
+                "relay_host",
+                "relay_port",
+                default_port=7890,
+            )
+            if mode is not ConnectionMode.LOCAL_ONLY
+            else None
+        )
         return cls(
             name=str(data.get("name") or title or "Nice Gate"),
             credentials=NiceCredentials(

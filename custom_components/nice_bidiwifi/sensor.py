@@ -21,6 +21,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .client import NiceBidiStatus
+from .connection import NiceConnectionRoute, NiceRouteState
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entities.factory import (
     NiceEntityDescriptionMixin,
@@ -525,6 +526,43 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
 )
 
 
+ROUTE_SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
+    NiceBidiSensorEntityDescription(
+        key="active_connection_route",
+        name="Active connection route",
+        protected=False,
+        device_class=SensorDeviceClass.ENUM,
+        options=[route.value for route in NiceConnectionRoute],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=True,
+        icon="mdi:transit-connection-variant",
+        value_fn=lambda coordinator: coordinator.active_connection_route,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="local_connection_state",
+        name="Local connection state",
+        protected=False,
+        device_class=SensorDeviceClass.ENUM,
+        options=[state.value for state in NiceRouteState],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=True,
+        icon="mdi:lan-connect",
+        value_fn=lambda coordinator: coordinator.local_connection_state,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="cloud_connection_state",
+        name="Cloud connection state",
+        protected=False,
+        device_class=SensorDeviceClass.ENUM,
+        options=[state.value for state in NiceRouteState],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=True,
+        icon="mdi:cloud-check-outline",
+        value_fn=lambda coordinator: coordinator.cloud_connection_state,
+    ),
+)
+
+
 def _event_supported(
     coordinator: NiceBidiDataUpdateCoordinator,
 ) -> bool | None:
@@ -700,7 +738,7 @@ async def async_setup_entry(
         build_described_entities(
             coordinator,
             entry,
-            (*SENSORS, *EVENT_SENSORS),
+            (*SENSORS, *ROUTE_SENSORS, *EVENT_SENSORS),
             NiceBidiSensor,
         )
     )

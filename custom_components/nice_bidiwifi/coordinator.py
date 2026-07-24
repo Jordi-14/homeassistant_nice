@@ -42,7 +42,6 @@ from .client import (
     DEP_ACTION_PARTIAL_OPEN_3,
     DEP_ACTION_STEP_STEP,
     NiceBidiAuthError,
-    NiceBidiClient,
     NiceBidiConnectionError,
     NiceBidiDeviceInfo,
     NiceBidiError,
@@ -55,7 +54,10 @@ from .connection import (
     CONNECTION_STATE_FAILED,
     CONNECTION_STATE_RECONNECTING,
     CONNECTION_STATE_UNKNOWN,
+    NiceConnectionHealth,
+    NiceConnectionRoute,
 )
+from .connection_router import NiceConnectionRouter
 from .controllers.base import controller_defines
 from .controllers.events import NiceEventController
 from .const import (
@@ -155,6 +157,13 @@ class NiceBidiDataUpdateCoordinator(
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
         self.config_entry = entry
+        self.entry_config = NiceEntryConfig.from_mapping(
+            entry.data,
+            title=entry.title,
+        )
+        self.connection_health = NiceConnectionHealth.from_policy(
+            self.entry_config.connection
+        )
         self.position_controller = NiceBidiPositionController(self)
         self.calibration_controller = NiceBidiCalibrationController(self)
         self.connection_state = CONNECTION_STATE_UNKNOWN
@@ -171,22 +180,12 @@ class NiceBidiDataUpdateCoordinator(
         self._extended_status_cache: NiceBidiStatus | None = None
         self._extended_status_next_refresh_monotonic = 0.0
         self.calibration_controller._init_calibration_state(hass, entry)
-        self.entry_config = NiceEntryConfig.from_mapping(
-            entry.data,
-            title=entry.title,
-        )
         self._capability_service = NiceCapabilityService(
             self.entry_config.device_id
         )
-        endpoint = self.entry_config.connection.local
-        if endpoint is None:
-            raise ValueError("The selected connection policy has no local endpoint")
-        self.client = NiceBidiClient(
-            host=endpoint.host,
-            port=endpoint.port,
-            credentials=self.entry_config.credentials,
-            device_id=self.entry_config.device_id,
-            t4_timeout_ms=self.entry_config.t4_timeout_ms,
+        self.client = NiceConnectionRouter(
+            self.entry_config,
+            self.connection_health,
         )
         super().__init__(
             hass,
@@ -211,22 +210,54 @@ class NiceBidiDataUpdateCoordinator(
             f"{type(self).__name__!s} has no attribute {name!r}"
         )
 
+    @property
+    def active_connection_route(self) -> str:
+        """Return the route currently carrying protocol traffic."""
+        return self.connection_health.active.value
+
+    @property
+    def local_connection_state(self) -> str:
+        """Return current LAN route reachability."""
+        return self.connection_health.local.value
+
+    @property
+    def cloud_connection_state(self) -> str:
+        """Return current Nice relay route reachability."""
+        return self.connection_health.cloud.value
+
+    def _set_connection_state(
+        self,
+        state: str,
+        *,
+        route: NiceConnectionRoute | None = None,
+    ) -> None:
+        """Update legacy and per-route connection state together."""
+        self.connection_state = state
+        if route is None:
+            route = getattr(
+                self.client,
+                "active_route",
+                NiceConnectionRoute.LOCAL,
+            )
+        if route is not NiceConnectionRoute.NONE:
+            self.connection_health.mark_overall_state(state, route=route)
+
     async def _async_update_data(self) -> NiceBidiStatus:
         """Fetch state from the BiDi."""
         self.event_controller.ensure_registered()
         try:
             if self.connection_state == CONNECTION_STATE_FAILED:
-                self.connection_state = CONNECTION_STATE_RECONNECTING
+                self._set_connection_state(CONNECTION_STATE_RECONNECTING)
             status = await self.hass.async_add_executor_job(self._read_status_and_maybe_info)
         except NiceBidiAuthError as err:
             self.client.close()
-            self.connection_state = CONNECTION_STATE_AUTH_FAILED
+            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise ConfigEntryAuthFailed(str(err)) from err
         except (NiceBidiConnectionError, OSError) as err:
             self.client.close()
-            self.connection_state = CONNECTION_STATE_FAILED
+            self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             self.update_interval = ERROR_UPDATE_INTERVAL
             self._clear_position_simulation()
@@ -291,10 +322,23 @@ class NiceBidiDataUpdateCoordinator(
     def _store_device_info(self, device_info: NiceBidiDeviceInfo) -> None:
         """Store INFO metadata and its normalized capability view together."""
         self.device_info = device_info
-        self.capabilities = self._capability_service.discover(
-            device_info,
-            status=self.data,
-            previous=self.capabilities,
+        self.capabilities = self._with_route_capabilities(
+            self._capability_service.discover(
+                device_info,
+                status=self.data,
+                previous=self.capabilities,
+            )
+        )
+
+    def _with_route_capabilities(
+        self,
+        capabilities: NiceCapabilities,
+    ) -> NiceCapabilities:
+        """Record which transports this entry is configured to use."""
+        return replace(
+            capabilities,
+            local_available=self.entry_config.connection.local is not None,
+            relay_available=self.entry_config.connection.relay is not None,
         )
 
     def _should_read_extended_status(self) -> bool:
@@ -330,12 +374,14 @@ class NiceBidiDataUpdateCoordinator(
     def _store_successful_status(self, status: NiceBidiStatus) -> None:
         """Store successful status read metadata."""
         if self.device_info is not None:
-            self.capabilities = self._capability_service.discover(
-                self.device_info,
-                status=status,
-                previous=self.capabilities,
+            self.capabilities = self._with_route_capabilities(
+                self._capability_service.discover(
+                    self.device_info,
+                    status=status,
+                    previous=self.capabilities,
+                )
             )
-        self.connection_state = CONNECTION_STATE_CONNECTED
+        self._set_connection_state(CONNECTION_STATE_CONNECTED)
         self.last_error = None
         self.last_successful_update = datetime.now(UTC)
         if status.position is not None:
@@ -455,19 +501,19 @@ class NiceBidiDataUpdateCoordinator(
         except NiceBidiAuthError as err:
             self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_AUTH_FAILED
+            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise HomeAssistantError(f"Nice authentication failed: {err}") from err
         except (NiceBidiConnectionError, OSError) as err:
             self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_FAILED
+            self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise HomeAssistantError(f"Nice command failed: {err}") from err
 
-        self.connection_state = CONNECTION_STATE_CONNECTED
+        self._set_connection_state(CONNECTION_STATE_CONNECTED)
         self._store_accepted_command(command, started)
         self.last_error = None
         self._extend_post_command_fast_poll_window()
@@ -501,19 +547,19 @@ class NiceBidiDataUpdateCoordinator(
         except NiceBidiAuthError as err:
             self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_AUTH_FAILED
+            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise HomeAssistantError(f"Nice authentication failed: {err}") from err
         except (NiceBidiConnectionError, OSError) as err:
             self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_FAILED
+            self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise HomeAssistantError(f"Nice command failed: {err}") from err
 
-        self.connection_state = CONNECTION_STATE_CONNECTED
+        self._set_connection_state(CONNECTION_STATE_CONNECTED)
         self._store_accepted_command(command, started)
         self.last_error = None
         self._extend_post_command_fast_poll_window()
@@ -578,17 +624,17 @@ class NiceBidiDataUpdateCoordinator(
         except NiceBidiAuthError as err:
             self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_AUTH_FAILED
+            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             raise HomeAssistantError(f"Nice authentication failed: {err}") from err
         except (NiceBidiConnectionError, OSError, ValueError) as err:
             self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_FAILED
+            self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             raise HomeAssistantError(f"Nice DMP write failed: {err}") from err
 
-        self.connection_state = CONNECTION_STATE_CONNECTED
+        self._set_connection_state(CONNECTION_STATE_CONNECTED)
         self._store_accepted_command(command, started)
         self.last_error = None
         self._extend_post_command_fast_poll_window()
@@ -630,7 +676,7 @@ class NiceBidiDataUpdateCoordinator(
         """Force the current NHK/TLS session to be recreated."""
         await self._async_cancel_background_tasks(calibration_reason="reconnect")
         self.event_controller.mark_reconnecting()
-        self.connection_state = CONNECTION_STATE_RECONNECTING
+        self._set_connection_state(CONNECTION_STATE_RECONNECTING)
         await self.hass.async_add_executor_job(self.client.close)
         await self.async_request_refresh()
 

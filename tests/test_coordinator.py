@@ -64,11 +64,18 @@ async def test_update_data_reads_status_and_caches_device_info(
     client = FakeClient()
     instance.client = client
 
+    assert instance.active_connection_route == "none"
+    assert instance.local_connection_state == "unknown"
+    assert instance.cloud_connection_state == "not_configured"
+
     result = await instance._async_update_data()
 
     assert result is client.read_status_result
     assert instance.device_info is client.read_info_result
     assert instance.connection_state == coordinator_module.CONNECTION_STATE_CONNECTED
+    assert instance.active_connection_route == "local"
+    assert instance.local_connection_state == "connected"
+    assert instance.cloud_connection_state == "not_configured"
     assert instance.last_error is None
     assert isinstance(instance.last_successful_update, datetime)
     assert client.info_reads == 1
@@ -264,6 +271,8 @@ async def test_update_data_maps_auth_failure(hass: HomeAssistant) -> None:
         await instance._async_update_data()
 
     assert instance.connection_state == coordinator_module.CONNECTION_STATE_AUTH_FAILED
+    assert instance.active_connection_route == "none"
+    assert instance.local_connection_state == "disconnected"
     assert instance.last_error == "denied"
     assert client.closed is True
 
@@ -279,6 +288,8 @@ async def test_update_data_maps_connection_failure(hass: HomeAssistant) -> None:
         await instance._async_update_data()
 
     assert instance.connection_state == coordinator_module.CONNECTION_STATE_FAILED
+    assert instance.active_connection_route == "none"
+    assert instance.local_connection_state == "disconnected"
     assert instance.last_error == "offline"
     assert instance.update_interval == coordinator_module.ERROR_UPDATE_INTERVAL
     assert client.closed is True
@@ -606,6 +617,8 @@ async def test_send_action_wraps_connection_errors(hass: HomeAssistant) -> None:
         await instance._async_send_action("stop", refresh=False)
 
     assert instance.connection_state == coordinator_module.CONNECTION_STATE_FAILED
+    assert instance.active_connection_route == "none"
+    assert instance.local_connection_state == "disconnected"
     assert instance.last_error == "offline"
     assert client.closed is True
 

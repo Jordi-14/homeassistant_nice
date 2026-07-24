@@ -5,18 +5,72 @@
         "title": "Nice",
         "description": "Tria un mode de connexió disponible. Local amb alternativa al núvol és la política recomanada quan el transport al núvol està disponible.",
         "data": {
-          "connection_mode": "Mode de connexió"
+          "connection_mode": "Mode de connexió",
+          "credential_source": "Origen de les credencials"
         },
         "data_description": {
-          "connection_mode": "Com ha d'accedir Home Assistant a aquest dispositiu Nice. Només es mostren els modes compatibles amb aquesta versió."
+          "connection_mode": "Com ha d'accedir Home Assistant a aquest dispositiu Nice. Només es mostren els modes compatibles amb aquesta versió.",
+          "credential_source": "Introdueix les credencials NHK manualment o importa-les durant una sessió única de MyNice."
         }
       },
-      "local": {
-        "title": "Connexió local",
-        "description": "Introdueix les credencials NHK locals de la interfície Nice. Tanca MyNice/MyNice Pro abans de validar la connexió.",
+      "cloud_auth": {
+        "title": "Importa credencials de MyNice",
+        "description": "Aquesta importació opcional i única envia les dades del compte proporcionades a Nice. Utilitza un servei privat i no compatible que pot canviar. Proporciona credencials d'una aplicació OAuth que tinguis autorització independent per utilitzar. Home Assistant descarta la contrasenya del compte, les credencials OAuth i el testimoni d'accés després de la importació.",
+        "data": {
+          "cloud_account": "Compte de MyNice",
+          "cloud_account_password": "Contrasenya del compte de MyNice",
+          "oauth_client_id": "ID de client OAuth autoritzat",
+          "oauth_client_secret": "Secret de client OAuth autoritzat",
+          "cloud_confirm": "Ho entenc i tinc autorització per utilitzar aquestes credencials"
+        },
+        "data_description": {
+          "cloud_account": "Adreça electrònica o nom d'usuari del compte de MyNice.",
+          "cloud_account_password": "Només s'utilitza per a aquesta importació i mai es desa a l'entrada de configuració.",
+          "oauth_client_id": "ID de client d'una aplicació OAuth que tinguis autorització per utilitzar. La integració no inclou credencials d'aplicació.",
+          "oauth_client_secret": "Només s'utilitza per a aquesta importació i mai es desa a l'entrada de configuració.",
+          "cloud_confirm": "Confirma que entens que les dades surten de la LAN i que el servei al núvol és privat i no compatible."
+        }
+      },
+      "cloud_accessories": {
+        "title": "Tria interfícies Nice",
+        "description": "S'han trobat {count} interfície(s) no configurada(es). S'han ignorat {skipped} registre(s) incomplet(s) o duplicat(s). Selecciona totes les interfícies que vulguis afegir.",
+        "data": {
+          "cloud_accessories": "Interfícies"
+        },
+        "data_description": {
+          "cloud_accessories": "Cada interfície seleccionada es converteix en una entrada de configuració pròpia de Home Assistant."
+        }
+      },
+      "cloud_local": {
+        "title": "Connecta {name}",
+        "description": "Configura la interfície {current} de {total}. La sessió del compte ha finalitzat; Home Assistant ara valida només les credencials NHK importades mitjançant la ruta seleccionada.",
         "data": {
           "name": "Nom",
           "host": "Adreça IP o nom d'amfitrió de la interfície",
+          "port": "Port",
+          "relay_host": "Nom d'amfitrió del relé Nice",
+          "relay_port": "Port del relé Nice",
+          "device_id": "ID del dispositiu",
+          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons"
+        },
+        "data_description": {
+          "name": "Nom visible d'aquesta porta a Home Assistant.",
+          "host": "Adreça que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
+          "port": "Port TLS local de la interfície Nice. El valor predeterminat és 443.",
+          "relay_host": "Nom d'amfitrió del relé d'Internet. Es verifiquen el certificat TLS i el nom d'amfitrió.",
+          "relay_port": "Port TLS del relé d'Internet. El valor predeterminat és 7890.",
+          "device_id": "ID de dispositiu NHK que es vol controlar. Mantén 1 excepte si estàs diagnosticant un altre dispositiu.",
+          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons."
+        }
+      },
+      "local": {
+        "title": "Connecta Nice",
+        "description": "Introdueix les credencials NHK del dispositiu i els endpoints requerits pel mode seleccionat. Tanca MyNice/MyNice Pro abans de validar una connexió local.",
+        "data": {
+          "name": "Nom",
+          "host": "Adreça IP o nom d'amfitrió de la interfície",
+          "relay_host": "Nom d'amfitrió del relé Nice",
+          "relay_port": "Port del relé Nice",
           "target_mac": "Adreça MAC de la interfície",
           "username": "Nom d'usuari NHK",
           "password": "Contrasenya NHK en hexadecimal",
@@ -25,6 +79,8 @@
         "data_description": {
           "name": "Nom visible d'aquesta porta a Home Assistant.",
           "host": "Adreça que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
+          "relay_host": "Nom d'amfitrió del relé d'Internet. Es verifiquen el certificat TLS i el nom d'amfitrió.",
+          "relay_port": "Port TLS del relé d'Internet. El valor predeterminat és 7890.",
           "target_mac": "Adreça MAC de la interfície extreta de les credencials de MyNice.",
           "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
@@ -65,11 +121,14 @@
       },
       "reauth_confirm": {
         "title": "Torna a autenticar Nice",
-        "description": "Actualitza les credencials locals d'aquesta interfície Nice. L'adreça MAC ha de coincidir amb el dispositiu existent.",
+        "description": "Actualitza les credencials i les rutes de connexió d'aquesta interfície Nice. L'adreça MAC ha de coincidir amb el dispositiu existent.",
         "data": {
+          "connection_mode": "Mode de connexió",
           "name": "Nom",
           "host": "Adreça IP o nom d'amfitrió de la interfície",
           "port": "Port",
+          "relay_host": "Nom d'amfitrió del relé Nice",
+          "relay_port": "Port del relé Nice",
           "target_mac": "Adreça MAC de la interfície",
           "username": "Nom d'usuari NHK",
           "password": "Contrasenya NHK en hexadecimal",
@@ -81,6 +140,8 @@
           "name": "Nom visible d'aquesta porta a Home Assistant.",
           "host": "Adreça que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
           "port": "Port TLS local de la interfície Nice. El valor predeterminat és 443.",
+          "relay_host": "Nom d'amfitrió del relé d'Internet. És necessari per als modes alternatiu i completament al núvol.",
+          "relay_port": "Port TLS del relé d'Internet. El valor predeterminat és 7890.",
           "target_mac": "Adreça MAC de la interfície extreta de les credencials de MyNice.",
           "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
@@ -91,11 +152,14 @@
       },
       "reconfigure": {
         "title": "Reconfigura Nice",
-        "description": "Actualitza la configuració de connexió local d'aquesta interfície Nice. L'adreça MAC ha de coincidir amb el dispositiu existent.",
+        "description": "Actualitza la política de connexió i els endpoints d'aquesta interfície Nice. Es conserven la identitat i els IDs d'entitat.",
         "data": {
+          "connection_mode": "Mode de connexió",
           "name": "Nom",
           "host": "Adreça IP o nom d'amfitrió de la interfície",
           "port": "Port",
+          "relay_host": "Nom d'amfitrió del relé Nice",
+          "relay_port": "Port del relé Nice",
           "target_mac": "Adreça MAC de la interfície",
           "username": "Nom d'usuari NHK",
           "password": "Contrasenya NHK en hexadecimal",
@@ -107,6 +171,8 @@
           "name": "Nom visible d'aquesta porta a Home Assistant.",
           "host": "Adreça que Home Assistant utilitza per arribar a la interfície Nice a la xarxa local.",
           "port": "Port TLS local de la interfície Nice. El valor predeterminat és 443.",
+          "relay_host": "Nom d'amfitrió del relé d'Internet. És necessari per als modes alternatiu i completament al núvol.",
+          "relay_port": "Port TLS del relé d'Internet. El valor predeterminat és 7890.",
           "target_mac": "Adreça MAC de la interfície extreta de les credencials de MyNice.",
           "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
@@ -117,10 +183,18 @@
       }
     },
     "error": {
-      "cannot_connect": "No s'ha pogut validar la connexió local. Comprova l'accés LAN al port TCP configurat, tanca MyNice/MyNice Pro i consulta els registres de Home Assistant per veure l'error exacte.",
+      "cannot_connect": "No s'ha pogut validar cap ruta de connexió necessària. Comprova l'endpoint LAN o del relé i consulta els registres de Home Assistant per veure l'error exacte.",
+      "cloud_access_denied": "El compte autenticat o l'aplicació OAuth no té permís per accedir a les credencials dels accessoris.",
+      "cloud_cannot_connect": "No s'ha pogut accedir al servei d'importació de MyNice. Torna-ho a provar més tard.",
+      "cloud_confirmation_required": "Confirma que entens els requisits de privadesa i autorització abans de continuar.",
+      "cloud_invalid_auth": "MyNice ha rebutjat les credencials del compte o de l'aplicació OAuth, o ha retornat un testimoni d'accés caducat.",
+      "cloud_invalid_fields": "Completa tots els camps del compte i OAuth amb un valor de com a màxim 256 caràcters.",
+      "cloud_schema_changed": "MyNice ha retornat una resposta no compatible. És possible que el servei privat hagi canviat.",
+      "cloud_select_accessory": "Selecciona com a mínim una interfície Nice disponible.",
       "connection_mode_unavailable": "Aquest mode de connexió no està disponible a la versió instal·lada.",
       "invalid_auth": "L'autenticació ha fallat. Comprova el nom d'usuari extret, l'ID d'origen, la MAC de destinació i la contrasenya.",
       "invalid_connection_mode": "Selecciona un mode de connexió vàlid.",
+      "invalid_credential_source": "Selecciona un origen de credencials vàlid.",
       "invalid_device_id": "Introdueix una adreça MAC d'interfície hexadecimal vàlida de 12 dígits.",
       "invalid_protocol": "El dispositiu ha retornat una resposta de protocol local malformada o no compatible.",
       "unsupported_device": "El dispositiu s'ha autenticat però no exposa un protocol de control local compatible.",
@@ -128,7 +202,10 @@
       "wrong_device": "L'adreça MAC no coincideix amb aquesta interfície Nice configurada."
     },
     "abort": {
+      "all_accessories_configured": "Totes les interfícies Nice retornades per aquest compte ja estan configurades",
       "already_configured": "Aquesta interfície Nice ja està configurada",
+      "cloud_session_lost": "La sessió temporal d'importació de MyNice ja no està disponible; torna a iniciar la importació",
+      "invalid_import": "Les credencials o les dades de ruta de la interfície Nice importada són incompletes",
       "missing_identity": "La interfície descoberta no ha anunciat una identitat de maquinari estable",
       "not_operational": "Aquest anunci és per provisionar el dispositiu i no pot acceptar ordres de control",
       "reauth_successful": "Reautenticació correcta",
@@ -138,6 +215,12 @@
     }
   },
   "selector": {
+    "credential_source": {
+      "options": {
+        "manual": "Introdueix les credencials NHK manualment",
+        "mynice": "Importació única de MyNice"
+      }
+    },
     "connection_mode": {
       "options": {
         "local_with_cloud_fallback": "Local amb alternativa al núvol (recomanat)",

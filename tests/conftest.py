@@ -339,6 +339,9 @@ class FakeCoordinator:
         self.status_polling_supported = True
         self.last_update_success = True
         self.connection_state = "connected"
+        self.active_connection_route = "local"
+        self.local_connection_state = "connected"
+        self.cloud_connection_state = "not_configured"
         self.last_successful_update = datetime(2026, 5, 28, tzinfo=UTC)
         self.last_error = None
         self.client = FakeClient()

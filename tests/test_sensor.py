@@ -7,6 +7,7 @@ from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfTempe
 
 from custom_components.nice_bidiwifi.sensor import (
     EVENT_SENSORS,
+    ROUTE_SENSORS,
     SENSORS,
     NiceBidiSensor,
     async_setup_entry,
@@ -20,6 +21,10 @@ def _description(key: str):
 
 def _event_description(key: str):
     return next(description for description in EVENT_SENSORS if description.key == key)
+
+
+def _route_description(key: str):
+    return next(description for description in ROUTE_SENSORS if description.key == key)
 
 
 class TestNiceBidiSensorProperties:
@@ -56,6 +61,47 @@ class TestNiceBidiSensorProperties:
         )
         assert entity.unique_id == "aabbccddeeff_1_last_event_cause"
         assert entity.native_value == "C02"
+
+    def test_route_sensor_descriptions_are_additive_and_unprotected(self) -> None:
+        keys = [description.key for description in ROUTE_SENSORS]
+        assert keys == [
+            "active_connection_route",
+            "local_connection_state",
+            "cloud_connection_state",
+        ]
+        assert set(keys).isdisjoint(description.key for description in SENSORS)
+        assert all(not description.protected for description in ROUTE_SENSORS)
+        assert all(
+            description.entity_registry_visible_default
+            for description in ROUTE_SENSORS
+        )
+
+    def test_route_sensors_report_active_and_available_connections(self) -> None:
+        coordinator = FakeCoordinator()
+
+        active = NiceBidiSensor(
+            coordinator,
+            config_entry(),
+            _route_description("active_connection_route"),
+        )
+        local = NiceBidiSensor(
+            coordinator,
+            config_entry(),
+            _route_description("local_connection_state"),
+        )
+        cloud = NiceBidiSensor(
+            coordinator,
+            config_entry(),
+            _route_description("cloud_connection_state"),
+        )
+
+        assert active.unique_id == "aabbccddeeff_1_active_connection_route"
+        assert active.native_value == "local"
+        assert local.native_value == "connected"
+        assert cloud.native_value == "not_configured"
+        assert active.available is True
+        assert local.available is True
+        assert cloud.available is True
 
     def test_connection_state_sensor(self) -> None:
         coordinator = FakeCoordinator()
@@ -255,5 +301,5 @@ async def test_async_setup_entry_adds_all_sensors() -> None:
 
     await async_setup_entry(None, entry, add_entities)
 
-    assert len(created) == len(SENSORS) + len(EVENT_SENSORS)
+    assert len(created) == len(SENSORS) + len(ROUTE_SENSORS) + len(EVENT_SENSORS)
     assert all(isinstance(entity, NiceBidiSensor) for entity in created)

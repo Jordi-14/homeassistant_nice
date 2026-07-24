@@ -6,6 +6,13 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+from custom_components.nice_bidiwifi.connection import (
+    CONNECTION_STATE_CONNECTED,
+    CONNECTION_STATE_FAILED,
+    NiceConnectionHealth,
+    NiceConnectionRoute,
+    NiceRouteState,
+)
 from custom_components.nice_bidiwifi.errors import NiceAuthError
 from custom_components.nice_bidiwifi.models.capabilities import (
     NiceCapabilities,
@@ -88,6 +95,55 @@ def test_entry_config_validates_future_route_requirements() -> None:
     )
     assert cloud.connection.mode is ConnectionMode.CLOUD_ONLY
     assert cloud.connection.relay.host == "relay.example"
+
+
+def test_connection_health_tracks_both_routes_and_active_transport() -> None:
+    """Route health distinguishes configuration, reachability, and active use."""
+    config = NiceEntryConfig.from_mapping(
+        _config(
+            connection_mode="local_with_cloud_fallback",
+            relay_host="relay.example",
+            relay_port=443,
+        )
+    )
+    health = NiceConnectionHealth.from_policy(config.connection)
+
+    assert health.active is NiceConnectionRoute.NONE
+    assert health.local is NiceRouteState.UNKNOWN
+    assert health.cloud is NiceRouteState.UNKNOWN
+
+    health.mark_overall_state(
+        CONNECTION_STATE_CONNECTED,
+        route=NiceConnectionRoute.LOCAL,
+    )
+    assert health.active is NiceConnectionRoute.LOCAL
+    assert health.local is NiceRouteState.CONNECTED
+    assert health.cloud is NiceRouteState.UNKNOWN
+
+    health.mark_overall_state(
+        CONNECTION_STATE_CONNECTED,
+        route=NiceConnectionRoute.CLOUD,
+    )
+    assert health.active is NiceConnectionRoute.CLOUD
+    assert health.local is NiceRouteState.CONNECTED
+    assert health.cloud is NiceRouteState.CONNECTED
+
+    health.mark_overall_state(
+        CONNECTION_STATE_FAILED,
+        route=NiceConnectionRoute.CLOUD,
+    )
+    assert health.active is NiceConnectionRoute.NONE
+    assert health.local is NiceRouteState.CONNECTED
+    assert health.cloud is NiceRouteState.DISCONNECTED
+
+
+def test_connection_health_marks_absent_routes_not_configured() -> None:
+    """A local-only entry does not report its absent cloud route as failed."""
+    config = NiceEntryConfig.from_mapping(_config())
+    health = NiceConnectionHealth.from_policy(config.connection)
+
+    assert health.local is NiceRouteState.UNKNOWN
+    assert health.cloud is NiceRouteState.NOT_CONFIGURED
 
 
 def test_info_capabilities_decode_permissions_family_and_t4_mask() -> None:

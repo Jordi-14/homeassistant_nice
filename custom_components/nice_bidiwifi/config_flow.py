@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import logging
 from typing import Any
 
@@ -17,41 +18,67 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import selector
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .client import NiceBidiAuthError, NiceBidiClient, NiceBidiConnectionError
+from .cloud import (
+    NiceCloudAccessory,
+    NiceCloudBootstrapClient,
+    NiceCloudBootstrapResult,
+    NiceCloudLogin,
+)
 from .const import (
+    CONFIG_FIELDS,
     CONFIG_ENTRY_VERSION,
     CONF_CONNECTION_MODE,
     CONF_DEVICE_ID,
     CONF_DISCOVERY_MODEL,
     CONF_DISCOVERY_NAME,
+    CONF_RELAY_HOST,
+    CONF_RELAY_PORT,
     CONF_SOURCE_ID,
     CONF_T4_TIMEOUT_MS,
     CONF_TARGET_MAC,
     DEFAULT_DEVICE_ID,
     DEFAULT_NAME,
     DEFAULT_PORT,
+    DEFAULT_RELAY_HOST,
+    DEFAULT_RELAY_PORT,
     DEFAULT_T4_TIMEOUT_MS,
     DEFAULT_TIMEOUT,
     DOMAIN,
 )
-from .errors import NiceProtocolError, NiceUnsupportedError
+from .errors import (
+    NiceCloudAccessError,
+    NiceCloudAuthError,
+    NiceCloudConnectionError,
+    NiceCloudSchemaError,
+    NiceProtocolError,
+    NiceUnsupportedError,
+)
 from .models.config import ConnectionMode, NiceEntryConfig
 from .models.discovery import NiceDiscoveryInfo, normalize_device_id
 from .redaction import configured_secrets, redact_text
+from .transport.relay import RelayTlsTransport
 
 _LOGGER = logging.getLogger(__name__)
 
 CONF_ADVANCED = "advanced"
+CONF_CREDENTIAL_SOURCE = "credential_source"
+CONF_CLOUD_ACCOUNT = "cloud_account"
+CONF_CLOUD_ACCOUNT_PASSWORD = "cloud_account_password"
+CONF_CLOUD_ACCESSORIES = "cloud_accessories"
+CONF_CLOUD_CONFIRM = "cloud_confirm"
+CONF_OAUTH_CLIENT_ID = "oauth_client_id"
+CONF_OAUTH_CLIENT_SECRET = "oauth_client_secret"
+
+CREDENTIAL_SOURCE_MANUAL = "manual"
+CREDENTIAL_SOURCE_MYNICE = "mynice"
 RECOMMENDED_CONNECTION_MODE = ConnectionMode.LOCAL_WITH_CLOUD_FALLBACK
-IMPLEMENTED_CONNECTION_MODES = (ConnectionMode.LOCAL_ONLY,)
-DEFAULT_NEW_CONNECTION_MODE = (
-    RECOMMENDED_CONNECTION_MODE
-    if RECOMMENDED_CONNECTION_MODE in IMPLEMENTED_CONNECTION_MODES
-    else ConnectionMode.LOCAL_ONLY
-)
+IMPLEMENTED_CONNECTION_MODES = tuple(ConnectionMode)
+DEFAULT_NEW_CONNECTION_MODE = RECOMMENDED_CONNECTION_MODE
 
 _TEXT_SELECTOR = selector.TextSelector(selector.TextSelectorConfig())
 _PASSWORD_SELECTOR = selector.TextSelector(
@@ -88,6 +115,16 @@ _CONNECTION_MODE_SELECTOR = selector.SelectSelector(
         mode=selector.SelectSelectorMode.LIST,
     )
 )
+_CREDENTIAL_SOURCE_SELECTOR = selector.SelectSelector(
+    selector.SelectSelectorConfig(
+        options=[
+            CREDENTIAL_SOURCE_MANUAL,
+            CREDENTIAL_SOURCE_MYNICE,
+        ],
+        translation_key=CONF_CREDENTIAL_SOURCE,
+        mode=selector.SelectSelectorMode.LIST,
+    )
+)
 
 
 def _mode_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
@@ -102,22 +139,119 @@ def _mode_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
                     DEFAULT_NEW_CONNECTION_MODE.value,
                 ),
             ): _CONNECTION_MODE_SELECTOR,
+            vol.Required(
+                CONF_CREDENTIAL_SOURCE,
+                default=user_input.get(
+                    CONF_CREDENTIAL_SOURCE,
+                    CREDENTIAL_SOURCE_MANUAL,
+                ),
+            ): _CREDENTIAL_SOURCE_SELECTOR,
         }
     )
 
 
-def _local_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
-    """Return normal local setup fields."""
-    user_input = user_input or {}
+def _cloud_auth_schema() -> vol.Schema:
+    """Return transient account and independently supplied OAuth fields."""
     return vol.Schema(
         {
+            vol.Required(CONF_CLOUD_ACCOUNT): _TEXT_SELECTOR,
+            vol.Required(CONF_CLOUD_ACCOUNT_PASSWORD): _PASSWORD_SELECTOR,
+            vol.Required(CONF_OAUTH_CLIENT_ID): _TEXT_SELECTOR,
+            vol.Required(CONF_OAUTH_CLIENT_SECRET): _PASSWORD_SELECTOR,
+            vol.Required(CONF_CLOUD_CONFIRM, default=False): _ADVANCED_SELECTOR,
+        }
+    )
+
+
+def _cloud_accessory_schema(
+    accessories: tuple[NiceCloudAccessory, ...],
+) -> vol.Schema:
+    """Return a multiple-accessory selector."""
+    labels: dict[str, int] = {}
+    for accessory in accessories:
+        labels[accessory.name] = labels.get(accessory.name, 0) + 1
+    options: list[selector.SelectOptionDict] = []
+    for index, accessory in enumerate(accessories):
+        label = accessory.name
+        if labels[label] > 1:
+            label = f"{label} ({accessory.target_mac[-5:]})"
+        options.append(
+            selector.SelectOptionDict(
+                value=str(index),
+                label=label,
+            )
+        )
+    return vol.Schema(
+        {
+            vol.Required(CONF_CLOUD_ACCESSORIES): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=options,
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            )
+        }
+    )
+
+
+def _cloud_local_schema(
+    accessory: NiceCloudAccessory,
+    mode: ConnectionMode,
+    user_input: dict[str, Any] | None = None,
+) -> vol.Schema:
+    """Return route endpoint fields for one imported accessory."""
+    user_input = user_input or {}
+    fields: dict[vol.Marker, object] = {
+            vol.Required(
+                CONF_NAME,
+                default=user_input.get(CONF_NAME, accessory.name),
+            ): _TEXT_SELECTOR,
+            vol.Required(
+                CONF_DEVICE_ID,
+                default=user_input.get(
+                    CONF_DEVICE_ID,
+                    accessory.device_id,
+                ),
+            ): _DEVICE_ID_SELECTOR,
+            vol.Required(
+                CONF_T4_TIMEOUT_MS,
+                default=user_input.get(
+                    CONF_T4_TIMEOUT_MS,
+                    DEFAULT_T4_TIMEOUT_MS,
+                ),
+            ): _TIMEOUT_SELECTOR,
+    }
+    if mode is not ConnectionMode.CLOUD_ONLY:
+        fields[vol.Required(
+                CONF_HOST,
+                default=user_input.get(CONF_HOST, ""),
+            )] = _TEXT_SELECTOR
+        fields[vol.Required(
+                CONF_PORT,
+                default=user_input.get(CONF_PORT, DEFAULT_PORT),
+            )] = _PORT_SELECTOR
+    if mode is not ConnectionMode.LOCAL_ONLY:
+        fields[vol.Required(
+            CONF_RELAY_HOST,
+            default=user_input.get(CONF_RELAY_HOST, DEFAULT_RELAY_HOST),
+        )] = _TEXT_SELECTOR
+        fields[vol.Required(
+            CONF_RELAY_PORT,
+            default=user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT),
+        )] = _PORT_SELECTOR
+    return vol.Schema(fields)
+
+
+def _local_schema(
+    user_input: dict[str, Any] | None = None,
+    mode: ConnectionMode = ConnectionMode.LOCAL_ONLY,
+) -> vol.Schema:
+    """Return normal setup fields for the selected routes."""
+    user_input = user_input or {}
+    fields: dict[vol.Marker, object] = {
             vol.Required(
                 CONF_NAME,
                 default=user_input.get(CONF_NAME, DEFAULT_NAME),
-            ): _TEXT_SELECTOR,
-            vol.Required(
-                CONF_HOST,
-                default=user_input.get(CONF_HOST, ""),
             ): _TEXT_SELECTOR,
             vol.Required(
                 CONF_TARGET_MAC,
@@ -135,8 +269,22 @@ def _local_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
                 CONF_ADVANCED,
                 default=bool(user_input.get(CONF_ADVANCED, False)),
             ): _ADVANCED_SELECTOR,
-        }
-    )
+    }
+    if mode is not ConnectionMode.CLOUD_ONLY:
+        fields[vol.Required(
+            CONF_HOST,
+            default=user_input.get(CONF_HOST, ""),
+        )] = _TEXT_SELECTOR
+    if mode is not ConnectionMode.LOCAL_ONLY:
+        fields[vol.Required(
+            CONF_RELAY_HOST,
+            default=user_input.get(CONF_RELAY_HOST, DEFAULT_RELAY_HOST),
+        )] = _TEXT_SELECTOR
+        fields[vol.Required(
+            CONF_RELAY_PORT,
+            default=user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT),
+        )] = _PORT_SELECTOR
+    return vol.Schema(fields)
 
 
 def _discovery_schema(
@@ -168,19 +316,15 @@ def _discovery_schema(
 
 def _advanced_schema(
     user_input: dict[str, Any] | None = None,
+    mode: ConnectionMode = ConnectionMode.LOCAL_ONLY,
 ) -> vol.Schema:
     """Return advanced local protocol fields."""
     user_input = user_input or {}
-    return vol.Schema(
-        {
+    fields: dict[vol.Marker, object] = {
             vol.Optional(
                 CONF_SOURCE_ID,
                 default=user_input.get(CONF_SOURCE_ID, ""),
             ): _TEXT_SELECTOR,
-            vol.Optional(
-                CONF_PORT,
-                default=user_input.get(CONF_PORT, DEFAULT_PORT),
-            ): _PORT_SELECTOR,
             vol.Optional(
                 CONF_DEVICE_ID,
                 default=user_input.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID),
@@ -192,27 +336,33 @@ def _advanced_schema(
                     DEFAULT_T4_TIMEOUT_MS,
                 ),
             ): _TIMEOUT_SELECTOR,
-        }
-    )
+    }
+    if mode is not ConnectionMode.CLOUD_ONLY:
+        fields[vol.Optional(
+            CONF_PORT,
+            default=user_input.get(CONF_PORT, DEFAULT_PORT),
+        )] = _PORT_SELECTOR
+    return vol.Schema(fields)
 
 
 def _schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     """Return complete entry fields for reauthentication and reconfiguration."""
     user_input = user_input or {}
-    return vol.Schema(
-        {
+    try:
+        mode = ConnectionMode(
+            str(user_input.get(CONF_CONNECTION_MODE, ConnectionMode.LOCAL_ONLY))
+        )
+    except ValueError:
+        mode = ConnectionMode.LOCAL_ONLY
+    fields: dict[vol.Marker, object] = {
+            vol.Required(
+                CONF_CONNECTION_MODE,
+                default=mode.value,
+            ): _CONNECTION_MODE_SELECTOR,
             vol.Required(
                 CONF_NAME,
                 default=user_input.get(CONF_NAME, DEFAULT_NAME),
             ): _TEXT_SELECTOR,
-            vol.Required(
-                CONF_HOST,
-                default=user_input.get(CONF_HOST, ""),
-            ): _TEXT_SELECTOR,
-            vol.Required(
-                CONF_PORT,
-                default=user_input.get(CONF_PORT, DEFAULT_PORT),
-            ): _PORT_SELECTOR,
             vol.Required(
                 CONF_TARGET_MAC,
                 default=user_input.get(CONF_TARGET_MAC, ""),
@@ -240,8 +390,24 @@ def _schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
                     DEFAULT_T4_TIMEOUT_MS,
                 ),
             ): _TIMEOUT_SELECTOR,
-        }
-    )
+    }
+    fields[vol.Optional(
+        CONF_HOST,
+        default=user_input.get(CONF_HOST, ""),
+    )] = _TEXT_SELECTOR
+    fields[vol.Optional(
+        CONF_PORT,
+        default=user_input.get(CONF_PORT, DEFAULT_PORT),
+    )] = _PORT_SELECTOR
+    fields[vol.Optional(
+        CONF_RELAY_HOST,
+        default=user_input.get(CONF_RELAY_HOST, DEFAULT_RELAY_HOST),
+    )] = _TEXT_SELECTOR
+    fields[vol.Optional(
+        CONF_RELAY_PORT,
+        default=user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT),
+    )] = _PORT_SELECTOR
+    return vol.Schema(fields)
 
 
 def _normalize_input(user_input: dict[str, Any]) -> dict[str, Any]:
@@ -250,6 +416,7 @@ def _normalize_input(user_input: dict[str, Any]) -> dict[str, Any]:
     for key in (
         CONF_NAME,
         CONF_HOST,
+        CONF_RELAY_HOST,
         CONF_TARGET_MAC,
         CONF_USERNAME,
         CONF_PASSWORD,
@@ -264,7 +431,12 @@ def _normalize_input(user_input: dict[str, Any]) -> dict[str, Any]:
         )
     if CONF_PASSWORD in data:
         data[CONF_PASSWORD] = str(data[CONF_PASSWORD]).upper()
-    for key in (CONF_PORT, CONF_DEVICE_ID, CONF_T4_TIMEOUT_MS):
+    for key in (
+        CONF_PORT,
+        CONF_RELAY_PORT,
+        CONF_DEVICE_ID,
+        CONF_T4_TIMEOUT_MS,
+    ):
         if key in data:
             data[key] = int(data[key])
     if CONF_CONNECTION_MODE in data:
@@ -276,9 +448,16 @@ def _normalize_input(user_input: dict[str, Any]) -> dict[str, Any]:
 
 
 def _with_local_defaults(data: dict[str, Any]) -> dict[str, Any]:
-    """Fill safe local defaults after the normal field step."""
+    """Fill safe protocol defaults after the normal field step."""
     normalized = _normalize_input(data)
-    normalized.setdefault(CONF_PORT, DEFAULT_PORT)
+    mode = ConnectionMode(
+        normalized.get(CONF_CONNECTION_MODE, ConnectionMode.LOCAL_ONLY.value)
+    )
+    if mode is not ConnectionMode.CLOUD_ONLY:
+        normalized.setdefault(CONF_PORT, DEFAULT_PORT)
+    if mode is not ConnectionMode.LOCAL_ONLY:
+        normalized.setdefault(CONF_RELAY_HOST, DEFAULT_RELAY_HOST)
+        normalized.setdefault(CONF_RELAY_PORT, DEFAULT_RELAY_PORT)
     normalized.setdefault(CONF_DEVICE_ID, DEFAULT_DEVICE_ID)
     normalized.setdefault(CONF_T4_TIMEOUT_MS, DEFAULT_T4_TIMEOUT_MS)
     normalized.setdefault(
@@ -304,11 +483,16 @@ def _configuration_url(host: str) -> str:
     return f"https://{host}"
 
 
-def _test_connection(data: dict[str, Any]) -> None:
-    config = NiceEntryConfig.from_mapping(data)
-    endpoint = config.connection.local
+def _test_route(config: NiceEntryConfig, *, cloud: bool) -> None:
+    endpoint = config.connection.relay if cloud else config.connection.local
     if endpoint is None:
-        raise ValueError("Local setup requires a local endpoint")
+        raise ValueError("The selected route is not configured")
+    kwargs: dict[str, Any] = {}
+    if cloud:
+        kwargs.update(
+            transport_factory=RelayTlsTransport.connect,
+            route_name="cloud",
+        )
     client = NiceBidiClient(
         host=endpoint.host,
         port=endpoint.port,
@@ -316,6 +500,7 @@ def _test_connection(data: dict[str, Any]) -> None:
         device_id=config.device_id,
         timeout=DEFAULT_TIMEOUT,
         t4_timeout_ms=config.t4_timeout_ms,
+        **kwargs,
     )
     try:
         client.test_connection()
@@ -323,11 +508,36 @@ def _test_connection(data: dict[str, Any]) -> None:
         client.close()
 
 
+def _test_connection(data: dict[str, Any]) -> None:
+    config = NiceEntryConfig.from_mapping(data)
+    if config.connection.mode is ConnectionMode.LOCAL_ONLY:
+        _test_route(config, cloud=False)
+        return
+    if config.connection.mode is ConnectionMode.CLOUD_ONLY:
+        _test_route(config, cloud=True)
+        return
+    try:
+        _test_route(config, cloud=False)
+    except NiceBidiAuthError:
+        raise
+    except (NiceBidiConnectionError, OSError):
+        _test_route(config, cloud=True)
+
+
 async def _async_validate_input(
     hass: HomeAssistant,
     data: dict[str, Any],
 ) -> None:
     await hass.async_add_executor_job(_test_connection, data)
+
+
+async def _async_fetch_cloud_accessories(
+    hass: HomeAssistant,
+    login: NiceCloudLogin,
+) -> NiceCloudBootstrapResult:
+    """Fetch credentials with Home Assistant's verified-TLS HTTP session."""
+    client = NiceCloudBootstrapClient(async_get_clientsession(hass))
+    return await client.async_fetch_accessories(login)
 
 
 def _error_from_exception(err: Exception) -> str:
@@ -340,6 +550,31 @@ def _error_from_exception(err: Exception) -> str:
     if isinstance(err, NiceBidiConnectionError | OSError):
         return "cannot_connect"
     return "unknown"
+
+
+def _cloud_error_from_exception(err: Exception) -> str:
+    """Map bounded cloud bootstrap exceptions to translated form errors."""
+    if isinstance(err, NiceCloudAuthError):
+        return "cloud_invalid_auth"
+    if isinstance(err, NiceCloudAccessError):
+        return "cloud_access_denied"
+    if isinstance(err, NiceCloudSchemaError):
+        return "cloud_schema_changed"
+    if isinstance(err, NiceCloudConnectionError | OSError):
+        return "cloud_cannot_connect"
+    return "unknown"
+
+
+@dataclass(slots=True, repr=False)
+class _CloudBootstrapFlowState:
+    """Accessory-only state retained after the cloud session has ended."""
+
+    accessories: tuple[NiceCloudAccessory, ...]
+    skipped_records: int
+    selected: tuple[NiceCloudAccessory, ...] = ()
+    entry_data: list[dict[str, Any]] = field(default_factory=list)
+    local_index: int = 0
+    mode: ConnectionMode = ConnectionMode.LOCAL_ONLY
 
 
 def _log_validation_failure(
@@ -369,6 +604,8 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
     _reconfigure_entry: ConfigEntry | None = None
     _pending_local_data: dict[str, Any] | None = None
     _discovery_info: NiceDiscoveryInfo | None = None
+    _cloud_state: _CloudBootstrapFlowState | None = None
+    _connection_mode: ConnectionMode = DEFAULT_NEW_CONNECTION_MODE
 
     async def async_step_user(
         self,
@@ -384,13 +621,264 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 if mode not in IMPLEMENTED_CONNECTION_MODES:
                     errors["base"] = "connection_mode_unavailable"
-                elif mode is ConnectionMode.LOCAL_ONLY:
-                    return await self.async_step_local()
+                else:
+                    self._connection_mode = mode
+                    credential_source = str(
+                        user_input.get(
+                            CONF_CREDENTIAL_SOURCE,
+                            CREDENTIAL_SOURCE_MANUAL,
+                        )
+                    )
+                    if credential_source == CREDENTIAL_SOURCE_MYNICE:
+                        return await self.async_step_cloud_auth()
+                    if credential_source != CREDENTIAL_SOURCE_MANUAL:
+                        errors["base"] = "invalid_credential_source"
+                    else:
+                        return await self.async_step_local()
 
         return self.async_show_form(
             step_id="user",
             data_schema=_mode_schema(user_input),
             errors=errors,
+        )
+
+    async def async_step_cloud_auth(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """Use account credentials once to obtain accessory credentials."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if not user_input.get(CONF_CLOUD_CONFIRM):
+                errors["base"] = "cloud_confirmation_required"
+            else:
+                login: NiceCloudLogin | None = None
+                try:
+                    login = NiceCloudLogin(
+                        account_username=str(
+                            user_input.get(CONF_CLOUD_ACCOUNT, "")
+                        ).strip(),
+                        account_password=str(
+                            user_input.get(CONF_CLOUD_ACCOUNT_PASSWORD, "")
+                        ),
+                        oauth_client_id=str(
+                            user_input.get(CONF_OAUTH_CLIENT_ID, "")
+                        ).strip(),
+                        oauth_client_secret=str(
+                            user_input.get(CONF_OAUTH_CLIENT_SECRET, "")
+                        ),
+                    )
+                    result = await _async_fetch_cloud_accessories(
+                        self.hass,
+                        login,
+                    )
+                except ValueError:
+                    errors["base"] = "cloud_invalid_fields"
+                except Exception as err:
+                    _LOGGER.warning(
+                        "MyNice credential bootstrap failed (%s)",
+                        err.__class__.__name__,
+                    )
+                    errors["base"] = _cloud_error_from_exception(err)
+                else:
+                    configured_ids = {
+                        normalize_device_id(
+                            entry.unique_id
+                            or str(entry.data.get(CONF_TARGET_MAC) or "")
+                        )
+                        for entry in self.hass.config_entries.async_entries(
+                            DOMAIN
+                        )
+                    }
+                    accessories = tuple(
+                        accessory
+                        for accessory in result.accessories
+                        if accessory.identity not in configured_ids
+                    )
+                    if not accessories:
+                        return self.async_abort(
+                            reason="all_accessories_configured"
+                        )
+                    self._cloud_state = _CloudBootstrapFlowState(
+                        accessories=accessories,
+                        skipped_records=result.skipped_records,
+                        mode=self._connection_mode,
+                    )
+                    return await self.async_step_cloud_accessories()
+                finally:
+                    if login is not None:
+                        login.clear()
+                    for key in (
+                        CONF_CLOUD_ACCOUNT,
+                        CONF_CLOUD_ACCOUNT_PASSWORD,
+                        CONF_OAUTH_CLIENT_ID,
+                        CONF_OAUTH_CLIENT_SECRET,
+                    ):
+                        if key in user_input:
+                            user_input[key] = ""
+
+        return self.async_show_form(
+            step_id="cloud_auth",
+            data_schema=_cloud_auth_schema(),
+            errors=errors,
+        )
+
+    async def async_step_cloud_accessories(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """Select one or more accessories from the transient result."""
+        state = self._cloud_state
+        if state is None or not state.accessories:
+            return self.async_abort(reason="cloud_session_lost")
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            selected = user_input.get(CONF_CLOUD_ACCESSORIES)
+            if not isinstance(selected, list) or not selected:
+                errors["base"] = "cloud_select_accessory"
+            else:
+                try:
+                    indices = tuple(dict.fromkeys(int(value) for value in selected))
+                    state.selected = tuple(
+                        state.accessories[index] for index in indices
+                    )
+                    if any(index < 0 for index in indices):
+                        raise IndexError
+                except (IndexError, TypeError, ValueError):
+                    errors["base"] = "cloud_select_accessory"
+                else:
+                    state.entry_data.clear()
+                    state.local_index = 0
+                    return await self.async_step_cloud_local()
+
+        return self.async_show_form(
+            step_id="cloud_accessories",
+            data_schema=_cloud_accessory_schema(state.accessories),
+            errors=errors,
+            description_placeholders={
+                "count": str(len(state.accessories)),
+                "skipped": str(state.skipped_records),
+            },
+        )
+
+    async def async_step_cloud_local(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """Collect and validate the LAN endpoint for each selected accessory."""
+        state = self._cloud_state
+        if (
+            state is None
+            or not state.selected
+            or state.local_index >= len(state.selected)
+        ):
+            return self.async_abort(reason="cloud_session_lost")
+
+        accessory = state.selected[state.local_index]
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data = accessory.entry_data(
+                mode=state.mode,
+                host=(
+                    str(user_input.get(CONF_HOST, ""))
+                    if state.mode is not ConnectionMode.CLOUD_ONLY
+                    else None
+                ),
+                port=int(user_input.get(CONF_PORT, DEFAULT_PORT)),
+                relay_host=(
+                    str(user_input.get(CONF_RELAY_HOST, ""))
+                    if state.mode is not ConnectionMode.LOCAL_ONLY
+                    else None
+                ),
+                relay_port=int(
+                    user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT)
+                ),
+                name=str(user_input.get(CONF_NAME, accessory.name)),
+                device_id=int(
+                    user_input.get(CONF_DEVICE_ID, accessory.device_id)
+                ),
+                t4_timeout_ms=int(
+                    user_input.get(
+                        CONF_T4_TIMEOUT_MS,
+                        DEFAULT_T4_TIMEOUT_MS,
+                    )
+                ),
+            )
+            data = _with_local_defaults(data)
+            try:
+                await _async_validate_input(self.hass, data)
+            except Exception as err:
+                _log_validation_failure("cloud_local", data, err)
+                errors["base"] = _error_from_exception(err)
+            else:
+                state.entry_data.append(data)
+                state.local_index += 1
+                if state.local_index < len(state.selected):
+                    return await self.async_step_cloud_local()
+                return await self._async_finish_cloud_entries()
+
+        return self.async_show_form(
+            step_id="cloud_local",
+            data_schema=_cloud_local_schema(accessory, state.mode, user_input),
+            errors=errors,
+            description_placeholders={
+                "name": accessory.name,
+                "current": str(state.local_index + 1),
+                "total": str(len(state.selected)),
+            },
+        )
+
+    async def _async_finish_cloud_entries(self) -> FlowResult:
+        """Create every validated entry, using import flows for extras."""
+        state = self._cloud_state
+        entries = state.entry_data if state is not None else []
+        if not entries:
+            return self.async_abort(reason="cloud_session_lost")
+
+        first = entries[0]
+        first_identity = str(first[CONF_TARGET_MAC])
+        await self.async_set_unique_id(first_identity)
+        self._abort_if_unique_id_configured()
+
+        for extra in entries[1:]:
+            await self.hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={"source": "import"},
+                data=extra,
+            )
+        self._cloud_state = None
+        return self.async_create_entry(
+            title=str(first[CONF_NAME]),
+            data=first,
+        )
+
+    async def async_step_import(
+        self,
+        import_data: dict[str, Any],
+    ) -> FlowResult:
+        """Create an already validated extra accessory from cloud bootstrap."""
+        data = _with_local_defaults(
+            {
+                key: value
+                for key, value in import_data.items()
+                if key in CONFIG_FIELDS
+            }
+        )
+        identity = normalize_device_id(
+            str(data.get(CONF_TARGET_MAC) or "")
+        )
+        if identity is None:
+            return self.async_abort(reason="missing_identity")
+        data[CONF_TARGET_MAC] = identity
+        try:
+            NiceEntryConfig.from_mapping(data)
+        except (TypeError, ValueError):
+            return self.async_abort(reason="invalid_import")
+        await self.async_set_unique_id(identity)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=str(data[CONF_NAME]),
+            data=data,
         )
 
     async def async_step_local(
@@ -400,7 +888,12 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
         """Collect normal local connection and credential fields."""
         if user_input is not None:
             advanced = bool(user_input.get(CONF_ADVANCED, False))
-            data = _with_local_defaults(user_input)
+            data = _with_local_defaults(
+                {
+                    **user_input,
+                    CONF_CONNECTION_MODE: self._connection_mode.value,
+                }
+            )
             if advanced:
                 self._pending_local_data = data
                 return await self.async_step_local_advanced()
@@ -411,7 +904,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="local",
-            data_schema=_local_schema(),
+            data_schema=_local_schema(mode=self._connection_mode),
         )
 
     async def async_step_local_advanced(
@@ -433,7 +926,10 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="local_advanced",
-            data_schema=_advanced_schema(self._pending_local_data),
+            data_schema=_advanced_schema(
+                self._pending_local_data,
+                self._connection_mode,
+            ),
         )
 
     async def async_step_zeroconf(
@@ -562,12 +1058,12 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
         if form_step == "local_advanced":
             return self.async_show_form(
                 step_id=form_step,
-                data_schema=_advanced_schema(data),
+                data_schema=_advanced_schema(data, self._connection_mode),
                 errors=errors,
             )
         return self.async_show_form(
             step_id=form_step,
-            data_schema=_local_schema(data),
+            data_schema=_local_schema(data, self._connection_mode),
             errors=errors,
         )
 
