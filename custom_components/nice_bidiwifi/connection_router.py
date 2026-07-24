@@ -10,6 +10,7 @@ from typing import Any
 from .client import NiceBidiAuthError, NiceBidiClient, NiceBidiConnectionError
 from .connection import NiceConnectionHealth, NiceConnectionRoute, NiceRouteState
 from .models.config import ConnectionMode, NiceEntryConfig, NiceEndpoint
+from .protocol.nhk.administration import LOG_EVENTS_PER_SCOPE
 from .transport.relay import RelayTlsTransport
 
 LOCAL_FAILURE_THRESHOLD = 2
@@ -247,6 +248,12 @@ class NiceConnectionRouter:
     def read_info_xml(self) -> str:
         return self._read("read_info_xml")
 
+    def read_logs(self, event_count: int = LOG_EVENTS_PER_SCOPE):
+        return self._read("read_logs", event_count)
+
+    def read_groups(self):
+        return self._read("read_groups")
+
     def test_connection(self):
         return self._read("test_connection")
 
@@ -271,6 +278,15 @@ class NiceConnectionRouter:
             value,
             size=size,
         )
+
+    def update_interface_name(self, name: str) -> None:
+        self._write("update_interface_name", name)
+
+    def update_interface_clock(self, clock) -> None:
+        self._write("update_interface_clock", clock)
+
+    def reboot_interface(self) -> None:
+        self._write("reboot_interface")
 
     def add_event_callback(self, callback) -> Callable[[], None]:
         removers: list[Callable[[], None]] = []

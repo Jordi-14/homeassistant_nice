@@ -10,6 +10,14 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_SOURCE_ID, CONF_TARGET_MAC
+from .controllers.administration import ADMINISTRATION_HISTORY_LIMIT
+from .protocol.nhk.administration import (
+    LOG_EVENTS_PER_SCOPE,
+    MAX_ADMINISTRATION_XML_BYTES,
+    MAX_GROUPS,
+    MAX_GROUP_RULES,
+    MAX_LOG_EVENTS,
+)
 from .redaction import (
     SENSITIVE_CONFIG_KEYS,
     allowed_config_diagnostics,
@@ -64,6 +72,11 @@ def _device_info_diagnostics(device_info) -> dict[str, Any] | None:
         "device_fw_version": device_info.device_fw_version,
         "device_serial": device_info.device_serial,
         "device_product_detail": device_info.device_product_detail,
+        "interface_name_present": device_info.interface_name is not None,
+        "interface_date": device_info.interface_date,
+        "interface_zone": device_info.interface_zone,
+        "interface_dst": device_info.interface_dst,
+        "interface_commands": device_info.interface_commands,
         "protocol_version": device_info.protocol_version,
         "services": [
             _capability_diagnostics(capability) for capability in device_info.services
@@ -84,6 +97,13 @@ async def async_get_config_entry_diagnostics(
     device_info = coordinator.device_info
     command_result = getattr(coordinator, "last_command_result", None)
     capabilities = getattr(coordinator, "capabilities", None)
+    log_snapshot = getattr(coordinator, "interface_log_snapshot", None)
+    group_snapshot = getattr(coordinator, "access_group_snapshot", None)
+    administration_history = getattr(
+        coordinator,
+        "administration_history",
+        (),
+    )
     secrets = configured_secrets(entry.data)
 
     diagnostics: dict[str, Any] = {
@@ -239,6 +259,12 @@ async def async_get_config_entry_diagnostics(
                 "relay_available": capabilities.relay_available,
                 "local_events": capabilities.local_events,
                 "diagnostic_events": capabilities.diagnostic_events,
+                "logs": capabilities.logs,
+                "groups": capabilities.groups,
+                "tables": capabilities.tables,
+                "interface_name_write": capabilities.interface_name_write,
+                "time_sync": capabilities.time_sync,
+                "reboot": capabilities.reboot,
             }
             if capabilities is not None
             else None
@@ -254,6 +280,77 @@ async def async_get_config_entry_diagnostics(
             "cancel_stop_requested": coordinator.calibration_cancel_stop_requested,
             "cancel_stop_sent": coordinator.calibration_cancel_stop_sent,
             "summary": coordinator.calibration_report_summary,
+        },
+        "administration": {
+            "capability_basis": (
+                "inferred_from_shared_wifi_product_family"
+                if capabilities is not None
+                and any(
+                    value is True
+                    for value in (
+                        capabilities.logs,
+                        capabilities.groups,
+                        capabilities.interface_name_write,
+                        capabilities.time_sync,
+                        capabilities.reboot,
+                    )
+                )
+                else "not_identified"
+            ),
+            "mutation_blocked_while_moving": True,
+            "currently_moving": bool(status and status.is_moving),
+            "writes_replayed_after_ambiguous_failure": False,
+            "name_round_trip_verification": True,
+            "clock_round_trip_verification": True,
+            "group_mutation_exposed": False,
+            "limits": {
+                "events_per_scope_requested": LOG_EVENTS_PER_SCOPE,
+                "maximum_events_retained": MAX_LOG_EVENTS,
+                "maximum_groups_retained": MAX_GROUPS,
+                "maximum_rules_counted_per_owner": MAX_GROUP_RULES,
+                "maximum_administration_response_bytes": (
+                    MAX_ADMINISTRATION_XML_BYTES
+                ),
+                "operation_history": getattr(
+                    administration_history,
+                    "maxlen",
+                    ADMINISTRATION_HISTORY_LIMIT,
+                ),
+            },
+            "logs": (
+                {
+                    "retrieved_at": (
+                        log_snapshot.retrieved_at.isoformat()
+                        if log_snapshot.retrieved_at is not None
+                        else None
+                    ),
+                    "retained_count": log_snapshot.count,
+                    "events": [
+                        event.as_dict() for event in log_snapshot.events
+                    ],
+                }
+                if log_snapshot is not None
+                else None
+            ),
+            "groups": (
+                {
+                    "retrieved_at": (
+                        group_snapshot.retrieved_at.isoformat()
+                        if group_snapshot.retrieved_at is not None
+                        else None
+                    ),
+                    "retained_count": group_snapshot.count,
+                    "summaries": [
+                        group.as_dict() for group in group_snapshot.groups
+                    ],
+                }
+                if group_snapshot is not None
+                else None
+            ),
+            "operation_history": [
+                operation.as_diagnostics()
+                for operation in administration_history
+            ],
         },
     }
     return async_redact_data(diagnostics, TO_REDACT)

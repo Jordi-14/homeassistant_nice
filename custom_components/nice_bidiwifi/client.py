@@ -19,6 +19,11 @@ from .errors import (
     nice_error_code as nice_bidi_error_code,
 )
 from .models.credentials import NiceCredentials as NiceBidiCredentials
+from .models.administration import (
+    NiceGroupSnapshot,
+    NiceInterfaceClock,
+    NiceLogSnapshot,
+)
 from .models.device import (
     NiceDeviceInfo as NiceBidiDeviceInfo,
     NiceServiceCapability as NiceBidiServiceCapability,
@@ -47,6 +52,16 @@ from .protocol.nhk.codec import (
     xml_payload as _xml_payload,
 )
 from .protocol.nhk.info import device_info_supports_nhk_status, parse_info_xml
+from .protocol.nhk.administration import (
+    LOG_EVENTS_PER_SCOPE,
+    build_logs_body,
+    build_reboot_body,
+    build_update_clock_body,
+    build_update_name_body,
+    parse_groups_xml,
+    parse_logs_xml,
+    validate_interface_name,
+)
 from .protocol.nhk.status import parse_nhk_status_frames as _parse_nhk_status_frames
 from .protocol.t4.actions import (
     DEP_ACTION_COMMANDS,
@@ -257,6 +272,39 @@ class NiceBidiClient:
     def read_info_xml(self) -> str:
         """Read raw INFO XML from the BiDi-WiFi."""
         return self._run_with_reconnect(self._read_info_xml_locked)
+
+    def read_logs(
+        self,
+        event_count: int = LOG_EVENTS_PER_SCOPE,
+    ) -> NiceLogSnapshot:
+        """Read a bounded interface and automation event log."""
+        return self._run_with_reconnect(
+            lambda: self._read_logs_locked(event_count)
+        )
+
+    def read_groups(self) -> NiceGroupSnapshot:
+        """Read a bounded, redacted summary of local access groups."""
+        return self._run_with_reconnect(self._read_groups_locked)
+
+    def update_interface_name(self, name: str) -> None:
+        """Update the shared Wi-Fi interface name once."""
+        validated = validate_interface_name(name)
+        self._run_command_once(
+            lambda: self._change_interface_locked(
+                build_update_name_body(validated)
+            )
+        )
+
+    def update_interface_clock(self, clock: NiceInterfaceClock) -> None:
+        """Update the shared Wi-Fi interface clock once."""
+        body = build_update_clock_body(clock)
+        self._run_command_once(lambda: self._change_interface_locked(body))
+
+    def reboot_interface(self) -> None:
+        """Request one shared Wi-Fi interface reboot."""
+        self._run_command_once(
+            lambda: self._change_interface_locked(build_reboot_body())
+        )
 
     def send_action(self, action: str) -> None:
         """Send a high-level DoorAction command."""
@@ -563,6 +611,11 @@ class NiceBidiClient:
         if "<Error>" in _printable(response):
             raise NiceBidiConnectionError(_response_error_summary(response))
 
+    def _change_interface_locked(self, body: str) -> None:
+        response = self._signed_exchange_locked("CHANGE", body)
+        if "<Error>" in _printable(response):
+            raise NiceBidiConnectionError(_response_error_summary(response))
+
     def _send_dep_action_locked(self, action: str) -> None:
         response, _ = self._t4_request_locked(
             "DEP",
@@ -669,6 +722,21 @@ class NiceBidiClient:
 
     def _read_info_locked(self) -> NiceBidiDeviceInfo:
         return parse_info_xml(self._read_info_xml_locked(), self.device_id)
+
+    def _read_logs_locked(self, event_count: int) -> NiceLogSnapshot:
+        response = self._signed_exchange_locked(
+            "LOGS",
+            build_logs_body(self.device_id, event_count),
+        )
+        if "<Error>" in _printable(response):
+            raise NiceBidiConnectionError(_response_error_summary(response))
+        return parse_logs_xml(_xml_payload(response))
+
+    def _read_groups_locked(self) -> NiceGroupSnapshot:
+        response = self._signed_exchange_locked("GROUPS")
+        if "<Error>" in _printable(response):
+            raise NiceBidiConnectionError(_response_error_summary(response))
+        return parse_groups_xml(_xml_payload(response))
 
     def _t4_request_locked(
         self,

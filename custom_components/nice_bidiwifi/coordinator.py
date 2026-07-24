@@ -60,6 +60,7 @@ from .connection import (
 from .connection_router import NiceConnectionRouter
 from .controllers.base import controller_defines
 from .controllers.events import NiceEventController
+from .controllers.administration import NiceAdministrationController
 from .const import (
     DOMAIN,
     ERROR_UPDATE_INTERVAL,
@@ -195,6 +196,7 @@ class NiceBidiDataUpdateCoordinator(
             config_entry=entry,
         )
         self.event_controller = NiceEventController(self)
+        self.administration_controller = NiceAdministrationController(self)
 
     def __getattr__(self, name: str):
         """Expose composed controller operations through the stable coordinator API."""
@@ -202,6 +204,7 @@ class NiceBidiDataUpdateCoordinator(
             "position_controller",
             "calibration_controller",
             "event_controller",
+            "administration_controller",
         ):
             controller = self.__dict__.get(attribute)
             if controller is not None and controller_defines(controller, name):

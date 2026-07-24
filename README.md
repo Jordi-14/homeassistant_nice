@@ -69,6 +69,9 @@ Latest stable release: `v0.7.0`
 - Diagnostic buttons to refresh status immediately or force a local reconnect.
 - A Home Assistant event entity plus capability-adaptive event diagnostics.
   Raw frames and device MAC addresses are not exposed as entity attributes.
+- Optional shared Wi-Fi administration entities for bounded event-log retrieval,
+  count-only access-group inspection, interface naming, clock synchronization,
+  and interface reboot. They are capability-gated and disabled by default.
 
 ## BusT4 Diagnostics
 
@@ -90,6 +93,32 @@ unless one of the BusT4 configuration entities is changed manually.
 
 See [Entity Reference](entity_reference.md) for the full entity list, visibility
 defaults, and safety notes.
+
+## Shared Wi-Fi administration
+
+BiDi-WiFi, IT4-WiFi, and CU_WIFI interfaces can expose the same administration
+requests used by the official app. The optional entities are all disabled by
+default:
+
+- Log retrieval requests at most 32 interface and 32 automation events. Only
+  reviewed event type, time, action, status, and obstruction fields are kept.
+  Raw XML, names, locations, source identifiers, device identifiers, and
+  arbitrary values are discarded.
+- Access groups are read-only. Home Assistant exposes only the number of groups,
+  devices, and rules; it does not retain group IDs, device IDs, permission IDs,
+  or permission values. Group and rule editing is intentionally not implemented.
+- Interface-name changes accept 1–64 printable characters and are confirmed by
+  reading INFO back from the interface.
+- Clock synchronization writes UTC time, the standard timezone offset, and the
+  current DST offset separately, then confirms all three through INFO.
+- Interface reboot is sent once. If its acknowledgement is lost, the command is
+  not retried because the interface may already be rebooting.
+
+Name, clock, and reboot changes are rejected while the gate is moving. Home
+Assistant diagnostics include the inferred capability basis, safety policy,
+bounded log/group snapshots, and the last 16 administration outcomes with
+route, latency, verification method, safe failure class, and protocol error
+code. Operation values and raw protocol data are never placed in that history.
 
 ## Compatibility
 
@@ -240,6 +269,10 @@ For compatibility reports and CU_WIFI status investigations, use the read-only
 scripts in [Diagnostic Probes](docs/probes.md). Public reports should use the
 default redacted output and must not include credentials, local IPs, MAC
 addresses, serial numbers, app backups, SQLite databases, or packet captures.
+For shared Wi-Fi administration issues, include Home Assistant diagnostics
+after reproducing the problem. The administration section identifies the route,
+capability decision, safety block, latency, verification result, and bounded
+device observations without exposing raw payloads or local access-group data.
 
 ## Contributing
 

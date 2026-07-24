@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -54,6 +55,61 @@ def _hex_byte(value: int | None) -> str | None:
     if value is None:
         return None
     return f"0x{value:02X}"
+
+
+def _administration_supported(
+    coordinator: NiceBidiDataUpdateCoordinator,
+    capability: str,
+) -> bool:
+    checker = getattr(coordinator, "administration_capability", None)
+    if checker is not None:
+        return checker(capability)
+    capabilities = getattr(coordinator, "capabilities", None)
+    return bool(
+        capabilities
+        and getattr(capabilities, capability, None) is True
+    )
+
+
+def _log_attributes(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> dict[str, Any]:
+    snapshot = coordinator.interface_log_snapshot
+    if snapshot is None:
+        return {}
+    return {
+        "retrieved_at": (
+            snapshot.retrieved_at.isoformat()
+            if snapshot.retrieved_at is not None
+            else None
+        ),
+        "retained_event_count": snapshot.count,
+        "events": [event.as_dict() for event in snapshot.events],
+    }
+
+
+def _group_attributes(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> dict[str, Any]:
+    snapshot = coordinator.access_group_snapshot
+    if snapshot is None:
+        return {}
+    return {
+        "retrieved_at": (
+            snapshot.retrieved_at.isoformat()
+            if snapshot.retrieved_at is not None
+            else None
+        ),
+        "retained_group_count": snapshot.count,
+        "groups": [group.as_dict() for group in snapshot.groups],
+    }
+
+
+def _administration_operation_attributes(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> dict[str, Any]:
+    operation = coordinator.last_administration_operation
+    return operation.as_diagnostics() if operation is not None else {}
 
 
 SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
@@ -726,6 +782,72 @@ EVENT_SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
     ),
 )
 
+ADMINISTRATION_SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
+    NiceBidiSensorEntityDescription(
+        key="interface_log_events",
+        name="Interface log events",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="logs",
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:text-box-search-outline",
+        value_fn=lambda coordinator: (
+            coordinator.interface_log_snapshot.count
+            if coordinator.interface_log_snapshot is not None
+            else None
+        ),
+        extra_attributes_fn=_log_attributes,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="access_groups",
+        name="Access groups",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="groups",
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:account-group-outline",
+        value_fn=lambda coordinator: (
+            coordinator.access_group_snapshot.count
+            if coordinator.access_group_snapshot is not None
+            else None
+        ),
+        extra_attributes_fn=_group_attributes,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="last_administration_operation",
+        name="Last administration operation",
+        protected=False,
+        supported_fn=lambda coordinator: any(
+            _administration_supported(coordinator, capability)
+            for capability in (
+                "logs",
+                "groups",
+                "interface_name_write",
+                "time_sync",
+                "reboot",
+            )
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:shield-check-outline",
+        value_fn=lambda coordinator: (
+            coordinator.last_administration_operation.action
+            if coordinator.last_administration_operation is not None
+            else None
+        ),
+        extra_attributes_fn=_administration_operation_attributes,
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -738,7 +860,12 @@ async def async_setup_entry(
         build_described_entities(
             coordinator,
             entry,
-            (*SENSORS, *ROUTE_SENSORS, *EVENT_SENSORS),
+            (
+                *SENSORS,
+                *ROUTE_SENSORS,
+                *EVENT_SENSORS,
+                *ADMINISTRATION_SENSORS,
+            ),
             NiceBidiSensor,
         )
     )

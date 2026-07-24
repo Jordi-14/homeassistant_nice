@@ -80,6 +80,24 @@ explicitly reports that it does not support a field will not get the new
 optional entity; an unknown controller retains the entity so newly discovered
 device families are not hidden prematurely.
 
+## Shared Wi-Fi administration
+
+The interface-log, access-group, interface-name, clock-sync, and reboot entities
+are additive and disabled by default. They are created only for an INFO product
+family known to use the shared Wi-Fi administration protocol. Existing cover,
+switch, gate-open, action, status, and BusT4 entities are unaffected.
+
+Log retrieval and access-group retrieval are manual reads; they are not added to
+normal polling. Event results are bounded to 32 interface plus 32 automation
+events and use a strict field allowlist. Group output contains counts only.
+There is no Home Assistant API for editing the local groups or their rules.
+
+Interface-name and clock changes must survive an immediate INFO read-back before
+Home Assistant reports the operation as verified. Reboot uses its CHANGE
+acknowledgement because a successful reboot interrupts the connection. These
+writes are sent once and are never replayed through another route after an
+ambiguous failure. Every mutation is blocked while the gate is moving.
+
 Mode settings such as `Photo close mode setting` and `Always close mode setting`
 are raw Nice mode bytes. They are exposed as `0`-`255` values because tested
 controllers can report values outside a small enum range. They are not seconds,
@@ -144,6 +162,10 @@ current device profile.
 | Button | Refresh status | `refresh_status` | Requests an immediate coordinator refresh. | Hidden | Enabled | Troubleshooting button, not a normal dashboard control. |
 | Button | Reconnect | `reconnect` | Forces the local connection to reconnect. | Hidden | Enabled | Troubleshooting button, not a normal dashboard control. |
 | Button | Calibrate positions | `calibrate_positions` | Runs the position calibration routine for intermediate set-position accuracy or time-based travel measurement. | Hidden | Disabled | Moves the gate repeatedly; users should enable it deliberately. |
+| Button | Refresh interface logs | `refresh_interface_logs` | Retrieves a bounded, allowlisted snapshot of interface and automation events. | Hidden | Disabled | Shared Wi-Fi only. Raw XML, names, locations, IDs, and arbitrary values are never retained. |
+| Button | Refresh access groups | `refresh_access_groups` | Retrieves a count-only summary of local access groups and rules. | Hidden | Disabled | Shared Wi-Fi only. This is read-only; group and rule mutation is not exposed. |
+| Button | Sync interface time | `sync_interface_time` | Synchronizes UTC time, standard timezone offset, and DST offset with Home Assistant and verifies the INFO round trip. | Hidden | Disabled | Shared Wi-Fi only. Rejected while the gate is moving. |
+| Button | Reboot interface | `reboot_interface` | Sends the shared Wi-Fi interface reboot command once. | Hidden | Disabled | Rejected while the gate is moving. A lost acknowledgement is never retried because the reboot may already have started. |
 | Button | Stop as remote | `stop_remote` | Sends the controller's remote-style stop action. | Hidden | Disabled | Redundant with the primary cover stop command; created only when advertised. |
 | Button | Open as remote | `open_remote` | Sends the controller's remote-style open action. | Hidden | Disabled | Redundant with the primary cover open command; created only when advertised. |
 | Button | Close as remote | `close_remote` | Sends the controller's remote-style close action. | Hidden | Disabled | Redundant with the primary cover close command; created only when advertised. |
@@ -193,11 +215,15 @@ current device profile.
 | Sensor | Active connection route | `active_connection_route` | Route currently carrying NHK protocol traffic: `local`, `cloud`, or `none`. | Visible | Enabled | Stable across all connection modes and updates when fallback changes route. |
 | Sensor | Local connection state | `local_connection_state` | Current LAN route state: `connected`, `disconnected`, `unknown`, or `not_configured`. | Visible | Enabled | Distinguishes an unavailable LAN route from one that is not part of the selected mode. |
 | Sensor | Cloud connection state | `cloud_connection_state` | Current Nice relay route state: `connected`, `disconnected`, `unknown`, or `not_configured`. | Visible | Enabled | Reports `not_configured` for fully local entries. |
+| Sensor | Interface log events | `interface_log_events` | Number of retained events from the most recent manual log retrieval, with bounded allowlisted event attributes. | Hidden | Disabled | Shared Wi-Fi only. No raw payloads or identifying event fields are exposed. |
+| Sensor | Access groups | `access_groups` | Number of retained local access groups, with count-only rule summaries. | Hidden | Disabled | Shared Wi-Fi only. Group, device, and permission identifiers are omitted. |
+| Sensor | Last administration operation | `last_administration_operation` | Last shared Wi-Fi administration action, with route, latency, verification, and safe failure metadata. | Hidden | Disabled | Designed for issue diagnostics without exposing operation values or secrets. |
 | Sensor | Last successful update | `last_successful_update` | Timestamp of the last successful coordinator update. | Hidden | Enabled | Useful health diagnostic. |
 | Sensor | Last error | `last_error` | Last coordinator error, or `none`. | Hidden | Enabled | Useful troubleshooting diagnostic. |
 | Sensor | Reconnect count | `reconnect_count` | Number of reconnects performed across configured routes. | Hidden | Enabled | Useful health diagnostic. |
 | Sensor | Last command | `last_command` | Last local command sent by the integration. | Hidden | Disabled | Developer/debug signal. |
 | Sensor | Last command latency | `last_command_latency` | Latency of the last local command in milliseconds. | Hidden | Disabled | Developer/debug signal. |
+| Text | Interface name | `interface_name` | Reads and updates the shared Wi-Fi interface name with an INFO round-trip check. | Hidden | Disabled | Shared Wi-Fi only. Limited to 64 printable characters and rejected while the gate is moving. |
 | Sensor | Position calibration state | `position_calibration_state` | Current position calibration state. | Hidden | Enabled | Optional calibration detail; should not clutter default dashboards. |
 | Sensor | Last position calibration | `last_position_calibration` | Timestamp of the last position calibration update. | Hidden | Enabled | Useful only when calibration is used. |
 | Sensor | Position calibration error | `position_calibration_error` | Last calibration error, or `none`. | Hidden | Enabled | Useful only when calibration is used. |

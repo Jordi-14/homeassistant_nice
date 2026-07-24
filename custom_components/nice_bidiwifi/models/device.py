@@ -51,6 +51,11 @@ class NiceDeviceInfo:
     device_fw_version: str | None
     device_serial: str | None
     device_product_detail: str | None
+    interface_name: str | None = None
+    interface_date: str | None = None
+    interface_zone: str | None = None
+    interface_dst: str | None = None
+    interface_commands: tuple[str, ...] = ()
     protocol_version: str | None = None
     services: tuple[NiceServiceCapability, ...] = ()
     properties: tuple[NiceServiceCapability, ...] = ()

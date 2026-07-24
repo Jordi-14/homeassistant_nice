@@ -109,6 +109,9 @@ class NiceCapabilities:
     logs: bool | None = None
     groups: bool | None = None
     tables: bool | None = None
+    interface_name_write: bool | None = None
+    time_sync: bool | None = None
+    reboot: bool | None = None
 
     @classmethod
     def from_device_info(
@@ -129,8 +132,14 @@ class NiceCapabilities:
                 capability.owner != "Device" or capability.owner_id in {None, target_id}
             )
         )
+        family = _product_family(info)
+        shared_wifi_administration = family in {
+            ProductFamily.BIDI_WIFI,
+            ProductFamily.IT4_WIFI,
+            ProductFamily.CU_WIFI,
+        }
         return cls(
-            family=_product_family(info),
+            family=family,
             device_id=device_id,
             services=info.services,
             properties=info.properties,
@@ -168,6 +177,13 @@ class NiceCapabilities:
                 if door_status is not None and door_status.readable
                 else frozenset()
             ),
+            logs=True if shared_wifi_administration else None,
+            groups=True if shared_wifi_administration else None,
+            interface_name_write=(
+                True if shared_wifi_administration else None
+            ),
+            time_sync=True if shared_wifi_administration else None,
+            reboot=True if shared_wifi_administration else None,
         )
 
     def supports_t4_action(self, action_code: int) -> bool | None:

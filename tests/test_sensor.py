@@ -6,6 +6,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfTemperature
 
 from custom_components.nice_bidiwifi.sensor import (
+    ADMINISTRATION_SENSORS,
     EVENT_SENSORS,
     ROUTE_SENSORS,
     SENSORS,
@@ -301,5 +302,10 @@ async def test_async_setup_entry_adds_all_sensors() -> None:
 
     await async_setup_entry(None, entry, add_entities)
 
-    assert len(created) == len(SENSORS) + len(ROUTE_SENSORS) + len(EVENT_SENSORS)
+    assert len(created) == (
+        len(SENSORS)
+        + len(ROUTE_SENSORS)
+        + len(EVENT_SENSORS)
+        + len(ADMINISTRATION_SENSORS)
+    )
     assert all(isinstance(entity, NiceBidiSensor) for entity in created)

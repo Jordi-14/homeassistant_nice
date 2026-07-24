@@ -30,6 +30,7 @@ class RouteClient:
         self.route = str(kwargs.get("route_name", "local"))
         self.read_results: deque[Any] = deque()
         self.commands: list[str] = []
+        self.administration_commands: list[tuple[str, object | None]] = []
         self.callbacks: list = []
         self.failure_callbacks: list = []
         self.reconnect_count = 0
@@ -48,6 +49,21 @@ class RouteClient:
             result = self.read_results.popleft()
             if isinstance(result, Exception):
                 raise result
+
+    def read_logs(self, event_count: int = 32):
+        return self.read_status()
+
+    def read_groups(self):
+        return self.read_status()
+
+    def update_interface_name(self, name: str) -> None:
+        self.administration_commands.append(("update_name", name))
+
+    def update_interface_clock(self, clock) -> None:
+        self.administration_commands.append(("update_clock", clock))
+
+    def reboot_interface(self) -> None:
+        self.administration_commands.append(("reboot", None))
 
     def add_event_callback(self, callback):
         self.callbacks.append(callback)
@@ -195,6 +211,26 @@ def test_cloud_only_uses_relay_without_lan() -> None:
     assert router.read_status() == "cloud"
     assert health.active is NiceConnectionRoute.CLOUD
     assert health.local is NiceRouteState.NOT_CONFIGURED
+
+
+def test_administration_reads_and_writes_honor_route_policy() -> None:
+    router, health, clients = _router("cloud_only")
+    cloud = clients[0]
+    cloud.read_results.extend(["logs", "groups"])
+    clock = object()
+
+    assert router.read_logs(8) == "logs"
+    assert router.read_groups() == "groups"
+    router.update_interface_name("Gate")
+    router.update_interface_clock(clock)
+    router.reboot_interface()
+
+    assert health.active is NiceConnectionRoute.CLOUD
+    assert cloud.administration_commands == [
+        ("update_name", "Gate"),
+        ("update_clock", clock),
+        ("reboot", None),
+    ]
 
 
 def test_failed_recovery_probe_backs_off_and_does_not_flap() -> None:

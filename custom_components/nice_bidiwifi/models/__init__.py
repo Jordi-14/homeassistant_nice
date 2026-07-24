@@ -5,6 +5,14 @@ from .capabilities import (
     NiceCapabilities,
     ProductFamily,
 )
+from .administration import (
+    NiceAdministrationOperation,
+    NiceGroupSnapshot,
+    NiceGroupSummary,
+    NiceInterfaceClock,
+    NiceLogEvent,
+    NiceLogSnapshot,
+)
 from .calibration import CalibrationMode, CalibrationPositionSource
 from .commands import (
     CommandAcknowledgement,
@@ -28,6 +36,12 @@ __all__ = [
     "CalibrationMode",
     "CalibrationPositionSource",
     "DmpWriteRestriction",
+    "NiceAdministrationOperation",
+    "NiceGroupSnapshot",
+    "NiceGroupSummary",
+    "NiceInterfaceClock",
+    "NiceLogEvent",
+    "NiceLogSnapshot",
     "NiceCapabilities",
     "NiceCommand",
     "NiceCommandResult",

@@ -80,6 +80,15 @@ def parse_info_xml(info_xml: str, device_id: int = 1) -> NiceDeviceInfo:
         device_fw_version=find_text(device, "VersionFW"),
         device_serial=find_text(device, "SerialNr"),
         device_product_detail=find_text(device, "ProdDTL"),
+        interface_name=find_text(interface, "./Settings/Name"),
+        interface_date=find_text(interface, "Date"),
+        interface_zone=find_text(interface, "Zone"),
+        interface_dst=find_text(interface, "DST"),
+        interface_commands=(
+            tuple(child.tag for child in interface.findall("./Commands/*"))
+            if interface is not None
+            else ()
+        ),
         protocol_version=root.get("protocolVersion"),
         services=_parse_capabilities(root, "Services"),
         properties=_parse_capabilities(root, "Properties"),

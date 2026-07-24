@@ -45,6 +45,7 @@ class NiceBidiButtonEntityDescription(
     press_fn: Callable[[NiceBidiDataUpdateCoordinator], Awaitable[None]]
     available_when_offline: bool = False
     t4_action_key: str | None = None
+    requires_stationary: bool = False
 
 
 def _partial_open_position_known(
@@ -82,6 +83,21 @@ async def _async_press_t4_action(
 ) -> None:
     """Send one reviewed T4 action through the coordinator."""
     await coordinator.async_send_dep_action(action_key)
+
+
+def _administration_supported(
+    coordinator: NiceBidiDataUpdateCoordinator,
+    capability: str,
+) -> bool:
+    """Return support for one shared Wi-Fi administration operation."""
+    checker = getattr(coordinator, "administration_capability", None)
+    if checker is not None:
+        return checker(capability)
+    capabilities = getattr(coordinator, "capabilities", None)
+    return bool(
+        capabilities
+        and getattr(capabilities, capability, None) is True
+    )
 
 
 COMPATIBILITY_BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
@@ -256,7 +272,72 @@ ADVANCED_T4_BUTTONS = tuple(
     if not action.compatibility_entity
 )
 
-BUTTONS = (*COMPATIBILITY_BUTTONS, *ADVANCED_T4_BUTTONS)
+ADMINISTRATION_BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
+    NiceBidiButtonEntityDescription(
+        key="refresh_interface_logs",
+        name="Refresh interface logs",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="logs",
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:text-box-search-outline",
+        press_fn=lambda coordinator: coordinator.async_refresh_interface_logs(),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="refresh_access_groups",
+        name="Refresh access groups",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="groups",
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:account-group-outline",
+        press_fn=lambda coordinator: coordinator.async_refresh_access_groups(),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="sync_interface_time",
+        name="Sync interface time",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="time_sync",
+        ),
+        entity_category=EntityCategory.CONFIG,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:clock-sync-outline",
+        requires_stationary=True,
+        press_fn=lambda coordinator: coordinator.async_sync_interface_time(),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="reboot_interface",
+        name="Reboot interface",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="reboot",
+        ),
+        entity_category=EntityCategory.CONFIG,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:restart",
+        requires_stationary=True,
+        press_fn=lambda coordinator: coordinator.async_reboot_interface(),
+    ),
+)
+
+BUTTONS = (
+    *COMPATIBILITY_BUTTONS,
+    *ADVANCED_T4_BUTTONS,
+    *ADMINISTRATION_BUTTONS,
+)
 
 
 async def async_setup_entry(
@@ -307,7 +388,17 @@ class NiceBidiButton(NiceCoordinatorEntity, ButtonEntity):
         if self.entity_description.available_when_offline:
             return True
         supported_fn = self.entity_description.supported_fn
-        return super().available and (supported_fn is None or supported_fn(self.coordinator))
+        moving = bool(
+            self.coordinator.data is not None
+            and self.coordinator.data.is_moving
+        )
+        return (
+            super().available
+            and (supported_fn is None or supported_fn(self.coordinator))
+            and not (
+                self.entity_description.requires_stationary and moving
+            )
+        )
 
     async def async_press(self) -> None:
         """Handle the button press."""

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -26,6 +27,11 @@ from custom_components.nice_bidiwifi.const import (
     CONF_SOURCE_ID,
     CONF_T4_TIMEOUT_MS,
     CONF_TARGET_MAC,
+)
+from custom_components.nice_bidiwifi.models.administration import (
+    NiceGroupSnapshot,
+    NiceInterfaceClock,
+    NiceLogSnapshot,
 )
 from custom_components.nice_bidiwifi.protocol.t4.settings import DmpSetting
 from custom_components.nice_bidiwifi.write_policy import dmp_write_block_reason
@@ -194,6 +200,11 @@ def make_device_info(
         device_fw_version="FG01h",
         device_serial="0E6809FF",
         device_product_detail=device_product_detail,
+        interface_name="Parking interface",
+        interface_date="2026-05-28T12:00:00Z",
+        interface_zone="+01:00",
+        interface_dst="+01:00",
+        interface_commands=("Reboot",),
         services=(
             NiceBidiServiceCapability(
                 owner="Device",
@@ -236,6 +247,16 @@ class FakeClient:
         self.send_action_error: Exception | None = None
         self.send_dep_action_error: Exception | None = None
         self.write_dmp_register_error: Exception | None = None
+        self.read_logs_result = NiceLogSnapshot(events=())
+        self.read_groups_result = NiceGroupSnapshot(groups=())
+        self.read_logs_error: Exception | None = None
+        self.read_groups_error: Exception | None = None
+        self.update_interface_name_error: Exception | None = None
+        self.update_interface_clock_error: Exception | None = None
+        self.reboot_interface_error: Exception | None = None
+        self.updated_interface_names: list[str] = []
+        self.updated_interface_clocks: list[NiceInterfaceClock] = []
+        self.interface_reboots = 0
         self.info_reads = 0
         self.nhk_status_reads = 0
         self.read_status_include_extended: list[bool] = []
@@ -310,6 +331,46 @@ class FakeClient:
             raise self.send_action_error
         self.actions.append(action)
 
+    def read_logs(self) -> NiceLogSnapshot:
+        """Return a bounded log snapshot or raise a configured error."""
+        if self.read_logs_error is not None:
+            raise self.read_logs_error
+        return self.read_logs_result
+
+    def read_groups(self) -> NiceGroupSnapshot:
+        """Return a group snapshot or raise a configured error."""
+        if self.read_groups_error is not None:
+            raise self.read_groups_error
+        return self.read_groups_result
+
+    def update_interface_name(self, name: str) -> None:
+        """Record a name update and expose it to the INFO round trip."""
+        if self.update_interface_name_error is not None:
+            raise self.update_interface_name_error
+        self.updated_interface_names.append(name)
+        self.read_info_result = replace(
+            self.read_info_result,
+            interface_name=name,
+        )
+
+    def update_interface_clock(self, clock: NiceInterfaceClock) -> None:
+        """Record a clock update and expose it to the INFO round trip."""
+        if self.update_interface_clock_error is not None:
+            raise self.update_interface_clock_error
+        self.updated_interface_clocks.append(clock)
+        self.read_info_result = replace(
+            self.read_info_result,
+            interface_date=clock.date,
+            interface_zone=clock.zone,
+            interface_dst=clock.dst,
+        )
+
+    def reboot_interface(self) -> None:
+        """Record an interface reboot request."""
+        if self.reboot_interface_error is not None:
+            raise self.reboot_interface_error
+        self.interface_reboots += 1
+
     def send_dep_action(self, action: str) -> None:
         """Record a DEP command or raise a configured error."""
         if self.send_dep_action_error is not None:
@@ -375,6 +436,9 @@ class FakeCoordinator:
         self.event_battery_level = None
         self.event_battery_device_type = None
         self.event_history = deque(maxlen=32)
+        self.interface_log_snapshot = None
+        self.access_group_snapshot = None
+        self.last_administration_operation = None
 
     @property
     def display_position(self) -> float | None:
@@ -434,6 +498,16 @@ class FakeCoordinator:
         """Return configurable action support for entity tests."""
         return self.supported_t4_actions is None or action in self.supported_t4_actions
 
+    def administration_capability(self, capability: str) -> bool:
+        """Return shared Wi-Fi administration support for entity tests."""
+        return capability in {
+            "logs",
+            "groups",
+            "interface_name_write",
+            "time_sync",
+            "reboot",
+        }
+
     async def async_set_position(self, position: int) -> None:
         """Record a set-position request."""
         self.calls.append(("position", position))
@@ -449,6 +523,26 @@ class FakeCoordinator:
     async def async_start_position_calibration(self) -> None:
         """Record a calibration request."""
         self.calls.append(("calibrate", None))
+
+    async def async_refresh_interface_logs(self) -> None:
+        """Record a bounded log refresh."""
+        self.calls.append(("refresh_logs", None))
+
+    async def async_refresh_access_groups(self) -> None:
+        """Record a group refresh."""
+        self.calls.append(("refresh_groups", None))
+
+    async def async_sync_interface_time(self) -> None:
+        """Record a clock synchronization."""
+        self.calls.append(("sync_time", None))
+
+    async def async_reboot_interface(self) -> None:
+        """Record an interface reboot."""
+        self.calls.append(("reboot_interface", None))
+
+    async def async_update_interface_name(self, name: str) -> None:
+        """Record an interface-name update."""
+        self.calls.append(("interface_name", name))
 
     async def async_write_dmp_register(
         self,

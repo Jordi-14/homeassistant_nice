@@ -32,6 +32,7 @@ PLATFORMS: list[Platform] = [
     Platform.SWITCH,
     Platform.NUMBER,
     Platform.EVENT,
+    Platform.TEXT,
 ]
 
 
