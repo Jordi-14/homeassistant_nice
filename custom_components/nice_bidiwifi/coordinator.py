@@ -57,6 +57,7 @@ from .connection import (
     CONNECTION_STATE_UNKNOWN,
 )
 from .controllers.base import controller_defines
+from .controllers.events import NiceEventController
 from .const import (
     DOMAIN,
     ERROR_UPDATE_INTERVAL,
@@ -194,10 +195,15 @@ class NiceBidiDataUpdateCoordinator(
             update_interval=IDLE_UPDATE_INTERVAL,
             config_entry=entry,
         )
+        self.event_controller = NiceEventController(self)
 
     def __getattr__(self, name: str):
         """Expose composed controller operations through the stable coordinator API."""
-        for attribute in ("position_controller", "calibration_controller"):
+        for attribute in (
+            "position_controller",
+            "calibration_controller",
+            "event_controller",
+        ):
             controller = self.__dict__.get(attribute)
             if controller is not None and controller_defines(controller, name):
                 return getattr(controller, name)
@@ -207,6 +213,7 @@ class NiceBidiDataUpdateCoordinator(
 
     async def _async_update_data(self) -> NiceBidiStatus:
         """Fetch state from the BiDi."""
+        self.event_controller.ensure_registered()
         try:
             if self.connection_state == CONNECTION_STATE_FAILED:
                 self.connection_state = CONNECTION_STATE_RECONNECTING
@@ -227,6 +234,7 @@ class NiceBidiDataUpdateCoordinator(
 
         status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
+        self.event_controller.mark_connected()
         return status
 
     def _read_status_and_maybe_info(self) -> NiceBidiStatus:
@@ -286,6 +294,7 @@ class NiceBidiDataUpdateCoordinator(
         self.capabilities = self._capability_service.discover(
             device_info,
             status=self.data,
+            previous=self.capabilities,
         )
 
     def _should_read_extended_status(self) -> bool:
@@ -324,6 +333,7 @@ class NiceBidiDataUpdateCoordinator(
             self.capabilities = self._capability_service.discover(
                 self.device_info,
                 status=status,
+                previous=self.capabilities,
             )
         self.connection_state = CONNECTION_STATE_CONNECTED
         self.last_error = None
@@ -619,6 +629,7 @@ class NiceBidiDataUpdateCoordinator(
     async def async_reconnect(self) -> None:
         """Force the current NHK/TLS session to be recreated."""
         await self._async_cancel_background_tasks(calibration_reason="reconnect")
+        self.event_controller.mark_reconnecting()
         self.connection_state = CONNECTION_STATE_RECONNECTING
         await self.hass.async_add_executor_job(self.client.close)
         await self.async_request_refresh()
@@ -626,4 +637,5 @@ class NiceBidiDataUpdateCoordinator(
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
         await self._async_cancel_background_tasks(calibration_reason="shutdown")
+        self.event_controller.shutdown()
         await self.hass.async_add_executor_job(self.client.close)

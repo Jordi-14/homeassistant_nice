@@ -57,6 +57,28 @@ Quick recommendations:
 | Controller tuning | Entities ending in `setting` | Advanced; these write controller registers. |
 | Raw diagnostics | Diagnostics I/O byte and diagnostics parameters | Developer/debug data for comparing controllers. |
 | Radio receiver info | OXI entities | Metadata from the OXI/radio endpoint when it answers locally. |
+| Protocol event automations | Protocol event | Emits normalized state, obstruction, maintenance, diagnostic, BlueBUS, battery, motor-current, and reset event types when reported. |
+| Event delivery health | Event stream state | Shows active delivery, polling fallback, or stopped state. |
+
+## Protocol Events
+
+The integration keeps one reader for each local connection. It correlates normal
+request responses and routes unsolicited change, diagnostic, and live T4 frames
+through the same reader. The existing cover, gate switch, gate-open sensor,
+obstacle sensor, and maintenance counters continue to exist; event data updates
+those entities sooner when the controller reports it. Adaptive polling remains
+enabled and carries state if the event stream is lost.
+
+The `Protocol event` entity exposes stable event types: `state_change`,
+`obstruction`, `diagnostic`, `bluebus_error`, `battery`, `maintenance`,
+`motor_current`, `reset`, and `unknown`. Its attributes are bounded normalized
+codes and values. They do not contain raw protocol frames or accessory MAC
+addresses.
+
+Event-specific diagnostic entities are capability-adaptive. A controller that
+explicitly reports that it does not support a field will not get the new
+optional entity; an unknown controller retains the entity so newly discovered
+device families are not hidden prematurely.
 
 Mode settings such as `Photo close mode setting` and `Always close mode setting`
 are raw Nice mode bytes. They are exposed as `0`-`255` values because tested
@@ -210,3 +232,18 @@ current device profile.
 | Sensor | Control unit hardware | `control_unit_hardware` | Control unit hardware version from INFO metadata. | Hidden | Enabled | Useful for support and compatibility reports. |
 | Sensor | Control unit serial | `control_unit_serial` | Control unit serial number from INFO metadata. | Hidden | Enabled | Useful for support and compatibility reports. |
 | Sensor | Control unit product detail | `control_unit_product_detail` | Control unit detailed product identifier from INFO metadata. | Hidden | Enabled | Useful for support and compatibility reports. |
+| Event | Protocol event | `protocol_event` | Emits normalized unsolicited local protocol events. | Visible | Enabled | Diagnostic automation source; attributes are bounded and exclude raw frames and MAC addresses. |
+| Sensor | Event stream state | `event_stream_state` | Event delivery state: idle, active, polling fallback, or stopped. | Visible | Enabled | Polling continues when event delivery falls back. |
+| Sensor | Last protocol event | `last_protocol_event` | Category of the latest normalized event. | Visible | Enabled | Includes bounded normalized details as attributes. |
+| Sensor | Last protocol event at | `last_protocol_event_at` | Timestamp of the latest normalized event. | Hidden | Enabled | Event delivery diagnostic. |
+| Sensor | Protocol event count | `protocol_event_count` | Number of normalized events handled since integration load. | Hidden | Enabled | Event delivery diagnostic. |
+| Sensor | Malformed protocol event count | `malformed_protocol_event_count` | Number of unsolicited frames rejected by the event parser. | Hidden | Disabled | Developer diagnostic; malformed payload contents are not exposed. |
+| Sensor | Last event cause code | `last_event_cause` | Latest raw controller cause code. | Hidden | Disabled | Created only when diagnostic event support is advertised or still unknown. |
+| Sensor | Basic diagnostic code | `basic_diagnostic_code` | Latest basic diagnostic code. | Hidden | Disabled | Raw stable code; no proprietary description is inferred. |
+| Sensor | Advanced diagnostic code | `advanced_diagnostic_code` | Latest advanced diagnostic code. | Hidden | Disabled | Raw stable code; no proprietary description is inferred. |
+| Sensor | BlueBUS error status | `bluebus_error_status` | Latest BlueBUS error status code. | Hidden | Disabled | Raw controller code. |
+| Sensor | Manoeuvre average current | `manoeuvre_average_current` | Latest numeric manoeuvre-current observation. | Hidden | Disabled | Unit is intentionally omitted until confirmed across device families. |
+| Sensor | Last reset cause | `last_reset_cause` | Latest control-unit reset cause code. | Hidden | Disabled | Device-class code is included as a bounded attribute. |
+| Sensor | Event battery level code | `event_battery_level` | Latest accessory battery code. | Hidden | Disabled | Includes accessory type but never its MAC address. |
+| Binary sensor | Maintenance due | `maintenance_due` | On when the event-updated manoeuvre count reaches the maintenance threshold. | Hidden | Enabled | Uses the same existing maintenance values shown by the count and threshold sensors. |
+| Binary sensor | BlueBUS fault | `bluebus_fault` | On when the latest BlueBUS status is not a known no-fault value. | Hidden | Disabled | Conservative raw-code interpretation for diagnostics. |

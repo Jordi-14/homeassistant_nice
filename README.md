@@ -52,14 +52,22 @@ Latest stable release: `v0.7.0`
 - Real state from DMP register `04/01` when the controller exposes that path.
 - Real position from DMP registers `04/11`, `04/18`, and `04/19` when encoder
   bounds are available.
-- Experimental alternate status support from live NHK `STATUS` / `CHANGE` plus
-  live T4 `04/40` and `04/02` events, including CU_WIFI percentage frames and
+- Persistent local NHK change and diagnostic event handling through a single
+  connection reader. State, obstruction, live T4 position, maintenance,
+  BlueBUS, battery, motor-current, and reset observations are normalized when
+  the controller supplies them.
+- Alternate status support from live NHK `STATUS` / `CHANGE` plus live T4
+  `04/40` and `04/02` events, including CU_WIFI percentage frames and
   RBA4R10-style raw scalar position frames.
 - Faster polling while the gate is moving, slower polling while idle.
+- Adaptive polling remains active as a fallback if the unsolicited event stream
+  is interrupted.
 - Automatic reconnect after BiDi reboot, HA restart, and transient TLS EOFs.
 - Diagnostic sensors for connection state, last update/error, reconnect count,
   command latency, encoder calibration values, and device firmware/serial data.
 - Diagnostic buttons to refresh status immediately or force a local reconnect.
+- A Home Assistant event entity plus capability-adaptive event diagnostics.
+  Raw frames and device MAC addresses are not exposed as entity attributes.
 
 ## BusT4 Diagnostics
 

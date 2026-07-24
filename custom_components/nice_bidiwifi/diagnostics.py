@@ -66,12 +66,10 @@ def _device_info_diagnostics(device_info) -> dict[str, Any] | None:
         "device_product_detail": device_info.device_product_detail,
         "protocol_version": device_info.protocol_version,
         "services": [
-            _capability_diagnostics(capability)
-            for capability in device_info.services
+            _capability_diagnostics(capability) for capability in device_info.services
         ],
         "properties": [
-            _capability_diagnostics(capability)
-            for capability in device_info.properties
+            _capability_diagnostics(capability) for capability in device_info.properties
         ],
     }
 
@@ -105,15 +103,24 @@ async def async_get_config_entry_diagnostics(
             "last_command": coordinator.last_command,
             "last_command_latency_ms": coordinator.last_command_latency_ms,
             "acknowledgement": (
-                command_result.acknowledgement
-                if command_result is not None
-                else None
+                command_result.acknowledgement if command_result is not None else None
             ),
             "error_code": (
-                command_result.error_code
-                if command_result is not None
+                command_result.error_code if command_result is not None else None
+            ),
+        },
+        "event_stream": {
+            "state": coordinator.event_stream_state,
+            "error": coordinator.event_stream_error,
+            "last_event_at": (
+                coordinator.last_event_at.isoformat()
+                if coordinator.last_event_at is not None
                 else None
             ),
+            "event_count": coordinator.protocol_event_count,
+            "malformed_event_count": coordinator.malformed_protocol_event_count,
+            "history_limit": coordinator.event_history.maxlen,
+            "history": [event.as_diagnostics() for event in coordinator.event_history],
         },
         "status": {
             "state": status.state if status else None,
@@ -133,21 +140,27 @@ async def async_get_config_entry_diagnostics(
             ),
             "is_moving": status.is_moving if status else None,
             "protocol_observations": (
-                bounded_protocol_observations(status.registers)
-                if status
-                else {}
+                bounded_protocol_observations(status.registers) if status else {}
             ),
             "bus_t4": {
                 "max_open_position": status.max_open_position if status else None,
-                "partial_open_1_position": status.partial_open_1_position if status else None,
-                "partial_open_2_position": status.partial_open_2_position if status else None,
-                "partial_open_3_position": status.partial_open_3_position if status else None,
+                "partial_open_1_position": status.partial_open_1_position
+                if status
+                else None,
+                "partial_open_2_position": status.partial_open_2_position
+                if status
+                else None,
+                "partial_open_3_position": status.partial_open_3_position
+                if status
+                else None,
                 "opening_speed": status.opening_speed if status else None,
                 "closing_speed": status.closing_speed if status else None,
                 "opening_force": status.opening_force if status else None,
                 "closing_force": status.closing_force if status else None,
                 "pause_time": status.pause_time if status else None,
-                "maintenance_threshold": status.maintenance_threshold if status else None,
+                "maintenance_threshold": status.maintenance_threshold
+                if status
+                else None,
                 "maintenance_count": status.maintenance_count if status else None,
                 "total_maneuver_count": status.total_maneuver_count if status else None,
                 "input_1": status.input_1 if status else None,
@@ -165,9 +178,13 @@ async def async_get_config_entry_diagnostics(
                 "photocell": status.photocell if status else None,
                 "obstacle": status.obstacle if status else None,
                 "last_stop_reason": status.last_stop_reason if status else None,
-                "last_stop_reason_code": status.last_stop_reason_code if status else None,
+                "last_stop_reason_code": status.last_stop_reason_code
+                if status
+                else None,
                 "diagnostics_io_byte": status.diagnostics_io_byte if status else None,
-                "diagnostics_parameters": status.diagnostics_parameters if status else None,
+                "diagnostics_parameters": status.diagnostics_parameters
+                if status
+                else None,
                 "oxi_detected": status.oxi_detected if status else None,
                 "oxi_product": status.oxi_product if status else None,
                 "oxi_hardware_version": status.oxi_hardware_version if status else None,
@@ -184,9 +201,7 @@ async def async_get_config_entry_diagnostics(
                 "high_level_actions": capabilities.high_level_actions,
                 "readable_status": capabilities.readable_status,
                 "obstruction": capabilities.obstruction,
-                "t4_allowed_advertised": (
-                    capabilities.t4_allowed.advertised
-                ),
+                "t4_allowed_advertised": (capabilities.t4_allowed.advertised),
                 "t4_allowed_valid": capabilities.t4_allowed_valid,
                 "t4_allowed_mask": capabilities.t4_allowed_mask,
                 "supported_t4_action_codes": (
@@ -194,13 +209,13 @@ async def async_get_config_entry_diagnostics(
                     if capabilities.supported_t4_action_codes is not None
                     else None
                 ),
-                "observed_dmp_registers": sorted(
-                    capabilities.observed_dmp_registers
-                ),
+                "observed_dmp_registers": sorted(capabilities.observed_dmp_registers),
                 "status_sources": sorted(capabilities.status_sources),
                 "position_sources": sorted(capabilities.position_sources),
                 "local_available": capabilities.local_available,
                 "relay_available": capabilities.relay_available,
+                "local_events": capabilities.local_events,
+                "diagnostic_events": capabilities.diagnostic_events,
             }
             if capabilities is not None
             else None

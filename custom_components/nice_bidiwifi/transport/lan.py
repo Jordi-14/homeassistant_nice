@@ -85,7 +85,7 @@ class SocketFrameTransport:
             except TimeoutError:
                 return b""
             if not chunk:
-                return b""
+                raise OSError("socket closed by peer")
             self._buffer.extend(chunk)
             buffered = self._buffered_frame()
             if buffered is not None:

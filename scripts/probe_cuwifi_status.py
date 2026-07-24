@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import sys
+import threading
 import time
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -243,35 +244,26 @@ class ProbeClient(NiceBidiClient):
 
         def operation() -> dict[str, Any]:
             self._ensure_connected_locked()
-            if not self._socket:
-                raise RuntimeError("socket is not open")
+            if self._dispatcher is None:
+                raise RuntimeError("connection dispatcher is not open")
 
             xml, request_id = self._signed_request_with_id(request_type, body)
-            self._socket.settimeout(self.timeout)
-            self._socket.sendall(_frame(xml))
-
             timeout = wait_timeout if wait_timeout is not None else self.timeout
-            frames: list[bytes] = []
-            expected_frame_index: int | None = None
-            deadline = time.monotonic() + max(0.1, timeout)
-            post_deadline: float | None = None
-
-            while True:
-                now = time.monotonic()
-                active_deadline = post_deadline if post_deadline is not None else deadline
-                if now >= active_deadline:
-                    break
-
-                response = self._recv_frame_locked(max(0.1, active_deadline - now))
-                if not response:
-                    break
-
-                frames.append(response)
-                if expected_frame_index is None and self._matches_response(response, None, request_id):
-                    expected_frame_index = len(frames) - 1
-                    if post_response_listen_seconds <= 0:
-                        break
-                    post_deadline = time.monotonic() + post_response_listen_seconds
+            frames = self._dispatcher.exchange(
+                _frame(xml),
+                expected_type=None,
+                expected_id=request_id,
+                timeout=max(0.1, timeout),
+                post_response_listen_seconds=post_response_listen_seconds,
+            )
+            expected_frame_index = next(
+                (
+                    index
+                    for index, response in enumerate(frames)
+                    if self._matches_response(response, None, request_id)
+                ),
+                None,
+            )
 
             return {
                 "request_id": request_id,
@@ -283,19 +275,29 @@ class ProbeClient(NiceBidiClient):
 
     def listen_frames(self, duration_s: float, poll_timeout_s: float) -> list[bytes]:
         """Listen on the current authenticated session without sending commands."""
+        frames: list[bytes] = []
+        changed = threading.Condition()
+
+        def receive(frame: bytes) -> None:
+            with changed:
+                frames.append(frame)
+                changed.notify_all()
+
+        remove_callback = self.add_event_callback(receive)
 
         def operation() -> list[bytes]:
             self._ensure_connected_locked()
-            frames: list[bytes] = []
             deadline = time.monotonic() + max(0.0, duration_s)
-            while time.monotonic() < deadline:
-                remaining = deadline - time.monotonic()
-                response = self._recv_frame_locked(max(0.1, min(poll_timeout_s, remaining)))
-                if response:
-                    frames.append(response)
-            return frames
+            with changed:
+                while time.monotonic() < deadline:
+                    remaining = deadline - time.monotonic()
+                    changed.wait(timeout=max(0.01, min(poll_timeout_s, remaining)))
+            return list(frames)
 
-        return self._run_with_reconnect(operation)
+        try:
+            return self._run_with_reconnect(operation)
+        finally:
+            remove_callback()
 
     def decrypt_t4_payloads(self, response: bytes) -> list[bytes]:
         """Decrypt T4 payloads contained in a response or async event frame."""

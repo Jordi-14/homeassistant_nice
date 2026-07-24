@@ -5,13 +5,26 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN, BinarySensorDeviceClass, BinarySensorEntity, BinarySensorEntityDescription
+from homeassistant.components.binary_sensor import (
+    DOMAIN as BINARY_SENSOR_DOMAIN,
+    BinarySensorDeviceClass,
+    BinarySensorEntity,
+    BinarySensorEntityDescription,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_PARTIALLY_OPEN, STATE_STOPPED, NiceBidiStatus
+from .client import (
+    STATE_CLOSED,
+    STATE_CLOSING,
+    STATE_OPEN,
+    STATE_OPENING,
+    STATE_PARTIALLY_OPEN,
+    STATE_STOPPED,
+    NiceBidiStatus,
+)
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entities.factory import (
     NiceCapabilityKey,
@@ -29,7 +42,10 @@ class NiceBidiBinarySensorEntityDescription(
 ):
     """Description for a Nice binary sensor."""
 
-    value_fn: Callable[[NiceBidiStatus], bool | None]
+    value_fn: Callable[[NiceBidiStatus], bool | None] | None = None
+    coordinator_value_fn: (
+        Callable[[NiceBidiDataUpdateCoordinator], bool | None] | None
+    ) = None
     required_capability: NiceCapabilityKey = NiceCapabilityKey.STATUS
 
 
@@ -37,7 +53,13 @@ def _gate_open(status: NiceBidiStatus) -> bool | None:
     """Return the same read-only open state as the gate switch."""
     if status.state == STATE_CLOSED:
         return False
-    if status.state in {STATE_OPEN, STATE_OPENING, STATE_CLOSING, STATE_STOPPED, STATE_PARTIALLY_OPEN}:
+    if status.state in {
+        STATE_OPEN,
+        STATE_OPENING,
+        STATE_CLOSING,
+        STATE_STOPPED,
+        STATE_PARTIALLY_OPEN,
+    }:
         return True
     return None
 
@@ -167,6 +189,62 @@ BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
 )
 
 
+def _event_supported(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> bool | None:
+    capabilities = coordinator.capabilities
+    return capabilities.local_events if capabilities is not None else None
+
+
+def _maintenance_due(status: NiceBidiStatus) -> bool | None:
+    if status.maintenance_count is None or status.maintenance_threshold is None:
+        return None
+    if status.maintenance_threshold <= 0:
+        return False
+    return status.maintenance_count >= status.maintenance_threshold
+
+
+def _bluebus_fault(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> bool | None:
+    value = coordinator.bluebus_error_status
+    if value is None:
+        return None
+    return value.strip().casefold() not in {
+        "0",
+        "00",
+        "false",
+        "none",
+        "no_error",
+        "ok",
+    }
+
+
+EVENT_BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
+    NiceBidiBinarySensorEntityDescription(
+        key="maintenance_due",
+        name="Maintenance due",
+        protected=False,
+        supported_fn=_event_supported,
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
+        value_fn=_maintenance_due,
+    ),
+    NiceBidiBinarySensorEntityDescription(
+        key="bluebus_fault",
+        name="BlueBUS fault",
+        protected=False,
+        supported_fn=_event_supported,
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        coordinator_value_fn=_bluebus_fault,
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -178,7 +256,7 @@ async def async_setup_entry(
         build_described_entities(
             coordinator,
             entry,
-            BINARY_SENSORS,
+            (*BINARY_SENSORS, *EVENT_BINARY_SENSORS),
             NiceBidiBinarySensor,
         )
     )
@@ -212,8 +290,10 @@ class NiceBidiBinarySensor(NiceCoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         """Return the binary value."""
+        if self.entity_description.coordinator_value_fn is not None:
+            return self.entity_description.coordinator_value_fn(self.coordinator)
         status = self.coordinator.data
-        if status is None:
+        if status is None or self.entity_description.value_fn is None:
             return None
         return self.entity_description.value_fn(status)
 

@@ -28,17 +28,20 @@ NHK_DOOR_STATUS = {
 NHK_UNKNOWN_DOOR_STATUS = {"unknown", "unknow"}
 
 
-def _status_value(value: str | None) -> str | None:
+def status_value(value: str | None) -> str | None:
+    """Normalize an NHK DoorStatus value."""
     if not value:
         return None
     return NHK_DOOR_STATUS.get(value.strip().casefold())
 
 
-def _is_unknown_status(value: str | None) -> bool:
+def is_unknown_status(value: str | None) -> bool:
+    """Return whether the device explicitly reported an unknown state."""
     return bool(value and value.strip().casefold() in NHK_UNKNOWN_DOOR_STATUS)
 
 
-def _bool_value(value: str | None) -> bool | None:
+def bool_value(value: str | None) -> bool | None:
+    """Normalize an NHK boolean value."""
     if value is None:
         return None
     normalized = value.strip().casefold()
@@ -78,11 +81,11 @@ def parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceStatus | No
     if raw_obstruct is None:
         raw_obstruct = _child_text(root, ".//Obstruct")
 
-    state = _status_value(raw_state)
+    state = status_value(raw_state)
     if raw_state is not None and state is None:
-        if not _is_unknown_status(raw_state):
+        if not is_unknown_status(raw_state):
             raise NiceProtocolError(f"Unsupported NHK DoorStatus value: {raw_state}")
-        obstacle = _bool_value(raw_obstruct)
+        obstacle = bool_value(raw_obstruct)
         registers = {"NHK/DoorStatus": raw_state}
         if raw_obstruct is not None:
             registers["NHK/Obstruct"] = raw_obstruct
@@ -98,7 +101,7 @@ def parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceStatus | No
     if state is None:
         return None
 
-    obstacle = _bool_value(raw_obstruct)
+    obstacle = bool_value(raw_obstruct)
     registers = {"NHK/DoorStatus": raw_state or state}
     if raw_obstruct is not None:
         registers["NHK/Obstruct"] = raw_obstruct

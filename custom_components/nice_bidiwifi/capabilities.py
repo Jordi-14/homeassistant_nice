@@ -21,6 +21,7 @@ class NiceCapabilityService:
         device_info: NiceDeviceInfo,
         *,
         status: NiceStatus | None = None,
+        previous: NiceCapabilities | None = None,
     ) -> NiceCapabilities:
         """Discover capabilities from INFO and observed normalized status."""
         capabilities = NiceCapabilities.from_device_info(
@@ -28,9 +29,7 @@ class NiceCapabilityService:
             self.device_id,
         )
         observed_registers = (
-            frozenset(status.registers)
-            if status is not None
-            else frozenset()
+            frozenset(status.registers) if status is not None else frozenset()
         )
         status_sources = set(capabilities.status_sources)
         position_sources: set[str] = set()
@@ -48,4 +47,14 @@ class NiceCapabilityService:
             observed_dmp_registers=observed_registers,
             status_sources=frozenset(status_sources),
             position_sources=frozenset(position_sources),
+            local_events=(
+                True
+                if previous is not None and previous.local_events is True
+                else capabilities.local_events
+            ),
+            diagnostic_events=(
+                True
+                if previous is not None and previous.diagnostic_events is True
+                else capabilities.diagnostic_events
+            ),
         )

@@ -31,7 +31,9 @@ class CapabilityConfidence(StrEnum):
 
 
 def _normalize_product(value: str | None) -> str:
-    return "".join(character for character in (value or "").casefold() if character.isalnum())
+    return "".join(
+        character for character in (value or "").casefold() if character.isalnum()
+    )
 
 
 def _product_family(info: NiceDeviceInfo) -> ProductFamily:
@@ -58,7 +60,10 @@ def _matching_capability(
     for capability in capabilities:
         if capability.name != name:
             continue
-        if capability.owner == "Device" and capability.owner_id not in {None, target_id}:
+        if capability.owner == "Device" and capability.owner_id not in {
+            None,
+            target_id,
+        }:
             continue
         return capability
     return None
@@ -115,6 +120,15 @@ class NiceCapabilities:
         door_action = _matching_capability(info.services, "DoorAction", device_id)
         door_status = _matching_capability(info.properties, "DoorStatus", device_id)
         obstruction = _matching_capability(info.properties, "Obstruct", device_id)
+        target_id = str(device_id)
+        event_capabilities = tuple(
+            capability
+            for capability in (*info.services, *info.properties)
+            if capability.emits_events
+            and (
+                capability.owner != "Device" or capability.owner_id in {None, target_id}
+            )
+        )
         return cls(
             family=_product_family(info),
             device_id=device_id,
@@ -127,11 +141,22 @@ class NiceCapabilities:
             high_level_actions=(
                 door_action.writable if door_action is not None else None
             ),
-            readable_status=(
-                door_status.readable if door_status is not None else None
-            ),
-            obstruction=(
-                obstruction.readable if obstruction is not None else None
+            readable_status=(door_status.readable if door_status is not None else None),
+            obstruction=(obstruction.readable if obstruction is not None else None),
+            local_events=True if event_capabilities else None,
+            diagnostic_events=(
+                True
+                if any(
+                    capability.name.casefold()
+                    in {
+                        "eventdetails",
+                        "basicdiagnostic",
+                        "causecode",
+                        "advdiagnostic",
+                    }
+                    for capability in event_capabilities
+                )
+                else None
             ),
             product_detail=info.device_product_detail,
             interface_firmware=info.interface_fw_version,
@@ -167,7 +192,5 @@ class NiceCapabilities:
         if not self.t4_allowed.valid or self.t4_allowed.mask is None:
             return frozenset()
         return frozenset(
-            code
-            for code in T4_ACTION_BY_CODE
-            if self.t4_allowed.mask & (1 << code)
+            code for code in T4_ACTION_BY_CODE if self.t4_allowed.mask & (1 << code)
         )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -55,7 +56,9 @@ def config_entry_data(**overrides: Any) -> dict[str, Any]:
 
 def config_entry(entry_id: str = "entry-1", **overrides: Any) -> SimpleNamespace:
     """Return a minimal config entry-like object for direct entity tests."""
-    return SimpleNamespace(entry_id=entry_id, data=config_entry_data(**overrides), runtime_data=None)
+    return SimpleNamespace(
+        entry_id=entry_id, data=config_entry_data(**overrides), runtime_data=None
+    )
 
 
 def make_status(
@@ -92,15 +95,14 @@ def make_status(
     pre_flash: bool | None = False,
     key_lock: bool | None = False,
     last_stop_reason: str | None = "obstacle_by_encoder",
-    diagnostics_parameters: str | None = "00 00 00 bc 00 bc 00 00 00 20 00 00 00 00 00 33 00 00 00 00 00 00 00 00 00 00 00 00",
+    diagnostics_parameters: str
+    | None = "00 00 00 bc 00 bc 00 00 00 20 00 00 00 00 00 33 00 00 00 00 00 00 00 00 00 00 00 00",
     oxi_detected: bool | None = True,
     oxi_product: str | None = "OXI",
 ) -> NiceBidiStatus:
     """Create a Nice status object."""
     diagnostic_bytes = (
-        bytes.fromhex(diagnostics_parameters)
-        if diagnostics_parameters
-        else b""
+        bytes.fromhex(diagnostics_parameters) if diagnostics_parameters else b""
     )
     return NiceBidiStatus(
         state=state,
@@ -138,15 +140,9 @@ def make_status(
         last_stop_reason=last_stop_reason,
         diagnostics_parameters=diagnostics_parameters,
         motor_temperature=(
-            diagnostic_bytes[15] - 9
-            if len(diagnostic_bytes) > 15
-            else None
+            diagnostic_bytes[15] - 9 if len(diagnostic_bytes) > 15 else None
         ),
-        service_voltage=(
-            diagnostic_bytes[9]
-            if len(diagnostic_bytes) > 9
-            else None
-        ),
+        service_voltage=(diagnostic_bytes[9] if len(diagnostic_bytes) > 9 else None),
         oxi_detected=oxi_detected,
         oxi_product=oxi_product,
     )
@@ -223,7 +219,9 @@ class FakeClient:
         self.actions: list[str] = []
         self.dep_actions: list[str] = []
         self.closed = False
-        self.read_status_result = make_status(state="open", position=100.0, current_position=1000)
+        self.read_status_result = make_status(
+            state="open", position=100.0, current_position=1000
+        )
         self.read_nhk_status_result = make_status(
             state="open",
             position=None,
@@ -242,6 +240,48 @@ class FakeClient:
         self.nhk_status_reads = 0
         self.read_status_include_extended: list[bool] = []
         self.dmp_writes: list[tuple[int, int, int, int]] = []
+        self.event_callbacks: list = []
+        self.event_failure_callbacks: list = []
+
+    def add_event_callback(self, callback):
+        """Register an unsolicited frame callback."""
+        self.event_callbacks.append(callback)
+
+        def remove() -> None:
+            if callback in self.event_callbacks:
+                self.event_callbacks.remove(callback)
+
+        return remove
+
+    def add_event_failure_callback(self, callback):
+        """Register a reader failure callback."""
+        self.event_failure_callbacks.append(callback)
+
+        def remove() -> None:
+            if callback in self.event_failure_callbacks:
+                self.event_failure_callbacks.remove(callback)
+
+        return remove
+
+    def emit_event(self, frame: bytes) -> None:
+        """Publish an unsolicited frame."""
+        for callback in tuple(self.event_callbacks):
+            callback(frame)
+
+    def fail_event_stream(self, error: Exception) -> None:
+        """Publish a reader failure."""
+        for callback in tuple(self.event_failure_callbacks):
+            callback(error)
+
+    @property
+    def event_stream_active(self) -> bool:
+        """Return whether the fake has an event callback."""
+        return bool(self.event_callbacks)
+
+    @property
+    def event_stream_error(self) -> str | None:
+        """Return no persistent fake error."""
+        return None
 
     def read_status(self, *, include_extended: bool = False) -> NiceBidiStatus:
         """Return status or raise a configured error."""
@@ -276,7 +316,9 @@ class FakeClient:
             raise self.send_dep_action_error
         self.dep_actions.append(action)
 
-    def write_dmp_register(self, group: int, parameter: int, value: int, *, size: int = 1) -> None:
+    def write_dmp_register(
+        self, group: int, parameter: int, value: int, *, size: int = 1
+    ) -> None:
         """Record a DMP write or raise a configured error."""
         if self.write_dmp_register_error is not None:
             raise self.write_dmp_register_error
@@ -293,6 +335,7 @@ class FakeCoordinator:
     def __init__(self) -> None:
         self.data = make_status()
         self.device_info = make_device_info()
+        self.capabilities = None
         self.status_polling_supported = True
         self.last_update_success = True
         self.connection_state = "connected"
@@ -312,11 +355,30 @@ class FakeCoordinator:
         self.calibration_report_attributes = {"quality": "good", "point_count": 8}
         self.supported_t4_actions: set[str] | None = None
         self.calls: list[tuple[str, object | None]] = []
+        self.event_stream_state = "active"
+        self.event_stream_error = None
+        self.latest_event = None
+        self.event_sequence = 0
+        self.protocol_event_count = 0
+        self.malformed_protocol_event_count = 0
+        self.last_event_at = None
+        self.last_event_cause = None
+        self.basic_diagnostic_code = None
+        self.advanced_diagnostic_code = None
+        self.bluebus_error_status = None
+        self.manoeuvre_average_current = None
+        self.last_reset_cause = None
+        self.last_reset_device_class = None
+        self.event_battery_level = None
+        self.event_battery_device_type = None
+        self.event_history = deque(maxlen=32)
 
     @property
     def display_position(self) -> float | None:
         """Return the displayed cover position."""
-        return self.data.position if self.data and self.data.position is not None else None
+        return (
+            self.data.position if self.data and self.data.position is not None else None
+        )
 
     @property
     def display_position_estimated(self) -> bool:
@@ -367,10 +429,7 @@ class FakeCoordinator:
 
     def t4_action_supported(self, action: str) -> bool:
         """Return configurable action support for entity tests."""
-        return (
-            self.supported_t4_actions is None
-            or action in self.supported_t4_actions
-        )
+        return self.supported_t4_actions is None or action in self.supported_t4_actions
 
     async def async_set_position(self, position: int) -> None:
         """Record a set-position request."""

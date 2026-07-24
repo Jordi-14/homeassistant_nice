@@ -15,7 +15,7 @@ from .commands import (
 from .config import ConnectionMode, NiceConnectionPolicy, NiceEndpoint, NiceEntryConfig
 from .credentials import NiceCredentials
 from .device import NiceDeviceInfo, NiceServiceCapability
-from .events import NiceEvent, NiceEventKind
+from .events import NiceEvent, NiceEventCategory, NiceEventKind
 from .position import NicePosition, PositionConfidence, PositionSource
 from .profiles import DmpWriteRestriction, NiceDeviceProfile
 from .status import NiceStatus
@@ -37,6 +37,7 @@ __all__ = [
     "NiceEndpoint",
     "NiceEntryConfig",
     "NiceEvent",
+    "NiceEventCategory",
     "NiceEventKind",
     "NicePosition",
     "NiceDeviceProfile",

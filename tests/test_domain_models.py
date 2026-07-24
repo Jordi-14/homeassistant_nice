@@ -108,8 +108,9 @@ def test_info_capabilities_decode_permissions_family_and_t4_mask() -> None:
                 <DoorAction type="string" perm="w"/>
               </Services>
               <Properties>
-                <DoorStatus type="string" perm="r"/>
+                <DoorStatus type="string" perm="re"/>
                 <Obstruct type="bool" perm="r"/>
+                <EventDetails type="object" perm="e"/>
               </Properties>
             </Device>
           </Devices>
@@ -123,6 +124,8 @@ def test_info_capabilities_decode_permissions_family_and_t4_mask() -> None:
     assert capabilities.high_level_actions is True
     assert capabilities.readable_status is True
     assert capabilities.obstruction is True
+    assert capabilities.local_events is True
+    assert capabilities.diagnostic_events is True
     assert capabilities.supported_t4_action_codes == frozenset({1, 5, 6})
     assert capabilities.supports_t4_action(5) is True
     assert capabilities.supports_t4_action(7) is False
@@ -136,6 +139,8 @@ def test_missing_info_capabilities_remain_unknown() -> None:
 
     assert capabilities.high_level_actions is None
     assert capabilities.readable_status is None
+    assert capabilities.local_events is None
+    assert capabilities.diagnostic_events is None
     assert capabilities.supports_t4_action(1) is None
 
 

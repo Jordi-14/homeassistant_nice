@@ -80,7 +80,11 @@ from .protocol.t4.registers import (
     OXI_INFO_PROFILE,
 )
 from .protocol.t4.status import status_from_dmp_registers
-from .transport.dispatcher import RawEventCallback, ResponseDispatcher
+from .transport.dispatcher import (
+    RawEventCallback,
+    ReaderFailureCallback,
+    ResponseDispatcher,
+)
 from .transport.lan import (
     LanTlsTransport,
     SocketFrameTransport,
@@ -115,6 +119,7 @@ __all__ = [
 
 NHK_STATUS_POST_RESPONSE_LISTEN_SECONDS = 0.75
 
+
 class NiceBidiClient:
     """Persistent local NHK client for a Nice interface."""
 
@@ -137,6 +142,7 @@ class NiceBidiClient:
         self._transport: SocketFrameTransport | None = None
         self._dispatcher: ResponseDispatcher | None = None
         self._event_callbacks: list[RawEventCallback] = []
+        self._event_failure_callbacks: list[ReaderFailureCallback] = []
         self._session_id = 0
         self._session_key: bytes | None = None
         self._sequence = 1
@@ -152,8 +158,7 @@ class NiceBidiClient:
     def _socket(self, connected_socket: SocketLike | None) -> None:
         """Attach a socket through the framed transport compatibility boundary."""
         if connected_socket is None:
-            self._transport = None
-            self._dispatcher = None
+            self._close_locked()
             return
         self._set_transport(SocketFrameTransport(connected_socket))
 
@@ -163,23 +168,56 @@ class NiceBidiClient:
         self._dispatcher = ResponseDispatcher(transport)
         for callback in self._event_callbacks:
             self._dispatcher.add_event_callback(callback)
+        for callback in self._event_failure_callbacks:
+            self._dispatcher.add_failure_callback(callback)
 
     def add_event_callback(self, callback: RawEventCallback) -> Callable[[], None]:
         """Register a callback for unsolicited protocol frames."""
-        self._event_callbacks.append(callback)
-        remove_dispatcher = (
-            self._dispatcher.add_event_callback(callback)
-            if self._dispatcher is not None
-            else None
-        )
+        with self._lock:
+            self._event_callbacks.append(callback)
+            if self._dispatcher is not None:
+                self._dispatcher.add_event_callback(callback)
 
         def remove() -> None:
-            if callback in self._event_callbacks:
-                self._event_callbacks.remove(callback)
-            if remove_dispatcher is not None:
-                remove_dispatcher()
+            with self._lock:
+                if callback in self._event_callbacks:
+                    self._event_callbacks.remove(callback)
+                if self._dispatcher is not None:
+                    self._dispatcher.remove_event_callback(callback)
 
         return remove
+
+    def add_event_failure_callback(
+        self,
+        callback: ReaderFailureCallback,
+    ) -> Callable[[], None]:
+        """Register a callback for an interrupted unsolicited-event stream."""
+        with self._lock:
+            self._event_failure_callbacks.append(callback)
+            if self._dispatcher is not None:
+                self._dispatcher.add_failure_callback(callback)
+
+        def remove() -> None:
+            with self._lock:
+                if callback in self._event_failure_callbacks:
+                    self._event_failure_callbacks.remove(callback)
+                if self._dispatcher is not None:
+                    self._dispatcher.remove_failure_callback(callback)
+
+        return remove
+
+    @property
+    def event_stream_active(self) -> bool:
+        """Return whether the persistent protocol reader is active."""
+        dispatcher = self._dispatcher
+        return bool(dispatcher and dispatcher.running)
+
+    @property
+    def event_stream_error(self) -> str | None:
+        """Return the current reader failure without exposing frame contents."""
+        dispatcher = self._dispatcher
+        failure = dispatcher.failure if dispatcher is not None else None
+        return failure.__class__.__name__ if failure is not None else None
 
     @property
     def reconnect_count(self) -> int:
@@ -194,7 +232,9 @@ class NiceBidiClient:
 
     def read_status(self, *, include_extended: bool = False) -> NiceBidiStatus:
         """Read status and position DMP registers."""
-        return self._run_with_reconnect(lambda: self._read_status_locked(include_extended=include_extended))
+        return self._run_with_reconnect(
+            lambda: self._read_status_locked(include_extended=include_extended)
+        )
 
     def read_nhk_status(self) -> NiceBidiStatus:
         """Read state from NHK STATUS/CHANGE properties."""
@@ -237,7 +277,9 @@ class NiceBidiClient:
         if value > (1 << (size * 8)) - 1:
             raise ValueError(f"value must fit in {size} byte(s)")
         payload = value.to_bytes(size, "big")
-        self._run_with_reconnect(lambda: self._write_dmp_register_locked(group, parameter, payload))
+        self._run_with_reconnect(
+            lambda: self._write_dmp_register_locked(group, parameter, payload)
+        )
 
     def test_connection(self) -> NiceBidiStatus:
         """Authenticate and read status once."""
@@ -251,7 +293,10 @@ class NiceBidiClient:
                 try:
                     return self.read_nhk_status()
                 except NiceBidiError:
-                    _LOGGER.debug("Nice NHK status validation failed after DMP Code 14", exc_info=True)
+                    _LOGGER.debug(
+                        "Nice NHK status validation failed after DMP Code 14",
+                        exc_info=True,
+                    )
             return NiceBidiStatus(
                 state=None,
                 position=None,
@@ -294,7 +339,11 @@ class NiceBidiClient:
                 self._set_transport(
                     LanTlsTransport.connect(self.host, self.port, self.timeout)
                 )
-                _LOGGER.debug("Nice local TLS connection established to %s:%s", self.host, self.port)
+                _LOGGER.debug(
+                    "Nice local TLS connection established to %s:%s",
+                    self.host,
+                    self.port,
+                )
                 return
             except (OSError, ssl.SSLError) as exc:
                 last_error = exc
@@ -324,7 +373,9 @@ class NiceBidiClient:
         if "<Error>" in text:
             raise NiceBidiAuthError(_response_error_summary(response))
         if not server_challenge or session_id is None:
-            raise NiceBidiConnectionError("CONNECT response was empty or missing session data")
+            raise NiceBidiConnectionError(
+                "CONNECT response was empty or missing session data"
+            )
 
         self._session_id = int(session_id)
         self._sequence = 1
@@ -333,7 +384,10 @@ class NiceBidiClient:
             _reverse_hex(server_challenge),
             _reverse_hex(client_challenge),
         )
-        _LOGGER.debug("Nice local NHK authentication succeeded with session id %s", self._session_id)
+        _LOGGER.debug(
+            "Nice local NHK authentication succeeded with session id %s",
+            self._session_id,
+        )
 
     def _ensure_connected_locked(self) -> None:
         if self._socket and self._session_key is not None:
@@ -344,9 +398,15 @@ class NiceBidiClient:
 
     def _close_locked(self) -> None:
         transport = self._transport
+        dispatcher = self._dispatcher
         self._transport = None
         self._dispatcher = None
-        if transport is not None:
+        if dispatcher is not None:
+            try:
+                dispatcher.close()
+            except OSError:
+                _LOGGER.debug("Nice dispatcher close failed", exc_info=True)
+        elif transport is not None:
             try:
                 transport.close()
             except OSError:
@@ -370,16 +430,25 @@ class NiceBidiClient:
     def _sign(self, xml_command: str) -> str:
         if self._session_key is None:
             raise NiceBidiConnectionError("not authenticated")
-        return base64.b64encode(_sha256(_sha256(xml_command.encode("utf-8")), self._session_key)).decode("ascii")
+        return base64.b64encode(
+            _sha256(_sha256(xml_command.encode("utf-8")), self._session_key)
+        ).decode("ascii")
 
-    def _signed_request_with_id(self, request_type: str, body: str = "") -> tuple[str, int]:
+    def _signed_request_with_id(
+        self, request_type: str, body: str = ""
+    ) -> tuple[str, int]:
         request_id = self._next_request_id()
         xml_command = self._start_request(request_id, request_type) + body
-        return xml_command + f"<Sign>{self._sign(xml_command)}</Sign>\r\n</Request>\r\n", request_id
+        return (
+            xml_command + f"<Sign>{self._sign(xml_command)}</Sign>\r\n</Request>\r\n",
+            request_id,
+        )
 
     def _signed_exchange_locked(self, request_type: str, body: str = "") -> bytes:
         xml, request_id = self._signed_request_with_id(request_type, body)
-        return self._send_locked(xml, expected_type=request_type, expected_id=request_id)
+        return self._send_locked(
+            xml, expected_type=request_type, expected_id=request_id
+        )
 
     def _signed_exchange_frames_locked(
         self,
@@ -396,13 +465,15 @@ class NiceBidiClient:
             post_response_listen_seconds=post_response_listen_seconds,
         )
 
-    def _send_locked(self, xml: str, expected_type: str | None, expected_id: int | None) -> bytes:
-        frames = self._send_frames_locked(xml, expected_type=expected_type, expected_id=expected_id)
+    def _send_locked(
+        self, xml: str, expected_type: str | None, expected_id: int | None
+    ) -> bytes:
+        frames = self._send_frames_locked(
+            xml, expected_type=expected_type, expected_id=expected_id
+        )
         for response in frames:
             if self._matches_response(response, expected_type, expected_id):
                 return response
-        if frames:
-            return frames[-1]
         raise NiceBidiConnectionError("device did not respond")
 
     def _send_frames_locked(
@@ -439,11 +510,9 @@ class NiceBidiClient:
             return frames
         return []
 
-    def _recv_frame_locked(self, timeout: float) -> bytes:
-        """Read through the sole response dispatcher."""
-        return self._dispatcher.read_frame(timeout) if self._dispatcher is not None else b""
-
-    def _matches_response(self, response: bytes, expected_type: str | None, expected_id: int | None) -> bool:
+    def _matches_response(
+        self, response: bytes, expected_type: str | None, expected_id: int | None
+    ) -> bool:
         return response_matches(response, expected_type, expected_id)
 
     def _send_action_locked(self, action: str) -> None:
@@ -510,9 +579,7 @@ class NiceBidiClient:
         )
         if "<Error>" in _printable(response):
             if required:
-                raise NiceBidiConnectionError(
-                    _response_error_summary(response)
-                )
+                raise NiceBidiConnectionError(_response_error_summary(response))
             _LOGGER.debug(
                 "Optional Nice DMP register read failed daddr=%02X dendpoint=%02X register=%02X/%02X: %s",
                 daddr,
@@ -556,18 +623,14 @@ class NiceBidiClient:
         )
         for frame in frames:
             if "<Error>" in _printable(frame):
-                raise NiceBidiConnectionError(
-                    _response_error_summary(frame)
-                )
+                raise NiceBidiConnectionError(_response_error_summary(frame))
         return _parse_nhk_status_frames(frames, self.device_id)
 
     def _read_info_xml_locked(self) -> str:
         response = self._signed_exchange_locked("INFO")
         text = _printable(response)
         if "<Error>" in text:
-            raise NiceBidiConnectionError(
-                _response_error_summary(response)
-            )
+            raise NiceBidiConnectionError(_response_error_summary(response))
         return _xml_payload(response)
 
     def _read_info_locked(self) -> NiceBidiDeviceInfo:
