@@ -67,12 +67,13 @@ from .client import (
     STATE_CLOSING,
     STATE_OPEN,
     STATE_OPENING,
+    STATE_PARTIALLY_OPEN,
     STATE_STOPPED,
 )
 from .connection import CONNECTION_STATE_AUTH_FAILED, CONNECTION_STATE_FAILED
 from .const import DOMAIN, ERROR_UPDATE_INTERVAL
 from .controllers.base import OwnerBoundController
-from .errors import NiceCalibrationError
+from .errors import NiceCalibrationError, nice_error_code
 from .models.calibration import CalibrationMode, CalibrationPositionSource
 from .position import (
     POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR,
@@ -1276,7 +1277,11 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
                     requested_stop_percent=round(requested_stop_percent, 2),
                     state=status.state,
                 )
-                await self._async_send_action("stop", refresh=False, simulate=False)
+                await self._async_send_calibration_stop(
+                    action=action,
+                    target=target,
+                    attempt=attempt,
+                )
                 break
             if status.state == moving_state:
                 started_moving = True
@@ -1654,7 +1659,11 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
                     requested_stop_percent=round(self._percent_for_raw(status, requested_stop_raw), 2),
                     state=status.state,
                 )
-                await self._async_send_action("stop", refresh=False, simulate=False)
+                await self._async_send_calibration_stop(
+                    action=action,
+                    target=target,
+                    attempt=attempt,
+                )
                 break
             if status.state == moving_state:
                 started_moving = True
@@ -1994,11 +2003,101 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
                 state=status.state,
                 settle_timeout_seconds=CALIBRATION_SETTLE_TIMEOUT_SECONDS,
             )
-            await self._async_send_action("stop", refresh=False, simulate=False)
+            await self._async_send_calibration_stop(
+                action=action,
+                target=target,
+                attempt=attempt,
+            )
             await asyncio.sleep(CALIBRATION_COMMAND_PAUSE_SECONDS)
             status = await self._async_read_motion_status()
         await self._async_pause_before_next_calibration_command()
         return status, settle_timed_out
+
+    async def _async_send_calibration_stop(
+        self,
+        *,
+        action: str,
+        target: int,
+        attempt: int,
+    ) -> None:
+        """Send Stop with bounded recovery for a confirmed invalid-command reply."""
+        for rejection_count in (1, 2):
+            try:
+                await self._async_send_action("stop", refresh=False, simulate=False)
+            except HomeAssistantError as err:
+                if nice_error_code(err) != "5":
+                    raise
+
+                status = await self._async_read_motion_status()
+                details = {
+                    "action": action,
+                    "target_percent": target,
+                    "attempt": attempt,
+                    "error_code": "5",
+                    "rejection_count": rejection_count,
+                    "state": status.state,
+                    "current_raw": status.current_position,
+                    "current_percent": status.position,
+                }
+                if status.state in {
+                    STATE_CLOSED,
+                    STATE_OPEN,
+                    STATE_PARTIALLY_OPEN,
+                    STATE_STOPPED,
+                }:
+                    self._add_calibration_event(
+                        "attempt",
+                        (
+                            f"{action} {target}% attempt {attempt}: controller rejected "
+                            "Stop as invalid but fresh status confirmed stationary"
+                        ),
+                        **details,
+                    )
+                    return
+                if rejection_count == 1 and status.is_moving:
+                    self._add_calibration_event(
+                        "attempt",
+                        (
+                            f"{action} {target}% attempt {attempt}: controller rejected "
+                            "Stop as invalid while moving; retrying once"
+                        ),
+                        **details,
+                    )
+                    continue
+
+                self._add_calibration_event(
+                    "attempt",
+                    (
+                        f"{action} {target}% attempt {attempt}: controller rejected "
+                        "calibration Stop"
+                    ),
+                    **details,
+                )
+                if rejection_count == 2:
+                    reason = f"twice while status still reports {status.state or 'unknown'}"
+                else:
+                    reason = (
+                        "while a fresh status read could not confirm that the gate "
+                        f"was stationary (state {status.state or 'unknown'})"
+                    )
+                raise NiceCalibrationError(
+                    "Controller rejected the calibration Stop command with Nice "
+                    f"Code 5 (invalid command) {reason}"
+                ) from err
+            else:
+                if rejection_count == 2:
+                    self._add_calibration_event(
+                        "attempt",
+                        (
+                            f"{action} {target}% attempt {attempt}: calibration Stop "
+                            "accepted on bounded retry"
+                        ),
+                        action=action,
+                        target_percent=target,
+                        attempt=attempt,
+                        rejection_count=1,
+                    )
+                return
 
     async def _async_pause_before_next_calibration_command(self) -> None:
         """Give the gate controller a small quiet period before the next command."""
@@ -2029,8 +2128,10 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
     def _read_motion_status(self) -> NiceBidiStatus:
         """Read status through the active polling strategy."""
         if self._use_nhk_status:
-            return self.client.read_nhk_status()
-        return self.client.read_status()
+            status = self.client.read_nhk_status()
+        else:
+            status = self.client.read_status()
+        return self._merge_cached_extended_status(status)
 
     def _calibrated_stop_percent(self, target: float, action: str) -> float | None:
         """Return an interpolated calibrated stop percentage for a target."""

@@ -222,7 +222,7 @@ async def test_update_data_keeps_cuwifi_unknown_door_status_available(
 async def test_motion_status_uses_nhk_status_after_fallback(
     hass: HomeAssistant,
 ) -> None:
-    """Test target-position tracking uses the selected NHK status reader."""
+    """Test NHK motion reads retain cached broad BusT4 diagnostics."""
     instance = _coordinator(hass)
     client = FakeClient()
     client.read_nhk_status_result = make_status(
@@ -231,15 +231,145 @@ async def test_motion_status_uses_nhk_status_after_fallback(
         current_position=None,
         closed_position=None,
         open_position=None,
+        opening_speed=None,
+        maintenance_count=None,
+        diagnostics_parameters=None,
     )
     instance.client = client
     instance._use_nhk_status = True
+    instance._extended_status_cache = make_status()
 
     result = await instance._async_read_motion_status()
 
     assert result.state == "opening"
     assert result.position == 42.0
+    assert result.opening_speed == 60
+    assert result.maintenance_count == 12
+    assert result.motor_temperature == 42
+    assert result.service_voltage == 32
     assert client.nhk_status_reads == 1
+
+
+async def test_motion_status_reuses_cached_extended_diagnostics(
+    hass: HomeAssistant,
+) -> None:
+    """Test fast DMP calibration reads do not blank diagnostic entities."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.read_status_result = make_status(
+        state="closing",
+        position=55.0,
+        current_position=550,
+        opening_speed=None,
+        maintenance_count=None,
+        diagnostics_parameters=None,
+    )
+    instance.client = client
+    instance._extended_status_cache = make_status()
+
+    result = await instance._async_read_motion_status()
+
+    assert result.state == "closing"
+    assert result.position == 55.0
+    assert result.current_position == 550
+    assert result.opening_speed == 60
+    assert result.maintenance_count == 12
+    assert result.motor_temperature == 42
+    assert result.service_voltage == 32
+    assert client.read_status_include_extended == [False]
+
+
+async def test_calibration_stop_accepts_code_5_when_fresh_status_is_stationary(
+    hass: HomeAssistant,
+) -> None:
+    """Test an already-stopped controller can reject redundant Stop safely."""
+    instance = _coordinator(hass)
+    commands: list[str] = []
+
+    async def fake_send_action(action: str, **_kwargs: Any) -> None:
+        commands.append(action)
+        raise HomeAssistantError(
+            "Nice command failed: <Error><Code>5</Code></Error>"
+        )
+
+    async def fake_read_motion_status() -> Any:
+        return make_status(state="stopped", position=81.0, current_position=810)
+
+    instance._async_send_action = fake_send_action
+    instance._async_read_motion_status = fake_read_motion_status
+
+    await instance._async_send_calibration_stop(
+        action="open",
+        target=80,
+        attempt=5,
+    )
+
+    assert commands == ["stop"]
+    assert "fresh status confirmed stationary" in instance._calibration_events[-1]["message"]
+    assert instance._calibration_events[-1]["details"]["error_code"] == "5"
+
+
+async def test_calibration_stop_retries_code_5_once_while_still_moving(
+    hass: HomeAssistant,
+) -> None:
+    """Test an explicit invalid-command Stop rejection gets one bounded retry."""
+    instance = _coordinator(hass)
+    commands: list[str] = []
+
+    async def fake_send_action(action: str, **_kwargs: Any) -> None:
+        commands.append(action)
+        if len(commands) == 1:
+            raise HomeAssistantError(
+                "Nice command failed: <Error><Code>5</Code></Error>"
+            )
+
+    async def fake_read_motion_status() -> Any:
+        return make_status(state="opening", position=79.0, current_position=790)
+
+    instance._async_send_action = fake_send_action
+    instance._async_read_motion_status = fake_read_motion_status
+
+    await instance._async_send_calibration_stop(
+        action="open",
+        target=80,
+        attempt=5,
+    )
+
+    assert commands == ["stop", "stop"]
+    assert "accepted on bounded retry" in instance._calibration_events[-1]["message"]
+
+
+async def test_calibration_stop_fails_after_two_code_5_rejections_while_moving(
+    hass: HomeAssistant,
+) -> None:
+    """Test calibration never assumes that a repeatedly rejected Stop worked."""
+    instance = _coordinator(hass)
+    commands: list[str] = []
+
+    async def fake_send_action(action: str, **_kwargs: Any) -> None:
+        commands.append(action)
+        raise HomeAssistantError(
+            "Nice command failed: <Error><Code>5</Code></Error>"
+        )
+
+    async def fake_read_motion_status() -> Any:
+        return make_status(state="opening", position=82.0, current_position=820)
+
+    instance._async_send_action = fake_send_action
+    instance._async_read_motion_status = fake_read_motion_status
+
+    with pytest.raises(
+        calibration_module.NiceCalibrationError,
+        match="twice while status still reports opening",
+    ):
+        await instance._async_send_calibration_stop(
+            action="open",
+            target=80,
+            attempt=5,
+        )
+
+    assert commands == ["stop", "stop"]
+    assert instance._calibration_events[-1]["details"]["rejection_count"] == 2
 
 
 async def test_update_data_does_not_fallback_to_command_only_for_other_status_errors(

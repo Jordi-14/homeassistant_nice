@@ -74,6 +74,13 @@ them in the calibration profile.
 After calibration, incoming raw scalar frames are normalized with the learned
 bounds before they are used for display or set-position timing.
 
+These older controllers may emit their numeric position only while moving.
+After an integration reload, the cover position can therefore remain unknown
+until the first new movement even when the state-only binary sensor already
+reports closed. This is an accepted limitation: the integration does not turn a
+state-only `closed` report into a fabricated numeric `0%`. The next valid live
+position frame restores percentage reporting.
+
 ### State and Time Only
 
 Some devices only report state: open, opening, closing, closed, and sometimes
@@ -331,12 +338,30 @@ The report includes:
 - command latency;
 - all calibration events.
 
+Fast motion polls read only the status needed to track the gate. Cached
+maintenance, temperature, voltage, and other broad BusT4 diagnostics remain
+visible during those polls and are refreshed again by the normal broad scan;
+they are not re-read every half second.
+
+Nice protocol code `5` means that the controller rejected a command as invalid.
+If this happens for a calibration Stop, the integration reads fresh physical
+state. It accepts the rejection as a redundant Stop only when the controller
+already reports a stationary state. If it still reports movement, the
+integration retries Stop once after that successful status round trip. A second
+rejection fails calibration and records the state and both rejections.
+
 ## Safety Notes
 
 Only run calibration when the gate is visible and the path is clear. The
 integration deliberately avoids inventing position on devices that do not report
 it. A time-only profile records travel measurements but does not expose a
 position or enable set-position.
+
+Disable Home Assistant automations that can move the gate during calibration.
+Also check controller-side `Auto close`, `Photo close`, and `Always close`
+settings, including their pause/time/mode entities. Those settings live in the
+gate controller and can move it even when every Home Assistant automation is
+disabled. Calibration does not change them automatically.
 
 Some BusT4 diagnostic and configuration entities depend on DMP registers that a
 CU_WIFI controller may not expose. Those entities stay hidden or disabled by
