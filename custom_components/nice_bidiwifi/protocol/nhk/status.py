@@ -6,13 +6,13 @@ from dataclasses import replace
 import xml.etree.ElementTree as ET
 
 from ...errors import NiceProtocolError
-from ...models.status import (
-    STATE_CLOSING,
-    STATE_OPENING,
-    NiceStatus,
-)
+from ...models.status import NiceStatus
 from ..t4.codec import decrypt_t4_payloads_from_frame
-from ..t4.live import CuwifiLiveStatus, parse_cuwifi_live_status_payload
+from ..t4.live import (
+    CuwifiLiveStatus,
+    effective_live_state,
+    parse_cuwifi_live_status_payload,
+)
 from .codec import xml_payload
 
 NHK_DOOR_STATUS = {
@@ -144,15 +144,14 @@ def merge_cuwifi_live_status(
     registers["NHK/T4PayloadKind"] = live_status.payload_kind
 
     position = live_status.position if live_status.position is not None else status.position
-    if live_status.payload_kind == "04/40":
-        if live_status.state in {STATE_OPENING, STATE_CLOSING}:
-            state = live_status.state
-        else:
-            state = status.state
-            if live_status.state is not None and live_status.state != status.state:
-                registers["NHK/T4StatusIgnored"] = "04/40_position_only"
-    else:
-        state = live_status.state or status.state
+    applied_live_state = effective_live_state(live_status)
+    state = applied_live_state or status.state
+    if (
+        live_status.state is not None
+        and applied_live_state is None
+        and live_status.state != status.state
+    ):
+        registers["NHK/T4StatusIgnored"] = "04/40_position_only"
     return replace(status, state=state, position=position, registers=registers)
 
 

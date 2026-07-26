@@ -116,6 +116,13 @@ def parse_cuwifi_live_status_payload(plain: bytes) -> CuwifiLiveStatus | None:
     return None
 
 
+def effective_live_state(live_status: CuwifiLiveStatus) -> str | None:
+    """Return the state that a live T4 payload may apply to device state."""
+    if live_status.payload_kind == "04/40" and not movement_state(live_status):
+        return None
+    return live_status.state
+
+
 def movement_state(live_status: CuwifiLiveStatus) -> bool:
     """Return whether a live status reports active movement."""
     return live_status.state in {STATE_OPENING, STATE_CLOSING}

@@ -42,6 +42,10 @@ class NiceEvent:
     state: str | None = None
     raw_state: str | None = None
     position: float | None = None
+    t4_payload_kind: str | None = None
+    t4_state: str | None = None
+    t4_raw_position: int | None = None
+    t4_position_scale: str | None = None
     obstruction: bool | None = None
     protocol_timestamp: str | None = None
     basic_diagnostic_code: str | None = None
@@ -67,6 +71,10 @@ class NiceEvent:
             ("state", self.state),
             ("raw_state", self.raw_state),
             ("position", self.position),
+            ("t4_payload_kind", self.t4_payload_kind),
+            ("t4_state", self.t4_state),
+            ("t4_raw_position", self.t4_raw_position),
+            ("t4_position_scale", self.t4_position_scale),
             ("obstruction", self.obstruction),
             ("protocol_timestamp", self.protocol_timestamp),
             ("basic_diagnostic_code", self.basic_diagnostic_code),

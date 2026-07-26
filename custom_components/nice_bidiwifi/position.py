@@ -55,7 +55,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         self._last_known_position: float | None = None
         self._position_reporting_observed = False
         self._position_target_task: asyncio.Task[None] | None = None
-        self._post_command_refresh_task: asyncio.Task[None] | None = None
+        self._post_command_refresh_delay_task: asyncio.Task[None] | None = None
         self._position_simulation_task: asyncio.Task[None] | None = None
         self._position_simulation_action: str | None = None
         self._position_simulation_anchor_position: float | None = None
@@ -79,11 +79,11 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             await task
 
     async def _async_cancel_post_command_refresh(self) -> None:
-        """Cancel a pending delayed post-command refresh."""
-        task = self._post_command_refresh_task
+        """Cancel only the delay before a post-command refresh starts."""
+        task = self._post_command_refresh_delay_task
         if task is None:
             return
-        self._post_command_refresh_task = None
+        self._post_command_refresh_delay_task = None
         if task.done() or task is asyncio.current_task():
             return
         task.cancel()
@@ -122,25 +122,30 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
 
     def _schedule_post_command_refresh(self) -> None:
         """Schedule a delayed refresh so motor state is not missed after commands."""
-        task = self._post_command_refresh_task
+        task = self._post_command_refresh_delay_task
         if task is not None and not task.done():
             task.cancel()
-        self._post_command_refresh_task = self.hass.async_create_task(
-            self._async_post_command_refresh(),
-            name=f"{DOMAIN} post-command refresh",
+        self._post_command_refresh_delay_task = self.hass.async_create_task(
+            self._async_start_post_command_refresh_after_delay(),
+            name=f"{DOMAIN} post-command refresh delay",
         )
 
-    async def _async_post_command_refresh(self) -> None:
-        """Refresh after the gate controller has had time to enter its new state."""
+    async def _async_start_post_command_refresh_after_delay(self) -> None:
+        """Start an independently owned refresh after the command delay."""
         task = asyncio.current_task()
         try:
             await asyncio.sleep(POST_COMMAND_REFRESH_DELAY_SECONDS)
-            await self.async_request_refresh()
+            if self._post_command_refresh_delay_task is task:
+                self._post_command_refresh_delay_task = None
+            self.hass.async_create_task(
+                self.async_request_refresh(),
+                name=f"{DOMAIN} post-command refresh",
+            )
         except asyncio.CancelledError:
             raise
         finally:
-            if self._post_command_refresh_task is task:
-                self._post_command_refresh_task = None
+            if self._post_command_refresh_delay_task is task:
+                self._post_command_refresh_delay_task = None
 
     def _apply_recent_stop_status_hint(self, status: NiceBidiStatus) -> NiceBidiStatus:
         """Mask short-lived stale CU_WIFI states after a local stop command."""

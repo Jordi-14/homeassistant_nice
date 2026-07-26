@@ -60,6 +60,52 @@ DIAGNOSTIC_EVENT = frame_xml(
 )
 
 
+def _live_position_event(
+    state_byte: int,
+    *,
+    door_status: str | None = None,
+) -> bytes:
+    """Build one encrypted CU_WIFI 04/40 event."""
+    key = b"event-key"
+    payload = bytearray.fromhex(
+        "55 0f 00 ff 00 03 01 08 f5 04 40 00 00 4c ff ff 52 0f"
+    )
+    payload[11] = state_byte
+    encrypted = xor_sha256(bytes(payload), key)
+    properties = (
+        f"<Devices><Device id=\"1\"><Properties><DoorStatus>{door_status}"
+        "</DoorStatus></Properties></Device></Devices>"
+        if door_status is not None
+        else ""
+    )
+    return frame_xml(
+        '<Event type="T4_EVENT" id="42">'
+        + properties
+        + '<Interface><T4 key="'
+        + base64.b64encode(key).decode()
+        + '">'
+        + base64.b64encode(encrypted).decode()
+        + "</T4></Interface></Event>"
+    )
+
+
+def _live_scalar_position_event(raw_position: int) -> bytes:
+    """Build one encrypted RBA4R10-style raw 04/40 event."""
+    key = b"event-key"
+    payload = bytearray.fromhex(
+        "55 0e ff 01 00 03 01 07 fb 04 40 83 00 00 00 a4 0e"
+    )
+    payload[12:14] = raw_position.to_bytes(2, "big")
+    encrypted = xor_sha256(bytes(payload), key)
+    return frame_xml(
+        '<Event type="T4_EVENT" id="43"><Interface><T4 key="'
+        + base64.b64encode(key).decode()
+        + '">'
+        + base64.b64encode(encrypted).decode()
+        + "</T4></Interface></Event>"
+    )
+
+
 def test_event_parser_normalizes_all_observed_app_fields() -> None:
     """All event fields consumed by the app have typed normalized equivalents."""
     received_at = datetime(2026, 7, 24, 10, 16, tzinfo=UTC)
@@ -127,24 +173,96 @@ def test_event_parser_filters_other_devices_and_bounds_text() -> None:
 
 def test_event_parser_normalizes_live_t4_position() -> None:
     """Validated CU_WIFI live frames feed the same normalized event path."""
-    key = b"event-key"
-    payload = bytes.fromhex(
-        "55 0f 00 ff 00 03 01 08 f5 04 40 00 00 4c ff ff 52 0f"
-    )
-    encrypted = xor_sha256(payload, key)
-    frame = frame_xml(
-        '<Event type="T4_EVENT" id="42"><Interface><T4 key="'
-        + base64.b64encode(key).decode()
-        + '">'
-        + base64.b64encode(encrypted).decode()
-        + "</T4></Interface></Event>"
-    )
-
-    event = parse_nhk_event_frame(frame)[0]
+    event = parse_nhk_event_frame(_live_position_event(0x00))[0]
 
     assert event.kind is NiceEventKind.LIVE_STATUS
     assert event.category is NiceEventCategory.STATE_CHANGE
     assert event.position == 76.0
+    assert event.t4_payload_kind == "04/40"
+    assert event.t4_raw_position == 76
+    assert event.t4_position_scale == "percent"
+
+
+def test_event_parser_keeps_terminal_04_40_state_position_only() -> None:
+    """A coarse 04/40 endpoint byte cannot create a terminal state transition."""
+    event = parse_nhk_event_frame(_live_position_event(0x04))[0]
+
+    assert event.position == 76.0
+    assert event.state is None
+    assert event.t4_state == "open"
+
+
+def test_event_parser_prefers_04_40_motion_over_stale_door_status() -> None:
+    """A live movement byte wins over a stale terminal DoorStatus value."""
+    event = parse_nhk_event_frame(
+        _live_position_event(0x83, door_status="open")
+    )[0]
+
+    assert event.raw_state == "open"
+    assert event.t4_state == "opening"
+    assert event.state == "opening"
+
+
+async def test_event_controller_keeps_motion_during_position_only_event(
+    hass,
+) -> None:
+    """A coarse position event cannot make a moving cover flicker open."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=config_entry_data(),
+        entry_id="entry-event-precedence",
+    )
+    entry.add_to_hass(hass)
+    coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
+    client = FakeClient()
+    coordinator.client = client
+    coordinator.async_set_updated_data(make_status(state="opening", position=50.0))
+    coordinator.event_controller.ensure_registered()
+
+    client.emit_event(_live_position_event(0x04))
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert coordinator.data.state == "opening"
+    assert coordinator.data.position == 76.0
+    assert coordinator.data.registers["NHK/T4Status"] == "open"
+    assert coordinator.data.registers["NHK/T4StatusIgnored"] == "04/40_position_only"
+    assert coordinator.data.registers["NHK/T4InstantPosition"] == "76"
+    await coordinator.async_shutdown()
+
+
+async def test_event_controller_applies_live_scalar_calibration_immediately(
+    hass,
+) -> None:
+    """Raw live events use calibration bounds without waiting for a poll."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=config_entry_data(),
+        entry_id="entry-event-live-scalar",
+    )
+    entry.add_to_hass(hass)
+    coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
+    client = FakeClient()
+    coordinator.client = client
+    coordinator.calibration_profile = {
+        "mode": "live_scalar",
+        "bounds": {
+            "live_scalar_closed_raw": 1000,
+            "live_scalar_open_raw": 5000,
+        },
+    }
+    coordinator.async_set_updated_data(make_status(state="closed", position=0.0))
+    coordinator.event_controller.ensure_registered()
+
+    client.emit_event(_live_scalar_position_event(3000))
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert coordinator.data.state == "opening"
+    assert coordinator.data.position == 50.0
+    assert coordinator.data.registers["NHK/T4InstantPositionRaw"] == "3000"
+    assert coordinator.data.registers["NHK/T4CalibratedPosition"] == "50.0"
+    await coordinator.async_shutdown()
 
 
 async def test_event_controller_updates_existing_status_fields_and_fallback(

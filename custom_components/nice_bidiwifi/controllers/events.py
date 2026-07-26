@@ -10,7 +10,7 @@ import logging
 
 from ..errors import NiceProtocolError
 from ..models.events import NiceEvent, NiceEventKind
-from ..models.status import NiceStatus
+from ..models.status import STATE_CLOSING, STATE_OPENING, NiceStatus
 from ..protocol.nhk.events import parse_nhk_event_frame
 from .base import OwnerBoundController
 
@@ -155,10 +155,23 @@ class NiceEventController(OwnerBoundController):
         registers = dict(status.registers)
         if event.state is not None:
             updates["state"] = event.state
-            registers["NHK/DoorStatus"] = event.raw_state or event.state
+        if event.raw_state is not None:
+            registers["NHK/DoorStatus"] = event.raw_state
         if event.position is not None:
             updates["position"] = event.position
             registers["NHK/T4InstantPosition"] = str(round(event.position))
+        if event.t4_payload_kind is not None:
+            registers["NHK/T4PayloadKind"] = event.t4_payload_kind
+        if event.t4_state is not None:
+            registers["NHK/T4Status"] = event.t4_state
+        if event.t4_raw_position is not None:
+            registers["NHK/T4InstantPositionRaw"] = str(event.t4_raw_position)
+        if event.t4_position_scale is not None:
+            registers["NHK/T4InstantPositionScale"] = event.t4_position_scale
+        if event.t4_payload_kind == "04/40":
+            registers.pop("NHK/T4StatusIgnored", None)
+            if event.t4_state not in {None, STATE_OPENING, STATE_CLOSING}:
+                registers["NHK/T4StatusIgnored"] = "04/40_position_only"
         if event.obstruction is not None:
             updates["obstacle"] = event.obstruction
             registers["NHK/Obstruct"] = str(event.obstruction).lower()
@@ -171,6 +184,9 @@ class NiceEventController(OwnerBoundController):
             updates["registers"] = registers
         if updates:
             status = replace(status, **updates)
+            status = self._normalize_status_for_display(
+                self._apply_recent_stop_status_hint(status)
+            )
             self._store_successful_status(status)
 
         if self.capabilities is not None:

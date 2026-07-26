@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime
 from itertools import count
@@ -693,6 +694,40 @@ async def test_set_position_uses_display_position_when_status_position_is_sparse
 
     await instance._async_cancel_position_simulation()
     await instance._async_cancel_post_command_refresh()
+
+
+async def test_cancel_post_command_delay_does_not_cancel_started_refresh(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancelling a delay cannot turn a successful in-flight read unavailable."""
+    instance = _coordinator(hass)
+    monkeypatch.setattr(position_module, "POST_COMMAND_REFRESH_DELAY_SECONDS", 0)
+    refresh_started = asyncio.Event()
+    release_refresh = asyncio.Event()
+    refresh_finished = asyncio.Event()
+    refresh_cancelled = False
+
+    async def fake_request_refresh() -> None:
+        nonlocal refresh_cancelled
+        refresh_started.set()
+        try:
+            await release_refresh.wait()
+        except asyncio.CancelledError:
+            refresh_cancelled = True
+            raise
+        finally:
+            refresh_finished.set()
+
+    instance.async_request_refresh = fake_request_refresh
+    instance._schedule_post_command_refresh()
+    await refresh_started.wait()
+
+    await instance._async_cancel_post_command_refresh()
+
+    assert refresh_cancelled is False
+    release_refresh.set()
+    await refresh_finished.wait()
 
 
 async def test_position_simulation_uses_calibrated_travel_speed(

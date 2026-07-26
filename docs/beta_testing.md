@@ -23,7 +23,9 @@ diagnostics.
 
 1. Download `nice_bidiwifi.zip` from the selected
    [GitHub prerelease](https://github.com/Jordi-14/homeassistant_nice/releases).
-2. Back up the existing `custom_components/nice_bidiwifi` directory.
+2. Create a full Home Assistant backup. Backing up
+   `custom_components/nice_bidiwifi` alone does not preserve config-entry
+   migrations.
 3. Replace its contents with the files from the ZIP.
 4. Restart Home Assistant.
 5. Confirm the loaded integration version before operating the gate.
@@ -56,6 +58,10 @@ Test the parts relevant to your setup:
   hostname verification disabled. This is required by the current Nice relay;
   test cloud modes only if you accept the documented impersonation risk.
 - Persistent events improve updates without breaking polling after reconnect.
+- A live `04/40` position event never changes an actively opening or closing
+  gate to `open` or `closed` before a trusted terminal-state update arrives.
+- Starting another command or set-position operation during background polling
+  does not make the device or its entities flash unavailable.
 - Existing BusT4 settings retain their values and moving-state safety checks.
 - Optional interface logs, access groups, interface naming, clock sync, and
   reboot remain disabled until deliberately enabled.
@@ -85,7 +91,24 @@ addresses, serial numbers, or raw packet captures.
 
 ## Roll back
 
-Select the previous stable version in HACS, or restore the backed-up integration
-directory for a manual installation, and restart Home Assistant. Config-entry
-and entity identity migrations are designed to remain compatible, but keep a
-Home Assistant backup before testing a beta that changes setup or storage.
+The preferred rollback is to restore the full Home Assistant backup created
+immediately before installing the beta. This restores both the integration
+files and its config-entry schema.
+
+Changing only the integration version in HACS, restoring only
+`custom_components/nice_bidiwifi`, or restoring only a partial file backup
+cannot reverse a config-entry migration. For example, the `0.8.0` refactor
+migrates Nice entries from schema version 1 to version 2. A `0.7.x` integration
+will then reject that entry with a message that its version is higher than the
+version supported by the installed integration.
+
+If no pre-beta Home Assistant backup exists:
+
+1. Record the current entity IDs and the non-secret setup details needed to add
+   the device again.
+2. Remove the migrated Nice config entry while the beta is installed.
+3. Install the older integration version and restart Home Assistant.
+4. Add the Nice device again using credentials appropriate for that version.
+5. Check entity IDs and any automations that reference them.
+
+Do not edit Home Assistant's config-entry storage manually.

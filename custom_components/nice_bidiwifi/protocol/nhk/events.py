@@ -8,7 +8,11 @@ import xml.etree.ElementTree as ET
 from ...errors import NiceProtocolError
 from ...models.events import NiceEvent, NiceEventCategory, NiceEventKind
 from ..t4.codec import decrypt_t4_payloads_from_frame
-from ..t4.live import parse_cuwifi_live_status_payload
+from ..t4.live import (
+    CuwifiLiveStatus,
+    effective_live_state,
+    parse_cuwifi_live_status_payload,
+)
 from .codec import xml_payload
 from .status import bool_value, status_value
 
@@ -113,8 +117,7 @@ def _parse_device_event(
     *,
     kind: NiceEventKind,
     received_at: datetime,
-    live_state: str | None,
-    live_position: float | None,
+    live_status: CuwifiLiveStatus | None,
 ) -> NiceEvent:
     raw_state = _text(device, "DoorStatus")
     obstruction = bool_value(_text(device, "Obstruct"))
@@ -134,10 +137,12 @@ def _parse_device_event(
     manoeuvre_count = _integer(_text(device, "ManoeuvreCount"))
     manoeuvre_threshold = _integer(_text(device, "ManoeuvreThLimit"))
     manoeuvre_current = _number(_text(device, "ManoeuvreAvgCurrent"))
-    state = status_value(raw_state) or live_state
-    event_kind = (
-        NiceEventKind.LIVE_STATUS if live_state or live_position is not None else kind
-    )
+    state = status_value(raw_state)
+    live_state = effective_live_state(live_status) if live_status is not None else None
+    if live_state is not None:
+        state = live_state
+    live_position = live_status.position if live_status is not None else None
+    event_kind = NiceEventKind.LIVE_STATUS if live_status is not None else kind
 
     return NiceEvent(
         kind=event_kind,
@@ -162,6 +167,16 @@ def _parse_device_event(
         state=state,
         raw_state=raw_state,
         position=live_position,
+        t4_payload_kind=(
+            live_status.payload_kind if live_status is not None else None
+        ),
+        t4_state=live_status.state if live_status is not None else None,
+        t4_raw_position=(
+            live_status.raw_position if live_status is not None else None
+        ),
+        t4_position_scale=(
+            live_status.position_scale if live_status is not None else None
+        ),
         obstruction=obstruction,
         protocol_timestamp=_text(root, "Timestamp"),
         basic_diagnostic_code=basic_diagnostic,
@@ -191,16 +206,11 @@ def parse_nhk_event_frame(
     except (ET.ParseError, UnicodeError, ValueError) as err:
         raise NiceProtocolError(f"Invalid NHK event XML: {err}") from err
 
-    live_state: str | None = None
-    live_position: float | None = None
+    live_status: CuwifiLiveStatus | None = None
     try:
         for payload in decrypt_t4_payloads_from_frame(frame):
-            live = parse_cuwifi_live_status_payload(payload)
-            if live is not None:
-                live_state = live.state or live_state
-                live_position = (
-                    live.position if live.position is not None else live_position
-                )
+            if parsed := parse_cuwifi_live_status_payload(payload):
+                live_status = parsed
     except (ValueError, TypeError):
         pass
 
@@ -224,8 +234,7 @@ def parse_nhk_event_frame(
             device,
             kind=kind,
             received_at=observed_at,
-            live_state=live_state,
-            live_position=live_position,
+            live_status=live_status,
         )
         for device in devices
     )
