@@ -122,16 +122,34 @@ class TestNiceBidiNumberProperties:
         ("product", "description"),
         [("ARIA200S", "Control unit"), ("Generic", "CLBOX")],
     )
-    def test_speed_policy_requires_composite_aria_clbox_identity(
+    def test_speed_policy_accepts_each_confirmed_unsafe_identity(
         self,
         product: str,
         description: str,
     ) -> None:
-        """Test one ambiguous identity token alone does not disable writes."""
+        """Test either identity reported by real controllers disables writes."""
         coordinator = FakeCoordinator()
         coordinator.device_info = make_device_info(
             device_product=product,
             device_description=description,
+            device_product_detail=None,
+        )
+        coordinator.data = make_status(state="open")
+
+        entity = NiceBidiNumber(
+            coordinator,
+            config_entry(),
+            _description("bus_t4_opening_speed"),
+        )
+
+        assert entity.available is False
+
+    def test_speed_policy_leaves_unrelated_controller_available(self) -> None:
+        """Test speed writes remain available without a confirmed unsafe identity."""
+        coordinator = FakeCoordinator()
+        coordinator.device_info = make_device_info(
+            device_product="ROBUS",
+            device_description="RBA3",
             device_product_detail=None,
         )
         coordinator.data = make_status(state="open")

@@ -13,11 +13,13 @@ Every GitHub prerelease includes a `nice_bidiwifi.zip` HACS-compatible asset.
 
 ### Through HACS
 
-Open the Nice repository in HACS, enable prerelease/beta versions if necessary,
+Nice is part of the HACS default repository list, so no custom repository URL
+is required. Open the Nice repository in HACS, enable prerelease/beta updates,
 and use the repository menu to redownload or select the desired version. The
 exact labels can vary between HACS versions. Restart Home Assistant after the
 download and confirm the integration version in the device or issue
-diagnostics.
+diagnostics. Disable prerelease updates again if the installation should return
+to the stable release channel after testing.
 
 ### Manually
 
@@ -63,6 +65,8 @@ Test the parts relevant to your setup:
 - Starting another command or set-position operation during background polling
   does not make the device or its entities flash unavailable.
 - Existing BusT4 settings retain their values and moving-state safety checks.
+- Opening and closing speed settings remain unavailable on ARIA200/ARIA200S or
+  CLBOX controllers, whose speed-register encoding is not verified.
 - Optional interface logs, access groups, interface naming, clock sync, and
   reboot remain disabled until deliberately enabled.
 

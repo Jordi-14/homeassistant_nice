@@ -183,25 +183,17 @@ allow Home Assistant to initiate TCP 443 connections to the BiDi-WiFi.
 
 ## Installation
 
-### HACS Custom Repository
+### HACS
 
-Until this integration is accepted into the HACS default repositories, add it as
-a custom HACS integration repository:
+Nice is included in the HACS default repository list. Open HACS, search for
+**Nice** under integrations, and select **Download**. No custom repository URL
+is required.
 
-```text
-https://github.com/Jordi-14/homeassistant_nice
-```
-
-Category:
-
-```text
-Integration
-```
-
-Download it through HACS, restart Home Assistant, then add **Nice** from
+Restart Home Assistant after the download, then add **Nice** from
 **Settings -> Devices & services**.
 
-Prereleases are available for deliberate testing. See
+HACS installs stable releases by default. Prereleases are available only for
+deliberate testing after prerelease updates are enabled. See
 [Beta Testing](docs/beta_testing.md) before installing one.
 
 ### Manual

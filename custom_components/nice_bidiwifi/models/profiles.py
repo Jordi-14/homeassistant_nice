@@ -13,9 +13,16 @@ class DmpWriteRestriction:
     """One confirmed unsafe write profile."""
 
     key: str
-    identifiers: frozenset[str]
+    identity_alternatives: tuple[frozenset[str], ...]
     registers: frozenset[tuple[int, int]]
     reason: str
+
+    def matches_identity(self, identity: str) -> bool:
+        """Return whether any validated identity alternative matches."""
+        return any(
+            all(identifier in identity for identifier in alternative)
+            for alternative in self.identity_alternatives
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +58,10 @@ CONSERVATIVE_PROFILE = NiceDeviceProfile(
 DMP_WRITE_RESTRICTIONS = (
     DmpWriteRestriction(
         key="aria200s_clbox_speed_encoding",
-        identifiers=frozenset({"aria200", "clbox"}),
+        identity_alternatives=(
+            frozenset({"aria200"}),
+            frozenset({"clbox"}),
+        ),
         registers=frozenset({(0x04, 0x42), (0x04, 0x43)}),
         reason=(
             "ARIA200S / CLBOX: speed values use an unverified "

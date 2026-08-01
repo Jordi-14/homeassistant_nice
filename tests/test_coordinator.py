@@ -941,8 +941,8 @@ async def test_write_dmp_register_blocks_aria_clbox_speed_at_backend(
     client = FakeClient()
     instance.client = client
     instance.device_info = make_device_info(
-        device_product="ARIA200S",
-        device_description="CLBOX",
+        device_product="CLBOX",
+        device_description="Control unit",
     )
     instance.async_set_updated_data(make_status(state="open"))
 

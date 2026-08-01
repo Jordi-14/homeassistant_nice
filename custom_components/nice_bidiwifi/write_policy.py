@@ -17,6 +17,6 @@ def dmp_write_block_reason(
     for policy in DMP_WRITE_RESTRICTIONS:
         if register not in policy.registers:
             continue
-        if all(identifier in identity for identifier in policy.identifiers):
+        if policy.matches_identity(identity):
             return policy.reason
     return None

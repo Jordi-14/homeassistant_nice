@@ -43,8 +43,9 @@ Action:
   set-position feature.
 - Allow time-based full-travel calibration to produce timing diagnostics only;
   it must not create Home Assistant position data.
-- Block writes to opening/closing speed registers `04/42` and `04/43` only when
-  the combined identity contains both ARIA200S and CLBOX evidence.
+- Block writes to opening/closing speed registers `04/42` and `04/43` when the
+  identity contains either ARIA200/ARIA200S or CLBOX evidence. Real CLBOX INFO
+  responses may not include the external motor model.
 - Enforce the speed block both in number-entity availability and in the
   coordinator write API so services or future callers cannot bypass it.
 - Leave force registers available because the reporter confirmed those writes
@@ -152,7 +153,7 @@ https://github.com/Jordi-14/homeassistant_nice/releases/tag/v0.7.6b0
 
 This beta makes the controller-specific safety behavior explicit:
 
-- Opening and closing speed writes are blocked only when the detected identity contains both ARIA200S and CLBOX.
+- Opening and closing speed writes are blocked when the detected identity contains either ARIA200/ARIA200S or CLBOX.
 - The block is enforced in the coordinator as well as the number entities, so a service call cannot bypass it accidentally.
 - Opening and closing force settings remain available because those worked normally in your tests.
 - A controller that reports state but no real numeric position no longer gets synthetic `0%`, `100%`, time-based position, or set-position support in Home Assistant.
