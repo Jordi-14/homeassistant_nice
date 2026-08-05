@@ -12,56 +12,50 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .calibration_constants import CALIBRATION_STATE_RUNNING
-from .client import NiceBidiDeviceInfo, NiceBidiStatus
+from .client import NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
+from .entities.factory import (
+    NiceCapabilityKey,
+    NiceEntityDescriptionMixin,
+    build_described_entities,
+)
+from .entity import NiceCoordinatorEntity
 from .runtime import get_coordinator
+from .protocol.t4.settings import (
+    ALWAYS_CLOSE_MODE,
+    ALWAYS_CLOSE_TIME,
+    CLOSING_FORCE,
+    CLOSING_SPEED,
+    MAINTENANCE_THRESHOLD,
+    OPENING_FORCE,
+    OPENING_SPEED,
+    PARTIAL_OPEN_1_POSITION,
+    PARTIAL_OPEN_2_POSITION,
+    PARTIAL_OPEN_3_POSITION,
+    PAUSE_TIME,
+    PHOTO_CLOSE_MODE,
+    PHOTO_CLOSE_TIME,
+    DmpSetting,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
-class NiceBidiNumberEntityDescription(NumberEntityDescription):
+class NiceBidiNumberEntityDescription(
+    NiceEntityDescriptionMixin,
+    NumberEntityDescription,
+):
     """Description for a writable Nice BusT4 number."""
 
-    register_parameter: int
-    value_size: int
+    setting: DmpSetting
     value_fn: Callable[[NiceBidiStatus], int | None]
     dynamic_max_fn: Callable[[NiceBidiStatus], int | None] | None = None
+    required_capability: NiceCapabilityKey = NiceCapabilityKey.DMP
 
 
 def _max_known_open_position(status: NiceBidiStatus) -> int | None:
     return status.max_open_position or status.open_position
-
-
-SPEED_SETTING_KEYS = {
-    "bus_t4_opening_speed",
-    "bus_t4_closing_speed",
-}
-
-SPEED_SETTINGS_DISABLED_DEVICE_TOKENS = {
-    "aria200",
-    "clbox",
-}
-
-
-def _normalized_device_info_text(info: NiceBidiDeviceInfo | None) -> str:
-    if info is None:
-        return ""
-    parts = (
-        info.device_type,
-        info.device_manufacturer,
-        info.device_product,
-        info.device_description,
-        info.device_product_detail,
-    )
-    return "".join(character for part in parts if part for character in part.casefold() if character.isalnum())
-
-
-def _speed_settings_disabled_for_device(info: NiceBidiDeviceInfo | None) -> bool:
-    text = _normalized_device_info_text(info)
-    return any(token in text for token in SPEED_SETTINGS_DISABLED_DEVICE_TOKENS)
 
 
 NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
@@ -75,8 +69,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_step=5,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         mode=NumberMode.BOX,
-        register_parameter=0x81,
-        value_size=1,
+        setting=PAUSE_TIME,
         value_fn=lambda status: status.pause_time,
     ),
     NiceBidiNumberEntityDescription(
@@ -89,8 +82,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_step=1,
         native_unit_of_measurement=PERCENTAGE,
         mode=NumberMode.SLIDER,
-        register_parameter=0x4A,
-        value_size=1,
+        setting=OPENING_FORCE,
         value_fn=lambda status: status.opening_force,
     ),
     NiceBidiNumberEntityDescription(
@@ -103,8 +95,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_step=1,
         native_unit_of_measurement=PERCENTAGE,
         mode=NumberMode.SLIDER,
-        register_parameter=0x4B,
-        value_size=1,
+        setting=CLOSING_FORCE,
         value_fn=lambda status: status.closing_force,
     ),
     NiceBidiNumberEntityDescription(
@@ -117,8 +108,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_step=1,
         native_unit_of_measurement=PERCENTAGE,
         mode=NumberMode.SLIDER,
-        register_parameter=0x42,
-        value_size=1,
+        setting=OPENING_SPEED,
         value_fn=lambda status: status.opening_speed,
     ),
     NiceBidiNumberEntityDescription(
@@ -131,8 +121,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_step=1,
         native_unit_of_measurement=PERCENTAGE,
         mode=NumberMode.SLIDER,
-        register_parameter=0x43,
-        value_size=1,
+        setting=CLOSING_SPEED,
         value_fn=lambda status: status.closing_speed,
     ),
     NiceBidiNumberEntityDescription(
@@ -145,8 +134,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_step=1,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         mode=NumberMode.BOX,
-        register_parameter=0x85,
-        value_size=1,
+        setting=PHOTO_CLOSE_TIME,
         value_fn=lambda status: status.photo_close_time,
     ),
     NiceBidiNumberEntityDescription(
@@ -160,8 +148,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_max_value=255,
         native_step=1,
         mode=NumberMode.BOX,
-        register_parameter=0x86,
-        value_size=1,
+        setting=PHOTO_CLOSE_MODE,
         value_fn=lambda status: status.photo_close_mode,
     ),
     NiceBidiNumberEntityDescription(
@@ -174,8 +161,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_step=1,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         mode=NumberMode.BOX,
-        register_parameter=0x89,
-        value_size=1,
+        setting=ALWAYS_CLOSE_TIME,
         value_fn=lambda status: status.always_close_time,
     ),
     NiceBidiNumberEntityDescription(
@@ -189,8 +175,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_max_value=255,
         native_step=1,
         mode=NumberMode.BOX,
-        register_parameter=0x8A,
-        value_size=1,
+        setting=ALWAYS_CLOSE_MODE,
         value_fn=lambda status: status.always_close_mode,
     ),
     NiceBidiNumberEntityDescription(
@@ -202,8 +187,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_max_value=65535,
         native_step=1,
         mode=NumberMode.BOX,
-        register_parameter=0x21,
-        value_size=2,
+        setting=PARTIAL_OPEN_1_POSITION,
         value_fn=lambda status: status.partial_open_1_position,
         dynamic_max_fn=_max_known_open_position,
     ),
@@ -216,8 +200,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_max_value=65535,
         native_step=1,
         mode=NumberMode.BOX,
-        register_parameter=0x22,
-        value_size=2,
+        setting=PARTIAL_OPEN_2_POSITION,
         value_fn=lambda status: status.partial_open_2_position,
         dynamic_max_fn=_max_known_open_position,
     ),
@@ -230,8 +213,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_max_value=65535,
         native_step=1,
         mode=NumberMode.BOX,
-        register_parameter=0x23,
-        value_size=2,
+        setting=PARTIAL_OPEN_3_POSITION,
         value_fn=lambda status: status.partial_open_3_position,
         dynamic_max_fn=_max_known_open_position,
     ),
@@ -246,8 +228,7 @@ NUMBERS: tuple[NiceBidiNumberEntityDescription, ...] = (
         native_max_value=65535,
         native_step=1,
         mode=NumberMode.BOX,
-        register_parameter=0xB1,
-        value_size=2,
+        setting=MAINTENANCE_THRESHOLD,
         value_fn=lambda status: status.maintenance_threshold,
     ),
 )
@@ -260,10 +241,17 @@ async def async_setup_entry(
 ) -> None:
     """Set up numbers from a config entry."""
     coordinator = get_coordinator(entry)
-    async_add_entities(NiceBidiNumber(coordinator, entry, description) for description in NUMBERS)
+    async_add_entities(
+        build_described_entities(
+            coordinator,
+            entry,
+            NUMBERS,
+            NiceBidiNumber,
+        )
+    )
 
 
-class NiceBidiNumber(CoordinatorEntity[NiceBidiDataUpdateCoordinator], NumberEntity):
+class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
     """Writable Nice BusT4 configuration number."""
 
     _attr_has_entity_name = True
@@ -277,19 +265,16 @@ class NiceBidiNumber(CoordinatorEntity[NiceBidiDataUpdateCoordinator], NumberEnt
         description: NiceBidiNumberEntityDescription,
     ) -> None:
         """Initialize the number."""
-        super().__init__(coordinator)
-        self._entry = entry
+        super().__init__(
+            coordinator,
+            entry,
+            platform_domain=NUMBER_DOMAIN,
+            unique_id_suffix=description.key,
+            name=description.name,
+            suggested_id_suffix=description.name,
+            description=description,
+        )
         self.entity_description = description
-        self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self._attr_name = description.name
-        self.entity_id = bidi_suggested_entity_id(NUMBER_DOMAIN, entry, description.name)
-        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
-        self._attr_entity_registry_visible_default = description.entity_registry_visible_default
-
-    @property
-    def device_info(self):
-        """Return device info, enriched with INFO metadata when available."""
-        return bidi_device_info(self._entry, self.coordinator.device_info)
 
     @property
     def available(self) -> bool:
@@ -334,15 +319,16 @@ class NiceBidiNumber(CoordinatorEntity[NiceBidiDataUpdateCoordinator], NumberEnt
         max_value = self.native_max_value
         if int_value < min_value or int_value > max_value:
             raise ValueError(f"{self.entity_description.name} must be between {min_value} and {max_value}")
-        await self.coordinator.async_write_dmp_register(
-            0x04,
-            self.entity_description.register_parameter,
+        await self.coordinator.async_write_setting(
+            self.entity_description.setting,
             int_value,
-            size=self.entity_description.value_size,
         )
 
     def _disabled_for_device(self) -> bool:
         """Return true when this config value should not be changed on this device."""
-        return self.entity_description.key in SPEED_SETTING_KEYS and _speed_settings_disabled_for_device(
-            self.coordinator.device_info
+        return (
+            self.coordinator.setting_write_block_reason(
+                self.entity_description.setting
+            )
+            is not None
         )

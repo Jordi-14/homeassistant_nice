@@ -4,8 +4,10 @@ The repository includes local read-only scripts for collecting capability and
 status reports. Use these after provisioning the BiDi-WiFi and extracting
 credentials.
 
-Run the scripts from the root of a checkout of this repository. A normal Python
-virtual environment is enough:
+Run the scripts from the root of a checkout of this repository. They load the
+standalone protocol client directly and do not require Home Assistant or
+`homeassistant-stubs`. A virtual environment is only needed for repository
+development and tests:
 
 ```bash
 python3 -m venv .venv
@@ -13,13 +15,8 @@ source .venv/bin/activate
 python3 -m pip install -r requirements_test.txt
 ```
 
-The read-only probe scripts import the integration's local NHK/T4 client
-directly; they do not need a running Home Assistant instance. Installing
-`requirements_test.txt` provides the dependency set used by the repository
-checks. If a script fails with `ModuleNotFoundError:
-No module named 'homeassistant'`, first confirm you are running it from the
-repository root, then activate the virtual environment above and install the
-test requirements before retrying.
+Installing `requirements_test.txt` provides the dependency set used by the
+repository checks, but is not required for the probes themselves.
 
 ## Capability Probe
 
@@ -74,6 +71,14 @@ and read-shaped NHK selector probes. With `--exhaustive`, it also runs the
 broadest read-only post-live scan currently known: controller, OXI/radio,
 status, position, diagnostics, and `GET` selector candidates. Do not use
 `--include-sensitive` for reports shared publicly.
+
+An exhaustive scan can take a long time on controllers that answer slowly. The
+probe checkpoints the partial JSON every 50 DMP reads when `--output` is set.
+To continue at a known read number, reuse the same options with a new output
+file and add, for example, `--dmp-start-index 401`. Use
+`--checkpoint-every 0` to disable checkpoints or another positive value to
+change their frequency. The focused profile remains the preferred first pass;
+use `--exhaustive` only when the focused report has not found the needed data.
 
 This probe is useful when a CU_WIFI beta mostly works but state, position, or
 obstruction behavior does not match the physical gate. It captures the live

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from functools import partial
 
 from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN, ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import (
     DEP_ACTION_COURTESY_LIGHT,
@@ -23,72 +24,202 @@ from .client import (
     DEP_ACTION_UNLOCK,
 )
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
+from .entities.factory import (
+    NiceEntityDescriptionMixin,
+    build_described_entities,
+)
+from .entity import NiceCoordinatorEntity
+from .protocol.t4.actions import T4_ACTIONS
 from .runtime import get_coordinator
 
 PARALLEL_UPDATES = 1
 
 
 @dataclass(frozen=True, kw_only=True)
-class NiceBidiButtonEntityDescription(ButtonEntityDescription):
+class NiceBidiButtonEntityDescription(
+    NiceEntityDescriptionMixin,
+    ButtonEntityDescription,
+):
     """Description for a Nice button."""
 
     press_fn: Callable[[NiceBidiDataUpdateCoordinator], Awaitable[None]]
     available_when_offline: bool = False
+    t4_action_key: str | None = None
+    requires_stationary: bool = False
 
 
-BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
+def _partial_open_position_known(
+    coordinator: NiceBidiDataUpdateCoordinator,
+    index: int,
+) -> bool:
+    """Return whether an optional partial-open slot is configured."""
+    status = coordinator.data
+    return status is not None and getattr(status, f"partial_open_{index}_position") is not None
+
+
+def _t4_action_supported(
+    coordinator: NiceBidiDataUpdateCoordinator,
+    action_key: str,
+) -> bool:
+    """Return whether a reviewed T4 action can be used on this device."""
+    return coordinator.t4_action_supported(action_key)
+
+
+def _partial_open_supported(
+    coordinator: NiceBidiDataUpdateCoordinator,
+    action_key: str,
+    index: int,
+) -> bool:
+    """Require both an allowed T4 action and a configured partial-open slot."""
+    return (
+        coordinator.t4_action_supported(action_key)
+        and _partial_open_position_known(coordinator, index)
+    )
+
+
+async def _async_press_t4_action(
+    coordinator: NiceBidiDataUpdateCoordinator,
+    action_key: str,
+) -> None:
+    """Send one reviewed T4 action through the coordinator."""
+    await coordinator.async_send_dep_action(action_key)
+
+
+def _administration_supported(
+    coordinator: NiceBidiDataUpdateCoordinator,
+    capability: str,
+) -> bool:
+    """Return support for one shared Wi-Fi administration operation."""
+    checker = getattr(coordinator, "administration_capability", None)
+    if checker is not None:
+        return checker(capability)
+    capabilities = getattr(coordinator, "capabilities", None)
+    return bool(
+        capabilities
+        and getattr(capabilities, capability, None) is True
+    )
+
+
+COMPATIBILITY_BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
     NiceBidiButtonEntityDescription(
         key="partial_open_1",
         name="Partial open 1",
         icon="mdi:gate-open",
-        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_1),
+        t4_action_key=DEP_ACTION_PARTIAL_OPEN_1,
+        supported_fn=partial(
+            _t4_action_supported,
+            action_key=DEP_ACTION_PARTIAL_OPEN_1,
+        ),
+        press_fn=partial(
+            _async_press_t4_action,
+            action_key=DEP_ACTION_PARTIAL_OPEN_1,
+        ),
     ),
     NiceBidiButtonEntityDescription(
         key="partial_open_2",
         name="Partial open 2",
         icon="mdi:gate-open",
-        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_2),
+        t4_action_key=DEP_ACTION_PARTIAL_OPEN_2,
+        press_fn=partial(
+            _async_press_t4_action,
+            action_key=DEP_ACTION_PARTIAL_OPEN_2,
+        ),
+        supported_fn=partial(
+            _partial_open_supported,
+            action_key=DEP_ACTION_PARTIAL_OPEN_2,
+            index=2,
+        ),
     ),
     NiceBidiButtonEntityDescription(
         key="partial_open_3",
         name="Partial open 3",
         icon="mdi:gate-open",
-        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_3),
+        t4_action_key=DEP_ACTION_PARTIAL_OPEN_3,
+        press_fn=partial(
+            _async_press_t4_action,
+            action_key=DEP_ACTION_PARTIAL_OPEN_3,
+        ),
+        supported_fn=partial(
+            _partial_open_supported,
+            action_key=DEP_ACTION_PARTIAL_OPEN_3,
+            index=3,
+        ),
     ),
     NiceBidiButtonEntityDescription(
         key="step_step",
         name="Step-step",
         icon="mdi:gesture-tap-button",
-        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_STEP_STEP),
+        t4_action_key=DEP_ACTION_STEP_STEP,
+        supported_fn=partial(
+            _t4_action_supported,
+            action_key=DEP_ACTION_STEP_STEP,
+        ),
+        press_fn=partial(
+            _async_press_t4_action,
+            action_key=DEP_ACTION_STEP_STEP,
+        ),
     ),
     NiceBidiButtonEntityDescription(
         key="courtesy_light",
         name="Courtesy light",
         entity_registry_visible_default=False,
         icon="mdi:lightbulb",
-        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_COURTESY_LIGHT),
+        t4_action_key=DEP_ACTION_COURTESY_LIGHT,
+        supported_fn=partial(
+            _t4_action_supported,
+            action_key=DEP_ACTION_COURTESY_LIGHT,
+        ),
+        press_fn=partial(
+            _async_press_t4_action,
+            action_key=DEP_ACTION_COURTESY_LIGHT,
+        ),
     ),
     NiceBidiButtonEntityDescription(
         key="courtesy_light_timer",
         name="Courtesy light timer",
         entity_registry_visible_default=False,
         icon="mdi:timer-outline",
-        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_COURTESY_LIGHT_TIMER),
+        t4_action_key=DEP_ACTION_COURTESY_LIGHT_TIMER,
+        supported_fn=partial(
+            _t4_action_supported,
+            action_key=DEP_ACTION_COURTESY_LIGHT_TIMER,
+        ),
+        press_fn=partial(
+            _async_press_t4_action,
+            action_key=DEP_ACTION_COURTESY_LIGHT_TIMER,
+        ),
     ),
     NiceBidiButtonEntityDescription(
         key="lock",
         name="Lock",
+        entity_registry_enabled_default=False,
         entity_registry_visible_default=False,
         icon="mdi:lock",
-        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_LOCK),
+        t4_action_key=DEP_ACTION_LOCK,
+        supported_fn=partial(
+            _t4_action_supported,
+            action_key=DEP_ACTION_LOCK,
+        ),
+        press_fn=partial(
+            _async_press_t4_action,
+            action_key=DEP_ACTION_LOCK,
+        ),
     ),
     NiceBidiButtonEntityDescription(
         key="unlock",
         name="Unlock",
+        entity_registry_enabled_default=False,
         entity_registry_visible_default=False,
         icon="mdi:lock-open-variant",
-        press_fn=lambda coordinator: coordinator.async_send_dep_action(DEP_ACTION_UNLOCK),
+        t4_action_key=DEP_ACTION_UNLOCK,
+        supported_fn=partial(
+            _t4_action_supported,
+            action_key=DEP_ACTION_UNLOCK,
+        ),
+        press_fn=partial(
+            _async_press_t4_action,
+            action_key=DEP_ACTION_UNLOCK,
+        ),
     ),
     NiceBidiButtonEntityDescription(
         key="refresh_status",
@@ -119,6 +250,95 @@ BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
     ),
 )
 
+ADVANCED_T4_BUTTONS = tuple(
+    NiceBidiButtonEntityDescription(
+        key=action.key,
+        name=action.name,
+        entity_registry_enabled_default=action.enabled_by_default,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        protected=False,
+        t4_action_key=action.key,
+        supported_fn=partial(
+            _t4_action_supported,
+            action_key=action.key,
+        ),
+        press_fn=partial(
+            _async_press_t4_action,
+            action_key=action.key,
+        ),
+    )
+    for action in T4_ACTIONS
+    if not action.compatibility_entity
+)
+
+ADMINISTRATION_BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
+    NiceBidiButtonEntityDescription(
+        key="refresh_interface_logs",
+        name="Refresh interface logs",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="logs",
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:text-box-search-outline",
+        press_fn=lambda coordinator: coordinator.async_refresh_interface_logs(),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="refresh_access_groups",
+        name="Refresh access groups",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="groups",
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:account-group-outline",
+        press_fn=lambda coordinator: coordinator.async_refresh_access_groups(),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="sync_interface_time",
+        name="Sync interface time",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="time_sync",
+        ),
+        entity_category=EntityCategory.CONFIG,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:clock-sync-outline",
+        requires_stationary=True,
+        press_fn=lambda coordinator: coordinator.async_sync_interface_time(),
+    ),
+    NiceBidiButtonEntityDescription(
+        key="reboot_interface",
+        name="Reboot interface",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="reboot",
+        ),
+        entity_category=EntityCategory.CONFIG,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:restart",
+        requires_stationary=True,
+        press_fn=lambda coordinator: coordinator.async_reboot_interface(),
+    ),
+)
+
+BUTTONS = (
+    *COMPATIBILITY_BUTTONS,
+    *ADVANCED_T4_BUTTONS,
+    *ADMINISTRATION_BUTTONS,
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -127,10 +347,17 @@ async def async_setup_entry(
 ) -> None:
     """Set up buttons from a config entry."""
     coordinator = get_coordinator(entry)
-    async_add_entities(NiceBidiButton(coordinator, entry, description) for description in BUTTONS)
+    async_add_entities(
+        build_described_entities(
+            coordinator,
+            entry,
+            BUTTONS,
+            NiceBidiButton,
+        )
+    )
 
 
-class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEntity):
+class NiceBidiButton(NiceCoordinatorEntity, ButtonEntity):
     """Nice diagnostic button."""
 
     _attr_has_entity_name = True
@@ -144,27 +371,41 @@ class NiceBidiButton(CoordinatorEntity[NiceBidiDataUpdateCoordinator], ButtonEnt
         description: NiceBidiButtonEntityDescription,
     ) -> None:
         """Initialize the button."""
-        super().__init__(coordinator)
-        self._entry = entry
+        super().__init__(
+            coordinator,
+            entry,
+            platform_domain=BUTTON_DOMAIN,
+            unique_id_suffix=description.key,
+            name=description.name,
+            suggested_id_suffix=description.name,
+            description=description,
+        )
         self.entity_description = description
-        self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self._attr_name = description.name
-        self.entity_id = bidi_suggested_entity_id(BUTTON_DOMAIN, entry, description.name)
-        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
-        self._attr_entity_registry_visible_default = description.entity_registry_visible_default
-
-    @property
-    def device_info(self):
-        """Return device info, enriched with INFO metadata when available."""
-        return bidi_device_info(self._entry, self.coordinator.device_info)
 
     @property
     def available(self) -> bool:
         """Return if the diagnostic button can currently be pressed."""
         if self.entity_description.available_when_offline:
             return True
-        return super().available
+        supported_fn = self.entity_description.supported_fn
+        moving = bool(
+            self.coordinator.data is not None
+            and self.coordinator.data.is_moving
+        )
+        return (
+            super().available
+            and (supported_fn is None or supported_fn(self.coordinator))
+            and not (
+                self.entity_description.requires_stationary and moving
+            )
+        )
 
     async def async_press(self) -> None:
         """Handle the button press."""
+        supported_fn = self.entity_description.supported_fn
+        if supported_fn is not None and not supported_fn(self.coordinator):
+            raise HomeAssistantError(
+                f"Nice action {self.entity_description.key!r} is not "
+                "advertised by this device"
+            )
         await self.entity_description.press_fn(self.coordinator)

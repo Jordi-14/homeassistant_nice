@@ -4,11 +4,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from custom_components.nice_bidiwifi.binary_sensor import BINARY_SENSORS
+from custom_components.nice_bidiwifi.binary_sensor import (
+    BINARY_SENSORS,
+    EVENT_BINARY_SENSORS,
+)
 from custom_components.nice_bidiwifi.button import BUTTONS
 from custom_components.nice_bidiwifi.number import NUMBERS
-from custom_components.nice_bidiwifi.sensor import SENSORS
+from custom_components.nice_bidiwifi.sensor import (
+    ADMINISTRATION_SENSORS,
+    EVENT_SENSORS,
+    ROUTE_SENSORS,
+    SENSORS,
+)
 from custom_components.nice_bidiwifi.switch import CONFIG_SWITCHES
+from custom_components.nice_bidiwifi.text import TEXTS
 
 REFERENCE_PATH = Path(__file__).parents[1] / "entity_reference.md"
 TABLE_HEADER = (
@@ -42,13 +51,19 @@ def _code_defaults() -> dict[str, tuple[bool, bool]]:
     defaults = {
         "cover": (True, True),
         "cover_switch": (True, True),
+        "protocol_event": (True, True),
     }
     for description in (
         *CONFIG_SWITCHES,
         *BUTTONS,
         *BINARY_SENSORS,
+        *EVENT_BINARY_SENSORS,
         *NUMBERS,
         *SENSORS,
+        *ROUTE_SENSORS,
+        *EVENT_SENSORS,
+        *ADMINISTRATION_SENSORS,
+        *TEXTS,
     ):
         defaults[description.key] = (
             description.entity_registry_visible_default,

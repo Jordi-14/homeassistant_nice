@@ -5,28 +5,46 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from typing import Any
 
-from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN, SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
+from homeassistant.components.sensor import (
+    DOMAIN as SENSOR_DOMAIN,
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import NiceBidiStatus
+from .connection import NiceConnectionRoute, NiceRouteState
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
+from .entities.factory import (
+    NiceEntityDescriptionMixin,
+    build_described_entities,
+)
+from .entity import NiceCoordinatorEntity
 from .runtime import get_coordinator
 
 
 @dataclass(frozen=True, kw_only=True)
-class NiceBidiSensorEntityDescription(SensorEntityDescription):
+class NiceBidiSensorEntityDescription(
+    NiceEntityDescriptionMixin,
+    SensorEntityDescription,
+):
     """Description for a Nice sensor."""
 
-    value_fn: Callable[[NiceBidiDataUpdateCoordinator], datetime | float | int | str | None]
-    extra_attributes_fn: Callable[[NiceBidiDataUpdateCoordinator], dict[str, Any]] | None = None
+    value_fn: Callable[
+        [NiceBidiDataUpdateCoordinator], datetime | float | int | str | None
+    ]
+    extra_attributes_fn: (
+        Callable[[NiceBidiDataUpdateCoordinator], dict[str, Any]] | None
+    ) = None
 
 
 def _status(coordinator: NiceBidiDataUpdateCoordinator) -> NiceBidiStatus | None:
@@ -39,31 +57,59 @@ def _hex_byte(value: int | None) -> str | None:
     return f"0x{value:02X}"
 
 
-def _diagnostics_parameter_bytes(coordinator: NiceBidiDataUpdateCoordinator) -> bytes | None:
-    status = _status(coordinator)
-    if not status or not status.diagnostics_parameters:
-        return None
-    try:
-        value = bytes.fromhex(status.diagnostics_parameters)
-    except ValueError:
-        return None
-    if not value or all(byte in {0x00, 0xFF} for byte in value):
-        return None
-    return value
+def _administration_supported(
+    coordinator: NiceBidiDataUpdateCoordinator,
+    capability: str,
+) -> bool:
+    checker = getattr(coordinator, "administration_capability", None)
+    if checker is not None:
+        return checker(capability)
+    capabilities = getattr(coordinator, "capabilities", None)
+    return bool(
+        capabilities
+        and getattr(capabilities, capability, None) is True
+    )
 
 
-def _diagnostics_u8(coordinator: NiceBidiDataUpdateCoordinator, index: int) -> int | None:
-    value = _diagnostics_parameter_bytes(coordinator)
-    if value is None or len(value) <= index:
-        return None
-    return value[index]
+def _log_attributes(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> dict[str, Any]:
+    snapshot = coordinator.interface_log_snapshot
+    if snapshot is None:
+        return {}
+    return {
+        "retrieved_at": (
+            snapshot.retrieved_at.isoformat()
+            if snapshot.retrieved_at is not None
+            else None
+        ),
+        "retained_event_count": snapshot.count,
+        "events": [event.as_dict() for event in snapshot.events],
+    }
 
 
-def _motor_temperature(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
-    raw = _diagnostics_u8(coordinator, 15)
-    if raw is None:
-        return None
-    return raw - 9
+def _group_attributes(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> dict[str, Any]:
+    snapshot = coordinator.access_group_snapshot
+    if snapshot is None:
+        return {}
+    return {
+        "retrieved_at": (
+            snapshot.retrieved_at.isoformat()
+            if snapshot.retrieved_at is not None
+            else None
+        ),
+        "retained_group_count": snapshot.count,
+        "groups": [group.as_dict() for group in snapshot.groups],
+    }
+
+
+def _administration_operation_attributes(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> dict[str, Any]:
+    operation = coordinator.last_administration_operation
+    return operation.as_diagnostics() if operation is not None else {}
 
 
 SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
@@ -159,7 +205,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:file-chart-outline",
         value_fn=lambda coordinator: coordinator.calibration_report_summary,
-        extra_attributes_fn=lambda coordinator: coordinator.calibration_report_attributes,
+        extra_attributes_fn=lambda coordinator: (
+            coordinator.calibration_report_attributes
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="gate_position",
@@ -176,7 +224,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:counter",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).current_position if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).current_position if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="closed_encoder_position",
@@ -185,7 +235,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:counter",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).closed_position if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).closed_position if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="open_encoder_position",
@@ -194,7 +246,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:counter",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).open_position if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).open_position if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="max_open_encoder_position",
@@ -203,7 +257,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:counter",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).max_open_position if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).max_open_position if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="partial_open_1_position",
@@ -212,7 +268,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:counter",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).partial_open_1_position if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).partial_open_1_position
+            if _status(coordinator)
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="partial_open_2_position",
@@ -221,7 +281,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:counter",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).partial_open_2_position if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).partial_open_2_position
+            if _status(coordinator)
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="partial_open_3_position",
@@ -230,7 +294,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:counter",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).partial_open_3_position if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).partial_open_3_position
+            if _status(coordinator)
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="opening_speed",
@@ -240,7 +308,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         icon="mdi:speedometer",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).opening_speed if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).opening_speed if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="closing_speed",
@@ -250,7 +320,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         icon="mdi:speedometer",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).closing_speed if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).closing_speed if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="opening_force",
@@ -260,7 +332,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         icon="mdi:arm-flex",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).opening_force if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).opening_force if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="closing_force",
@@ -270,7 +344,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         icon="mdi:arm-flex",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).closing_force if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).closing_force if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="pause_time",
@@ -279,7 +355,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:timer-pause-outline",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).pause_time if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).pause_time if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="maintenance_threshold",
@@ -288,7 +366,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:wrench-clock",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _status(coordinator).maintenance_threshold if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).maintenance_threshold if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="maintenance_count",
@@ -297,7 +377,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:wrench",
         state_class=SensorStateClass.TOTAL_INCREASING,
-        value_fn=lambda coordinator: _status(coordinator).maintenance_count if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).maintenance_count if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="total_maneuver_count",
@@ -306,7 +388,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:counter",
         state_class=SensorStateClass.TOTAL_INCREASING,
-        value_fn=lambda coordinator: _status(coordinator).total_maneuver_count if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).total_maneuver_count if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="last_stop_reason",
@@ -314,7 +398,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_visible_default=False,
         icon="mdi:sign-caution",
-        value_fn=lambda coordinator: _status(coordinator).last_stop_reason if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).last_stop_reason if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="motor_temperature",
@@ -324,7 +410,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=_motor_temperature,
+        value_fn=lambda coordinator: (
+            _status(coordinator).motor_temperature if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="service_voltage",
@@ -335,7 +423,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda coordinator: _diagnostics_u8(coordinator, 9),
+        value_fn=lambda coordinator: (
+            _status(coordinator).service_voltage if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="diagnostics_io_byte",
@@ -344,9 +434,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         entity_registry_visible_default=False,
         icon="mdi:code-brackets",
-        value_fn=lambda coordinator: _hex_byte(_status(coordinator).diagnostics_io_byte)
-        if _status(coordinator)
-        else None,
+        value_fn=lambda coordinator: (
+            _hex_byte(_status(coordinator).diagnostics_io_byte)
+            if _status(coordinator)
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="diagnostics_parameters",
@@ -355,7 +447,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         entity_registry_visible_default=False,
         icon="mdi:code-array",
-        value_fn=lambda coordinator: _status(coordinator).diagnostics_parameters if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).diagnostics_parameters
+            if _status(coordinator)
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="oxi_product",
@@ -364,7 +460,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         entity_registry_visible_default=False,
         icon="mdi:radio-tower",
-        value_fn=lambda coordinator: _status(coordinator).oxi_product if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).oxi_product if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="oxi_firmware",
@@ -373,7 +471,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         entity_registry_visible_default=False,
         icon="mdi:chip",
-        value_fn=lambda coordinator: _status(coordinator).oxi_firmware_version if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).oxi_firmware_version if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="oxi_hardware",
@@ -382,7 +482,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         entity_registry_visible_default=False,
         icon="mdi:chip",
-        value_fn=lambda coordinator: _status(coordinator).oxi_hardware_version if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).oxi_hardware_version if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="oxi_description",
@@ -391,7 +493,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         entity_registry_visible_default=False,
         icon="mdi:information-outline",
-        value_fn=lambda coordinator: _status(coordinator).oxi_description if _status(coordinator) else None,
+        value_fn=lambda coordinator: (
+            _status(coordinator).oxi_description if _status(coordinator) else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="interface_firmware",
@@ -399,7 +503,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_visible_default=False,
         icon="mdi:chip",
-        value_fn=lambda coordinator: coordinator.device_info.interface_fw_version if coordinator.device_info else None,
+        value_fn=lambda coordinator: (
+            coordinator.device_info.interface_fw_version
+            if coordinator.device_info
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="interface_hardware",
@@ -407,7 +515,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_visible_default=False,
         icon="mdi:chip",
-        value_fn=lambda coordinator: coordinator.device_info.interface_hw_version if coordinator.device_info else None,
+        value_fn=lambda coordinator: (
+            coordinator.device_info.interface_hw_version
+            if coordinator.device_info
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="interface_serial",
@@ -415,7 +527,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_visible_default=False,
         icon="mdi:identifier",
-        value_fn=lambda coordinator: coordinator.device_info.interface_serial if coordinator.device_info else None,
+        value_fn=lambda coordinator: (
+            coordinator.device_info.interface_serial
+            if coordinator.device_info
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="control_unit_firmware",
@@ -423,7 +539,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_visible_default=False,
         icon="mdi:chip",
-        value_fn=lambda coordinator: coordinator.device_info.device_fw_version if coordinator.device_info else None,
+        value_fn=lambda coordinator: (
+            coordinator.device_info.device_fw_version
+            if coordinator.device_info
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="control_unit_hardware",
@@ -431,7 +551,11 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_visible_default=False,
         icon="mdi:chip",
-        value_fn=lambda coordinator: coordinator.device_info.device_hw_version if coordinator.device_info else None,
+        value_fn=lambda coordinator: (
+            coordinator.device_info.device_hw_version
+            if coordinator.device_info
+            else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="control_unit_serial",
@@ -439,7 +563,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_visible_default=False,
         icon="mdi:identifier",
-        value_fn=lambda coordinator: coordinator.device_info.device_serial if coordinator.device_info else None,
+        value_fn=lambda coordinator: (
+            coordinator.device_info.device_serial if coordinator.device_info else None
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="control_unit_product_detail",
@@ -447,7 +573,278 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_visible_default=False,
         icon="mdi:information-outline",
-        value_fn=lambda coordinator: coordinator.device_info.device_product_detail if coordinator.device_info else None,
+        value_fn=lambda coordinator: (
+            coordinator.device_info.device_product_detail
+            if coordinator.device_info
+            else None
+        ),
+    ),
+)
+
+
+ROUTE_SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
+    NiceBidiSensorEntityDescription(
+        key="active_connection_route",
+        name="Active connection route",
+        protected=False,
+        device_class=SensorDeviceClass.ENUM,
+        options=[route.value for route in NiceConnectionRoute],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=True,
+        icon="mdi:transit-connection-variant",
+        value_fn=lambda coordinator: coordinator.active_connection_route,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="local_connection_state",
+        name="Local connection state",
+        protected=False,
+        device_class=SensorDeviceClass.ENUM,
+        options=[state.value for state in NiceRouteState],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=True,
+        icon="mdi:lan-connect",
+        value_fn=lambda coordinator: coordinator.local_connection_state,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="cloud_connection_state",
+        name="Cloud connection state",
+        protected=False,
+        device_class=SensorDeviceClass.ENUM,
+        options=[state.value for state in NiceRouteState],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=True,
+        icon="mdi:cloud-check-outline",
+        value_fn=lambda coordinator: coordinator.cloud_connection_state,
+    ),
+)
+
+
+def _event_supported(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> bool | None:
+    capabilities = coordinator.capabilities
+    return capabilities.local_events if capabilities is not None else None
+
+
+def _diagnostic_events_supported(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> bool | None:
+    capabilities = coordinator.capabilities
+    return capabilities.diagnostic_events if capabilities is not None else None
+
+
+EVENT_SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
+    NiceBidiSensorEntityDescription(
+        key="event_stream_state",
+        name="Event stream state",
+        protected=False,
+        supported_fn=_event_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:access-point-network",
+        value_fn=lambda coordinator: coordinator.event_stream_state,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="last_protocol_event",
+        name="Last protocol event",
+        protected=False,
+        supported_fn=_event_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:message-badge-outline",
+        value_fn=lambda coordinator: (
+            coordinator.latest_event.category.value
+            if coordinator.latest_event is not None
+            else None
+        ),
+        extra_attributes_fn=lambda coordinator: (
+            coordinator.latest_event.as_event_attributes()
+            if coordinator.latest_event is not None
+            else {}
+        ),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="last_protocol_event_at",
+        name="Last protocol event at",
+        protected=False,
+        supported_fn=_event_supported,
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
+        value_fn=lambda coordinator: coordinator.last_event_at,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="protocol_event_count",
+        name="Protocol event count",
+        protected=False,
+        supported_fn=_event_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
+        icon="mdi:counter",
+        value_fn=lambda coordinator: coordinator.protocol_event_count,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="malformed_protocol_event_count",
+        name="Malformed protocol event count",
+        protected=False,
+        supported_fn=_event_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:message-alert-outline",
+        value_fn=lambda coordinator: coordinator.malformed_protocol_event_count,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="last_event_cause",
+        name="Last event cause code",
+        protected=False,
+        supported_fn=_diagnostic_events_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:identifier",
+        value_fn=lambda coordinator: coordinator.last_event_cause,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="basic_diagnostic_code",
+        name="Basic diagnostic code",
+        protected=False,
+        supported_fn=_diagnostic_events_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:code-tags",
+        value_fn=lambda coordinator: coordinator.basic_diagnostic_code,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="advanced_diagnostic_code",
+        name="Advanced diagnostic code",
+        protected=False,
+        supported_fn=_diagnostic_events_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:code-brackets",
+        value_fn=lambda coordinator: coordinator.advanced_diagnostic_code,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="bluebus_error_status",
+        name="BlueBUS error status",
+        protected=False,
+        supported_fn=_diagnostic_events_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:lan-disconnect",
+        value_fn=lambda coordinator: coordinator.bluebus_error_status,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="manoeuvre_average_current",
+        name="Manoeuvre average current",
+        protected=False,
+        supported_fn=_diagnostic_events_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:current-ac",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda coordinator: coordinator.manoeuvre_average_current,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="last_reset_cause",
+        name="Last reset cause",
+        protected=False,
+        supported_fn=_diagnostic_events_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:restart-alert",
+        value_fn=lambda coordinator: coordinator.last_reset_cause,
+        extra_attributes_fn=lambda coordinator: (
+            {"device_class_code": coordinator.last_reset_device_class}
+            if coordinator.last_reset_device_class is not None
+            else {}
+        ),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="event_battery_level",
+        name="Event battery level code",
+        protected=False,
+        supported_fn=_diagnostic_events_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:battery-alert-variant-outline",
+        value_fn=lambda coordinator: coordinator.event_battery_level,
+        extra_attributes_fn=lambda coordinator: (
+            {"device_type": coordinator.event_battery_device_type}
+            if coordinator.event_battery_device_type is not None
+            else {}
+        ),
+    ),
+)
+
+ADMINISTRATION_SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
+    NiceBidiSensorEntityDescription(
+        key="interface_log_events",
+        name="Interface log events",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="logs",
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:text-box-search-outline",
+        value_fn=lambda coordinator: (
+            coordinator.interface_log_snapshot.count
+            if coordinator.interface_log_snapshot is not None
+            else None
+        ),
+        extra_attributes_fn=_log_attributes,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="access_groups",
+        name="Access groups",
+        protected=False,
+        supported_fn=partial(
+            _administration_supported,
+            capability="groups",
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:account-group-outline",
+        value_fn=lambda coordinator: (
+            coordinator.access_group_snapshot.count
+            if coordinator.access_group_snapshot is not None
+            else None
+        ),
+        extra_attributes_fn=_group_attributes,
+    ),
+    NiceBidiSensorEntityDescription(
+        key="last_administration_operation",
+        name="Last administration operation",
+        protected=False,
+        supported_fn=lambda coordinator: any(
+            _administration_supported(coordinator, capability)
+            for capability in (
+                "logs",
+                "groups",
+                "interface_name_write",
+                "time_sync",
+                "reboot",
+            )
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:shield-check-outline",
+        value_fn=lambda coordinator: (
+            coordinator.last_administration_operation.action
+            if coordinator.last_administration_operation is not None
+            else None
+        ),
+        extra_attributes_fn=_administration_operation_attributes,
     ),
 )
 
@@ -459,10 +856,22 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors from a config entry."""
     coordinator = get_coordinator(entry)
-    async_add_entities(NiceBidiSensor(coordinator, entry, description) for description in SENSORS)
+    async_add_entities(
+        build_described_entities(
+            coordinator,
+            entry,
+            (
+                *SENSORS,
+                *ROUTE_SENSORS,
+                *EVENT_SENSORS,
+                *ADMINISTRATION_SENSORS,
+            ),
+            NiceBidiSensor,
+        )
+    )
 
 
-class NiceBidiSensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SensorEntity):
+class NiceBidiSensor(NiceCoordinatorEntity, SensorEntity):
     """Nice diagnostic sensor."""
 
     _attr_has_entity_name = True
@@ -476,24 +885,21 @@ class NiceBidiSensor(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SensorEnt
         description: NiceBidiSensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-        self._entry = entry
+        super().__init__(
+            coordinator,
+            entry,
+            platform_domain=SENSOR_DOMAIN,
+            unique_id_suffix=description.key,
+            name=description.name,
+            suggested_id_suffix=description.name,
+            description=description,
+        )
         self.entity_description = description
-        self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self._attr_name = description.name
-        self.entity_id = bidi_suggested_entity_id(SENSOR_DOMAIN, entry, description.name)
-        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
-        self._attr_entity_registry_visible_default = description.entity_registry_visible_default
 
     @property
     def available(self) -> bool:
         """Return true if this sensor has a known value."""
         return self.native_value is not None
-
-    @property
-    def device_info(self):
-        """Return device info, enriched with INFO metadata when available."""
-        return bidi_device_info(self._entry, self.coordinator.device_info)
 
     @property
     def native_value(self) -> datetime | float | int | str | None:

@@ -10,8 +10,11 @@ that style of control. The `Gate open` binary sensor exposes the same read-only
 open/not-fully-closed signal for security and alarm automations without adding
 another control surface.
 
-The cover and `Gate position` sensor use the same displayed position. On
-controllers with real encoder DMP status this is normally the real percentage.
+The cover and `Gate position` sensor use the same displayed position. A
+controller must first supply a real numeric position before either entity can
+show a percentage. State-only controllers never get inferred `0%`, `100%`, or
+time-based position data. On controllers with real encoder DMP status this is
+normally the real percentage.
 On devices with validated live T4 position frames, such as CU_WIFI percentage
 frames or RBA4R10-style raw `0..7000` `04/40` frames, it may be a coarse real
 percentage, then temporarily become a cached or simulated display value between
@@ -19,12 +22,11 @@ sparse updates. Check the cover attributes `real_position`, `display_position`,
 `display_position_estimated`, and `position_simulation_action` when you need to
 know whether the displayed percentage is fresh or estimated.
 
-The integration does not treat a fully time-inferred intermediate percentage as
-real controller position. Real position can come from encoder registers such as
+Real position can come from encoder registers such as
 `04/11`, `04/18`, and `04/19`, or from validated live controller frames such as
 CU_WIFI percentage `04/40` or RBA4R10 raw `04/40` when that mapping is known for
 the device. Endpoint-only status can safely say open, closed, opening, closing,
-or stopped, but it cannot prove the exact half-open percentage after a stop.
+or stopped, but it exposes no percentage at all.
 
 Use `real_position` for automations that require a confirmed physical
 percentage. Use `display_position` for dashboards where an approximate,
@@ -50,11 +52,51 @@ Quick recommendations:
 | Separate position display | Gate position | Same displayed percentage as the cover card; real only when `real_position` is available, cached/estimated when marked by the cover attributes. |
 | Remote-control style action | Step-step | Follows the controller's configured step-step cycle. |
 | Alarm open/not closed state | Gate open | Read-only binary sensor; on means the gate is not fully closed. |
-| Pedestrian or partial opening | Partial open 1/2/3 | Uses the configured partial-open encoder positions. |
-| Local connection health | Connection state, last successful update, reconnect count | Useful for troubleshooting Wi-Fi or local API issues. |
+| Pedestrian or partial opening | Partial open 1/2/3 | Partial open 1 is the common action; optional slots 2/3 are available only when their configuration registers are reported. Position follows the same measured-first rules as normal movement. |
+| Connection route health | Overall connection state, active route, local/cloud route state, last successful update, reconnect count | Shows which configured routes are reachable and whether LAN or cloud is currently carrying traffic. |
 | Controller tuning | Entities ending in `setting` | Advanced; these write controller registers. |
 | Raw diagnostics | Diagnostics I/O byte and diagnostics parameters | Developer/debug data for comparing controllers. |
 | Radio receiver info | OXI entities | Metadata from the OXI/radio endpoint when it answers locally. |
+| Protocol event automations | Protocol event | Emits normalized state, obstruction, maintenance, diagnostic, BlueBUS, battery, motor-current, and reset event types when reported. |
+| Event delivery health | Event stream state | Shows active delivery, polling fallback, or stopped state. |
+
+## Protocol Events
+
+The integration keeps one reader for each local connection. It correlates normal
+request responses and routes unsolicited change, diagnostic, and live T4 frames
+through the same reader. The existing cover, gate switch, gate-open sensor,
+obstacle sensor, and maintenance counters continue to exist; event data updates
+those entities sooner when the controller reports it. Adaptive polling remains
+enabled and carries state if the event stream is lost.
+
+The `Protocol event` entity exposes stable event types: `state_change`,
+`obstruction`, `diagnostic`, `bluebus_error`, `battery`, `maintenance`,
+`motor_current`, `reset`, and `unknown`. Its attributes are bounded normalized
+codes and values. They do not contain raw protocol frames or accessory MAC
+addresses.
+
+Event-specific diagnostic entities are capability-adaptive. A controller that
+explicitly reports that it does not support a field will not get the new
+optional entity; an unknown controller retains the entity so newly discovered
+device families are not hidden prematurely.
+
+## Shared Wi-Fi administration
+
+The interface-log, access-group, interface-name, clock-sync, and reboot entities
+are additive and disabled by default. They are created only for an INFO product
+family known to use the shared Wi-Fi administration protocol. Existing cover,
+switch, gate-open, action, status, and BusT4 entities are unaffected.
+
+Log retrieval and access-group retrieval are manual reads; they are not added to
+normal polling. Event results are bounded to 32 interface plus 32 automation
+events and use a strict field allowlist. Group output contains counts only.
+There is no Home Assistant API for editing the local groups or their rules.
+
+Interface-name and clock changes must survive an immediate INFO read-back before
+Home Assistant reports the operation as verified. Reboot uses its CHANGE
+acknowledgement because a successful reboot interrupts the connection. These
+writes are sent once and are never replayed through another route after an
+ambiguous failure. Every mutation is blocked while the gate is moving.
 
 Mode settings such as `Photo close mode setting` and `Always close mode setting`
 are raw Nice mode bytes. They are exposed as `0`-`255` values because tested
@@ -91,6 +133,13 @@ The defaults are intentionally split by expected use:
 
 Writable BusT4 configuration entities are unavailable while the gate is moving.
 
+T4 action buttons follow the controller's advertised `T4_allowed` bitmask.
+Existing compatibility buttons remain registered but become unavailable when a
+valid mask excludes them. Additional advanced buttons are created only when
+their reviewed action bit is advertised. The integration rechecks support
+before execution, so a stale entity cannot send an action excluded by the
+current device profile.
+
 | Platform | Entity | Key | Purpose | Visibility default | Enabled default | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | Cover | Gate cover | `cover` | Main gate entity with open, stop, close, displayed position, and set-position support when position is available. | Visible | Enabled | Primary daily-use entity. |
@@ -108,11 +157,32 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Button | Step-step | `step_step` | Sends the controller step-step action. | Visible | Enabled | Common remote-control style action. |
 | Button | Courtesy light | `courtesy_light` | Sends the courtesy-light action. | Hidden | Enabled | Optional wiring/output; useful only on some installations. |
 | Button | Courtesy light timer | `courtesy_light_timer` | Sends the courtesy-light timer action. | Hidden | Enabled | Optional wiring/output; useful only on some installations. |
-| Button | Lock | `lock` | Sends the controller lock action. | Hidden | Enabled | Advanced action with stronger operational impact. |
-| Button | Unlock | `unlock` | Sends the controller unlock action. | Hidden | Enabled | Pair for the advanced lock action. |
+| Button | Lock | `lock` | Sends T4 action `0x0F`, whose protocol meaning is block the automation. | Hidden | Disabled | Existing entity key retained for compatibility. Enabling it can prevent normal movement commands until released. |
+| Button | Unlock | `unlock` | Sends T4 action `0x10`, whose protocol meaning is release the automation. | Hidden | Disabled | Existing entity key retained for compatibility. This is the protocol pair for the block action; it is not a physical lock-state sensor. |
 | Button | Refresh status | `refresh_status` | Requests an immediate coordinator refresh. | Hidden | Enabled | Troubleshooting button, not a normal dashboard control. |
 | Button | Reconnect | `reconnect` | Forces the local connection to reconnect. | Hidden | Enabled | Troubleshooting button, not a normal dashboard control. |
 | Button | Calibrate positions | `calibrate_positions` | Runs the position calibration routine for intermediate set-position accuracy or time-based travel measurement. | Hidden | Disabled | Moves the gate repeatedly; users should enable it deliberately. |
+| Button | Refresh interface logs | `refresh_interface_logs` | Retrieves a bounded, allowlisted snapshot of interface and automation events. | Hidden | Disabled | Shared Wi-Fi only. Raw XML, names, locations, IDs, and arbitrary values are never retained. |
+| Button | Refresh access groups | `refresh_access_groups` | Retrieves a count-only summary of local access groups and rules. | Hidden | Disabled | Shared Wi-Fi only. This is read-only; group and rule mutation is not exposed. |
+| Button | Sync interface time | `sync_interface_time` | Synchronizes UTC time, standard timezone offset, and DST offset with Home Assistant and verifies the INFO round trip. | Hidden | Disabled | Shared Wi-Fi only. Rejected while the gate is moving. |
+| Button | Reboot interface | `reboot_interface` | Sends the shared Wi-Fi interface reboot command once. | Hidden | Disabled | Rejected while the gate is moving. A lost acknowledgement is never retried because the reboot may already have started. |
+| Button | Stop as remote | `stop_remote` | Sends the controller's remote-style stop action. | Hidden | Disabled | Redundant with the primary cover stop command; created only when advertised. |
+| Button | Open as remote | `open_remote` | Sends the controller's remote-style open action. | Hidden | Disabled | Redundant with the primary cover open command; created only when advertised. |
+| Button | Close as remote | `close_remote` | Sends the controller's remote-style close action. | Hidden | Disabled | Redundant with the primary cover close command; created only when advertised. |
+| Button | Apartment step-step | `apartment_step_step` | Sends the apartment step-step action. | Hidden | Disabled | Shared-access action created only when advertised; enable deliberately when the controller uses apartment/condominium mode. |
+| Button | Step-step high priority | `step_step_hp` | Sends the high-priority step-step action. | Hidden | Enabled | Device-specific action created only when advertised. |
+| Button | Open and block | `open_and_block` | Opens and then blocks the automation. | Hidden | Disabled | Safety-sensitive action; enable deliberately only when its controller behavior is understood. |
+| Button | Close and block | `close_and_block` | Closes and then blocks the automation. | Hidden | Disabled | Safety-sensitive action; enable deliberately only when its controller behavior is understood. |
+| Button | Master door step-step | `master_step_step` | Sends step-step to the master door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
+| Button | Open master door | `master_open` | Opens the master door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
+| Button | Close master door | `master_close` | Closes the master door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
+| Button | Slave door step-step | `slave_step_step` | Sends step-step to the slave door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
+| Button | Open slave door | `slave_open` | Opens the slave door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
+| Button | Close slave door | `slave_close` | Closes the slave door. | Hidden | Disabled | Multi-door action created only when advertised; enable deliberately on a matching installation. |
+| Button | Release and open | `release_and_open` | Releases a blocked automation and opens it. | Hidden | Disabled | Safety-sensitive action created only when advertised. |
+| Button | Release and close | `release_and_close` | Releases a blocked automation and closes it. | Hidden | Disabled | Safety-sensitive action created only when advertised. |
+| Button | Enable BlueBUS inputs | `enable_bluebus_inputs` | Enables the controller's BlueBUS inputs. | Hidden | Disabled | Changes controller input behavior; enable only with the gate visible and the original state known. |
+| Button | Disable BlueBUS inputs | `disable_bluebus_inputs` | Disables the controller's BlueBUS inputs. | Hidden | Disabled | Changes controller input behavior; enable only with the gate visible and the original state known. |
 | Binary sensor | Closed limit switch | `limit_closed` | Experimental decoded closed-limit bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |
 | Binary sensor | Open limit switch | `limit_open` | Experimental decoded open-limit bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |
 | Binary sensor | Photocell | `photocell` | Experimental decoded photocell bit from `04/D1`; not valid on the tested NewRobus `FG01h` data. | Hidden | Disabled | Experimental and known not to work on the tested gate. |
@@ -142,11 +212,18 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Number | Partial open 3 position setting | `bus_t4_partial_open_3_position` | Writes BusT4 partial-open 3 encoder position to register `04/23` as a two-byte value. | Visible | Enabled | Advanced but useful when partial-open positions need adjustment. |
 | Number | Maintenance threshold setting | `bus_t4_maintenance_threshold` | Writes BusT4 maintenance threshold to register `04/B1` as a two-byte value. | Hidden | Disabled | Advanced but low operational risk. |
 | Sensor | Connection state | `connection_state` | Current integration connection state. | Visible | Enabled | Primary health sensor. |
+| Sensor | Active connection route | `active_connection_route` | Route currently carrying NHK protocol traffic: `local`, `cloud`, or `none`. | Visible | Enabled | Stable across all connection modes and updates when fallback changes route. |
+| Sensor | Local connection state | `local_connection_state` | Current LAN route state: `connected`, `disconnected`, `unknown`, or `not_configured`. | Visible | Enabled | Distinguishes an unavailable LAN route from one that is not part of the selected mode. |
+| Sensor | Cloud connection state | `cloud_connection_state` | Current Nice relay route state: `connected`, `disconnected`, `unknown`, or `not_configured`. | Visible | Enabled | Reports `not_configured` for fully local entries. |
+| Sensor | Interface log events | `interface_log_events` | Number of retained events from the most recent manual log retrieval, with bounded allowlisted event attributes. | Hidden | Disabled | Shared Wi-Fi only. No raw payloads or identifying event fields are exposed. |
+| Sensor | Access groups | `access_groups` | Number of retained local access groups, with count-only rule summaries. | Hidden | Disabled | Shared Wi-Fi only. Group, device, and permission identifiers are omitted. |
+| Sensor | Last administration operation | `last_administration_operation` | Last shared Wi-Fi administration action, with route, latency, verification, and safe failure metadata. | Hidden | Disabled | Designed for issue diagnostics without exposing operation values or secrets. |
 | Sensor | Last successful update | `last_successful_update` | Timestamp of the last successful coordinator update. | Hidden | Enabled | Useful health diagnostic. |
 | Sensor | Last error | `last_error` | Last coordinator error, or `none`. | Hidden | Enabled | Useful troubleshooting diagnostic. |
-| Sensor | Reconnect count | `reconnect_count` | Number of local reconnects performed by the client. | Hidden | Enabled | Useful health diagnostic. |
+| Sensor | Reconnect count | `reconnect_count` | Number of reconnects performed across configured routes. | Hidden | Enabled | Useful health diagnostic. |
 | Sensor | Last command | `last_command` | Last local command sent by the integration. | Hidden | Disabled | Developer/debug signal. |
 | Sensor | Last command latency | `last_command_latency` | Latency of the last local command in milliseconds. | Hidden | Disabled | Developer/debug signal. |
+| Text | Interface name | `interface_name` | Reads and updates the shared Wi-Fi interface name with an INFO round-trip check. | Hidden | Disabled | Shared Wi-Fi only. Limited to 64 printable characters and rejected while the gate is moving. |
 | Sensor | Position calibration state | `position_calibration_state` | Current position calibration state. | Hidden | Enabled | Optional calibration detail; should not clutter default dashboards. |
 | Sensor | Last position calibration | `last_position_calibration` | Timestamp of the last position calibration update. | Hidden | Enabled | Useful only when calibration is used. |
 | Sensor | Position calibration error | `position_calibration_error` | Last calibration error, or `none`. | Hidden | Enabled | Useful only when calibration is used. |
@@ -184,3 +261,18 @@ Writable BusT4 configuration entities are unavailable while the gate is moving.
 | Sensor | Control unit hardware | `control_unit_hardware` | Control unit hardware version from INFO metadata. | Hidden | Enabled | Useful for support and compatibility reports. |
 | Sensor | Control unit serial | `control_unit_serial` | Control unit serial number from INFO metadata. | Hidden | Enabled | Useful for support and compatibility reports. |
 | Sensor | Control unit product detail | `control_unit_product_detail` | Control unit detailed product identifier from INFO metadata. | Hidden | Enabled | Useful for support and compatibility reports. |
+| Event | Protocol event | `protocol_event` | Emits normalized unsolicited local protocol events. | Visible | Enabled | Diagnostic automation source; attributes are bounded and exclude raw frames and MAC addresses. |
+| Sensor | Event stream state | `event_stream_state` | Event delivery state: idle, active, polling fallback, or stopped. | Visible | Enabled | Polling continues when event delivery falls back. |
+| Sensor | Last protocol event | `last_protocol_event` | Category of the latest normalized event. | Visible | Enabled | Includes bounded normalized details as attributes. |
+| Sensor | Last protocol event at | `last_protocol_event_at` | Timestamp of the latest normalized event. | Hidden | Enabled | Event delivery diagnostic. |
+| Sensor | Protocol event count | `protocol_event_count` | Number of normalized events handled since integration load. | Hidden | Enabled | Event delivery diagnostic. |
+| Sensor | Malformed protocol event count | `malformed_protocol_event_count` | Number of unsolicited frames rejected by the event parser. | Hidden | Disabled | Developer diagnostic; malformed payload contents are not exposed. |
+| Sensor | Last event cause code | `last_event_cause` | Latest raw controller cause code. | Hidden | Disabled | Created only when diagnostic event support is advertised or still unknown. |
+| Sensor | Basic diagnostic code | `basic_diagnostic_code` | Latest basic diagnostic code. | Hidden | Disabled | Raw stable code; no proprietary description is inferred. |
+| Sensor | Advanced diagnostic code | `advanced_diagnostic_code` | Latest advanced diagnostic code. | Hidden | Disabled | Raw stable code; no proprietary description is inferred. |
+| Sensor | BlueBUS error status | `bluebus_error_status` | Latest BlueBUS error status code. | Hidden | Disabled | Raw controller code. |
+| Sensor | Manoeuvre average current | `manoeuvre_average_current` | Latest numeric manoeuvre-current observation. | Hidden | Disabled | Unit is intentionally omitted until confirmed across device families. |
+| Sensor | Last reset cause | `last_reset_cause` | Latest control-unit reset cause code. | Hidden | Disabled | Device-class code is included as a bounded attribute. |
+| Sensor | Event battery level code | `event_battery_level` | Latest accessory battery code. | Hidden | Disabled | Includes accessory type but never its MAC address. |
+| Binary sensor | Maintenance due | `maintenance_due` | On when the event-updated manoeuvre count reaches the maintenance threshold. | Hidden | Enabled | Uses the same existing maintenance values shown by the count and threshold sensors. |
+| Binary sensor | BlueBUS fault | `bluebus_fault` | On when the latest BlueBUS status is not a known no-fault value. | Hidden | Disabled | Conservative raw-code interpretation for diagnostics. |

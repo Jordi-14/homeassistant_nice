@@ -3,37 +3,128 @@
     "step": {
       "user": {
         "title": "Nice",
-        "description": "Set up local control for a compatible Nice gate or garage-door interface. Close MyNice/MyNice Pro before validating the connection.",
+        "description": "Choose an available connection mode. Local + cloud fallback is recommended when cloud transport is available. Cloud routes are encrypted, but the Nice relay uses a self-signed certificate, so its certificate and hostname cannot be verified.",
+        "data": {
+          "connection_mode": "Connection mode",
+          "credential_source": "Credential source"
+        },
+        "data_description": {
+          "connection_mode": "How Home Assistant should reach this Nice device. Only modes supported by this version are shown.",
+          "credential_source": "Enter NHK credentials manually or import them during a one-time MyNice session."
+        }
+      },
+      "cloud_auth": {
+        "title": "Import credentials from MyNice",
+        "description": "This optional one-time import sends the supplied account details to Nice through the private service and built-in client registration used by MyNice. The service may change. Home Assistant discards the account password and access token after the import.",
+        "data": {
+          "cloud_account": "MyNice account",
+          "cloud_account_password": "MyNice account password",
+          "cloud_confirm": "I understand this uses a private MyNice service"
+        },
+        "data_description": {
+          "cloud_account": "Email address or username for the MyNice account.",
+          "cloud_account_password": "Used only for this import and never stored in the config entry.",
+          "cloud_confirm": "Confirms that you understand the account details leave the LAN and that the MyNice service is private and may change."
+        }
+      },
+      "cloud_accessories": {
+        "title": "Choose Nice interfaces",
+        "description": "Found {count} unconfigured interface(s). {skipped} incomplete or duplicate record(s) were ignored. Select every interface you want to add.",
+        "data": {
+          "cloud_accessories": "Interfaces"
+        },
+        "data_description": {
+          "cloud_accessories": "Each selected interface becomes its own Home Assistant config entry."
+        }
+      },
+      "cloud_local": {
+        "title": "Connect {name}",
+        "description": "Configure interface {current} of {total}. The account session has ended; Home Assistant now validates only the imported NHK device credentials through the selected route.",
         "data": {
           "name": "Name",
-          "host": "Interface IP address",
+          "host": "Interface IP address or hostname",
           "port": "Port",
-          "target_mac": "Interface MAC address",
-          "username": "NHK username",
-          "password": "NHK password hex",
-          "source_id": "Source/controller ID",
+          "relay_host": "Nice relay hostname",
+          "relay_port": "Nice relay port",
           "device_id": "Device ID",
           "t4_timeout_ms": "T4 timeout in milliseconds"
         },
         "data_description": {
           "name": "Display name for this gate in Home Assistant.",
-          "host": "IP address or hostname that Home Assistant uses to reach the Nice interface on the local network.",
+          "host": "Address that Home Assistant uses to reach the Nice interface on the local network.",
           "port": "Local Nice interface TLS port. The default is 443.",
-          "target_mac": "Interface MAC address from the extracted MyNice credentials.",
-          "username": "NHK username from the extracted MyNice credentials.",
-          "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
-          "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
+          "relay_host": "Internet relay hostname. TLS encrypts relay traffic, but certificate and hostname verification are disabled because the Nice relay uses a self-signed certificate.",
+          "relay_port": "Internet relay TLS port. The default is 7890.",
           "device_id": "NHK device ID to control. Leave at 1 unless troubleshooting a different device.",
           "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
         }
       },
-      "reauth_confirm": {
-        "title": "Reauthenticate Nice",
-        "description": "Update the local credentials for this Nice interface. The MAC address must match the existing device.",
+      "local": {
+        "title": "Connect Nice",
+        "description": "Enter the NHK device credentials and endpoints required by the selected connection mode. Close MyNice/MyNice Pro before validating a local connection.",
         "data": {
           "name": "Name",
-          "host": "Interface IP address",
+          "host": "Interface IP address or hostname",
+          "relay_host": "Nice relay hostname",
+          "relay_port": "Nice relay port",
+          "target_mac": "Interface MAC address",
+          "username": "NHK username",
+          "password": "NHK password hex",
+          "advanced": "Show advanced settings"
+        },
+        "data_description": {
+          "name": "Display name for this gate in Home Assistant.",
+          "host": "Address that Home Assistant uses to reach the Nice interface on the local network.",
+          "relay_host": "Internet relay hostname. TLS encrypts relay traffic, but certificate and hostname verification are disabled because the Nice relay uses a self-signed certificate.",
+          "relay_port": "Internet relay TLS port. The default is 7890.",
+          "target_mac": "Interface MAC address from the extracted MyNice credentials.",
+          "username": "NHK username from the extracted MyNice credentials.",
+          "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
+          "advanced": "Configure the source/controller ID, port, device ID, or T4 timeout."
+        }
+      },
+      "local_advanced": {
+        "title": "Advanced local settings",
+        "description": "Keep the defaults unless your extracted credentials or device require different protocol settings.",
+        "data": {
+          "source_id": "Source/controller ID",
           "port": "Port",
+          "device_id": "Device ID",
+          "t4_timeout_ms": "T4 timeout in milliseconds"
+        },
+        "data_description": {
+          "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
+          "port": "Local Nice interface TLS port. The default is 443.",
+          "device_id": "NHK device ID to control. Leave at 1 unless troubleshooting a different device.",
+          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "Set up {name}",
+        "description": "Discovered {model} at {host}. Enter its local NHK credentials. Close MyNice/MyNice Pro before validating the connection.",
+        "data": {
+          "name": "Name",
+          "username": "NHK username",
+          "password": "NHK password hex",
+          "advanced": "Show advanced settings"
+        },
+        "data_description": {
+          "name": "Display name for this gate in Home Assistant.",
+          "username": "NHK username from the extracted MyNice credentials.",
+          "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
+          "advanced": "Configure the source/controller ID, port, device ID, or T4 timeout."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Nice",
+        "description": "Update credentials and connection routes for this Nice interface. The MAC address must match the existing device.",
+        "data": {
+          "connection_mode": "Connection mode",
+          "name": "Name",
+          "host": "Interface IP address or hostname",
+          "port": "Port",
+          "relay_host": "Nice relay hostname",
+          "relay_port": "Nice relay port",
           "target_mac": "Interface MAC address",
           "username": "NHK username",
           "password": "NHK password hex",
@@ -43,8 +134,10 @@
         },
         "data_description": {
           "name": "Display name for this gate in Home Assistant.",
-          "host": "IP address or hostname that Home Assistant uses to reach the Nice interface on the local network.",
+          "host": "Address that Home Assistant uses to reach the Nice interface on the local network.",
           "port": "Local Nice interface TLS port. The default is 443.",
+          "relay_host": "Internet relay hostname. Required for fallback and fully cloud modes. TLS traffic is encrypted without certificate or hostname verification.",
+          "relay_port": "Internet relay TLS port. The default is 7890.",
           "target_mac": "Interface MAC address from the extracted MyNice credentials.",
           "username": "NHK username from the extracted MyNice credentials.",
           "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
@@ -55,11 +148,14 @@
       },
       "reconfigure": {
         "title": "Reconfigure Nice",
-        "description": "Update the local connection settings for this Nice interface. The MAC address must match the existing device.",
+        "description": "Update the connection policy and endpoints for this Nice interface. Its identity and entity IDs are preserved.",
         "data": {
+          "connection_mode": "Connection mode",
           "name": "Name",
-          "host": "Interface IP address",
+          "host": "Interface IP address or hostname",
           "port": "Port",
+          "relay_host": "Nice relay hostname",
+          "relay_port": "Nice relay port",
           "target_mac": "Interface MAC address",
           "username": "NHK username",
           "password": "NHK password hex",
@@ -69,8 +165,10 @@
         },
         "data_description": {
           "name": "Display name for this gate in Home Assistant.",
-          "host": "IP address or hostname that Home Assistant uses to reach the Nice interface on the local network.",
+          "host": "Address that Home Assistant uses to reach the Nice interface on the local network.",
           "port": "Local Nice interface TLS port. The default is 443.",
+          "relay_host": "Internet relay hostname. Required for fallback and fully cloud modes. TLS traffic is encrypted without certificate or hostname verification.",
+          "relay_port": "Internet relay TLS port. The default is 7890.",
           "target_mac": "Interface MAC address from the extracted MyNice credentials.",
           "username": "NHK username from the extracted MyNice credentials.",
           "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
@@ -81,15 +179,50 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to validate the local connection. Check LAN access to the configured TCP port, close MyNice/MyNice Pro, then check Home Assistant logs for the exact failure.",
+      "cannot_connect": "Failed to validate any required connection route. Check the configured LAN or relay endpoint, then check Home Assistant logs for the exact failure.",
+      "cloud_access_denied": "The authenticated account is not allowed to access the accessory credentials, or the MyNice client registration is no longer accepted.",
+      "cloud_cannot_connect": "The MyNice bootstrap service could not be reached. Try again later.",
+      "cloud_confirmation_required": "Confirm that you understand this uses a private MyNice service and sends the supplied account details to Nice.",
+      "cloud_invalid_auth": "MyNice rejected the account credentials or returned an expired access token.",
+      "cloud_invalid_fields": "Complete both MyNice account fields with values no longer than 256 characters.",
+      "cloud_schema_changed": "MyNice returned an unsupported response. The private service may have changed.",
+      "cloud_select_accessory": "Select at least one available Nice interface.",
+      "connection_mode_unavailable": "This connection mode is not available in the installed version.",
       "invalid_auth": "Authentication failed. Check the extracted username, source ID, target MAC, and password.",
+      "invalid_connection_mode": "Select a valid connection mode.",
+      "invalid_credential_source": "Select a valid credential source.",
+      "invalid_device_id": "Enter a valid 12-digit hexadecimal interface MAC address.",
+      "invalid_protocol": "The device returned a malformed or unsupported local protocol response.",
+      "unsupported_device": "The device authenticated but does not expose a compatible local control protocol.",
       "unknown": "Unexpected error",
       "wrong_device": "The MAC address does not match this configured Nice interface."
     },
     "abort": {
+      "all_accessories_configured": "Every Nice interface returned by this account is already configured",
       "already_configured": "This Nice interface is already configured",
+      "cloud_session_lost": "The temporary MyNice import session is no longer available; start the import again",
+      "invalid_import": "The imported Nice interface credentials or route data are incomplete",
+      "missing_identity": "The discovered interface did not advertise a stable hardware identity",
+      "not_operational": "This advertisement is for device provisioning and cannot accept control commands",
       "reauth_successful": "Reauthentication successful",
-      "reconfigure_successful": "Reconfiguration successful"
+      "reconfigure_successful": "Reconfiguration successful",
+      "unsupported_device": "This Nice product family does not yet have a compatible transport",
+      "unsupported_service": "This Nice network service is not supported"
+    }
+  },
+  "selector": {
+    "credential_source": {
+      "options": {
+        "manual": "Enter NHK credentials manually",
+        "mynice": "One-time MyNice import"
+      }
+    },
+    "connection_mode": {
+      "options": {
+        "local_with_cloud_fallback": "Local + cloud fallback (recommended)",
+        "local_only": "Fully local",
+        "cloud_only": "Fully cloud"
+      }
     }
   }
 }

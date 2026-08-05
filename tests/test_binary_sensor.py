@@ -6,6 +6,7 @@ from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 
 from custom_components.nice_bidiwifi.binary_sensor import (
     BINARY_SENSORS,
+    EVENT_BINARY_SENSORS,
     NiceBidiBinarySensor,
     async_setup_entry,
 )
@@ -14,6 +15,14 @@ from tests.conftest import FakeCoordinator, config_entry, make_status
 
 def _description(key: str):
     return next(description for description in BINARY_SENSORS if description.key == key)
+
+
+def _event_description(key: str):
+    return next(
+        description
+        for description in EVENT_BINARY_SENSORS
+        if description.key == key
+    )
 
 
 class TestNiceBidiBinarySensorProperties:
@@ -30,9 +39,35 @@ class TestNiceBidiBinarySensorProperties:
         assert "auto_close" in keys
         assert "oxi_detected" in keys
 
+    def test_event_binary_sensors_are_additive_and_update_existing_values(
+        self,
+    ) -> None:
+        assert all(not description.protected for description in EVENT_BINARY_SENSORS)
+        coordinator = FakeCoordinator()
+        coordinator.data = make_status(
+            maintenance_count=7001,
+            maintenance_threshold=7000,
+        )
+        maintenance = NiceBidiBinarySensor(
+            coordinator,
+            config_entry(),
+            _event_description("maintenance_due"),
+        )
+        coordinator.bluebus_error_status = "04"
+        bluebus = NiceBidiBinarySensor(
+            coordinator,
+            config_entry(),
+            _event_description("bluebus_fault"),
+        )
+
+        assert maintenance.is_on is True
+        assert bluebus.is_on is True
+
     def test_limit_switch_binary_sensor_reads_status(self) -> None:
         coordinator = FakeCoordinator()
-        entity = NiceBidiBinarySensor(coordinator, config_entry(), _description("limit_open"))
+        entity = NiceBidiBinarySensor(
+            coordinator, config_entry(), _description("limit_open")
+        )
 
         assert entity.unique_id == "aabbccddeeff_1_limit_open"
         assert entity.entity_description.entity_registry_enabled_default is False
@@ -44,7 +79,9 @@ class TestNiceBidiBinarySensorProperties:
 
     def test_gate_open_binary_sensor_matches_gate_switch_state(self) -> None:
         coordinator = FakeCoordinator()
-        entity = NiceBidiBinarySensor(coordinator, config_entry(), _description("gate_open"))
+        entity = NiceBidiBinarySensor(
+            coordinator, config_entry(), _description("gate_open")
+        )
 
         assert entity.unique_id == "aabbccddeeff_1_gate_open"
         assert entity.entity_description.device_class == BinarySensorDeviceClass.OPENING
@@ -68,7 +105,9 @@ class TestNiceBidiBinarySensorProperties:
 
     def test_false_binary_sensor_is_available(self) -> None:
         coordinator = FakeCoordinator()
-        entity = NiceBidiBinarySensor(coordinator, config_entry(), _description("photocell"))
+        entity = NiceBidiBinarySensor(
+            coordinator, config_entry(), _description("photocell")
+        )
 
         assert entity.is_on is False
         assert entity.available is True
@@ -76,14 +115,18 @@ class TestNiceBidiBinarySensorProperties:
     def test_unavailable_when_value_unknown(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.data = make_status(limit_open=None)
-        entity = NiceBidiBinarySensor(coordinator, config_entry(), _description("limit_open"))
+        entity = NiceBidiBinarySensor(
+            coordinator, config_entry(), _description("limit_open")
+        )
 
         assert entity.is_on is None
         assert entity.available is False
 
     def test_device_info_uses_coordinator_metadata(self) -> None:
         coordinator = FakeCoordinator()
-        entity = NiceBidiBinarySensor(coordinator, config_entry(), _description("obstacle"))
+        entity = NiceBidiBinarySensor(
+            coordinator, config_entry(), _description("obstacle")
+        )
 
         assert entity.device_info["serial_number"] == "0E6809FF"
 
@@ -100,5 +143,5 @@ async def test_async_setup_entry_adds_all_binary_sensors() -> None:
 
     await async_setup_entry(None, entry, add_entities)
 
-    assert len(created) == len(BINARY_SENSORS)
+    assert len(created) == len(BINARY_SENSORS) + len(EVENT_BINARY_SENSORS)
     assert all(isinstance(entity, NiceBidiBinarySensor) for entity in created)

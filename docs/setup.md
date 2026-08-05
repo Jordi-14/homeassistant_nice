@@ -31,10 +31,11 @@ stored by **MyNice**.
    point.
 8. Put the iPhone back on the normal Wi-Fi and confirm that MyNice can still
    control the gate.
-9. Find the BiDi-WiFi IP address in your router, DHCP server, or network
-   controller.
-10. Reserve that IP address in DHCP so Home Assistant keeps using the same
-    address.
+9. Home Assistant can normally discover the interface automatically. If it
+   does not, find its IP address in your router, DHCP server, or network
+   controller for manual setup.
+10. A DHCP reservation is optional. When zeroconf is available, the integration
+    updates an existing entry if the interface address changes.
 11. From a machine on the same network as Home Assistant, confirm TCP 443 is
     reachable:
 
@@ -168,43 +169,52 @@ One confirmed workaround is to use LDPlayer with root mode enabled:
 5. Keep each SQLite database together with its `-wal` and `-shm` companion
    files. The app uses SQLite WAL mode, so the main database file alone can be
    incomplete.
-6. Query `nhk_extra`. The useful Android table is `nhk_credentials`:
+6. Run the credential extractor against the pulled app-data directory:
 
    ```bash
-   sqlite3 nhk_extra
+   python3 scripts/extract_mynice_credentials.py "C:\BidiNice"
    ```
 
-   Then in the SQLite shell:
+   You can also point it directly at the database:
 
-   ```sql
-   PRAGMA wal_checkpoint(TRUNCATE);
-   .tables
-   SELECT device_id, nhk_username, nhk_password, nhk_controller_id
-     FROM nhk_credentials;
+   ```bash
+   python3 scripts/extract_mynice_credentials.py \
+     "C:\BidiNice\databases\nhk_extra"
    ```
 
-Use these values in Home Assistant:
+The extractor reads the Android `nhk_credentials` table, automatically uses
+the adjacent `nhk_extra-wal` and `nhk_extra-shm` files, and produces the same
+normalized field names used for iPhone exports. If the pulled app data is
+stored in a zip archive, keep the database and sidecars at the same relative
+path inside the archive.
 
-- `device_id` -> **BiDi MAC address**
-- `nhk_username` -> **NHK username**
-- `nhk_password` -> **NHK password hex**
-- `nhk_controller_id` -> **Source/controller ID**
+Use the resulting values in Home Assistant:
+
+- `target_mac` -> **BiDi MAC address**
+- `username` -> **NHK username**
+- `password` -> **NHK password hex**
+- `source_id` -> **Source/controller ID**
 
 For normal MyNice credentials and the final Home Assistant integration setup,
-do not leave the source/controller ID empty when `nhk_controller_id` is present.
-Several Android extractions need that exact value for authentication. The client
-does have a source fallback for MyNice Pro simulation/research tooling, but that
-fallback should not be treated as the recommended Home Assistant setup path.
+do not leave the source/controller ID empty. Several Android extractions need
+that exact value for authentication. The client does have a source fallback for
+MyNice Pro simulation/research tooling, but that fallback should not be treated
+as the recommended Home Assistant setup path.
 
 The `my_nice_general` database may also contain an `accessory_table` with module
-metadata such as the product type. `nhk_web` contains cloud credentials and is
-not needed for this local integration.
+metadata such as the product type. The local extractor does not read
+`nhk_web`; cloud-assisted setup uses the bounded one-time account flow instead
+of importing that database.
 
 There is currently no confirmed non-root Android local extraction path. Modern
 Android app-private storage generally blocks normal ADB backup, file browsing,
 and `run-as` for this app. A rooted emulator such as LDPlayer remains the known
-local workaround. If you cannot or do not want to extract local credentials, use
-one of the cloud-capable beta builds instead of sharing private app data.
+local workaround. If extracting credentials is impractical, the integration can
+optionally retrieve the same per-device NHK credentials in a one-time MyNice
+session. This requires only the normal MyNice account and password. The
+integration uses the MyNice client registration internally, then discards the
+account password and access token as soon as the credentials have been
+imported.
 
 Do not publish the extracted app data, SQLite databases, WAL files, or extracted
 NHK credentials. If the Android app schema changes, open an issue with the
@@ -214,19 +224,53 @@ table names, but redact all secrets.
 ## Add the Integration in Home Assistant
 
 1. Go to **Settings -> Devices & services**.
-2. Add **Nice**.
-3. Enter:
-   - Interface IP address
+2. Use a discovered **Nice** card if one is shown, or select **Add integration**
+   and choose **Nice**.
+3. Choose one connection mode:
+   - **Local + cloud fallback (recommended)** uses the LAN while healthy,
+     switches to the configured relay after bounded LAN failures, and requires
+     repeated successful LAN probes before returning.
+   - **Fully local** never opens a cloud connection.
+   - **Fully cloud** never opens a LAN connection.
+4. Choose manual NHK credential entry or the optional one-time MyNice import.
+   The import sends the account credentials to Nice, uses the response only to
+   obtain per-device NHK credentials, and discards the account password and
+   access token when the step ends. Users do not need to provide an OAuth
+   client ID or secret.
+5. For local or fallback setup, enter:
+   - Interface IP address or hostname
    - Interface MAC address from `target_mac`
    - NHK username from `username`
    - NHK password hex from `password`
-   - Source/controller ID from `source_id` on iOS exports or
-     `nhk_controller_id` on Android extractions
-4. Close MyNice/MyNice Pro before pressing submit.
+6. For cloud or fallback setup, confirm the relay hostname and TLS port. The
+   default endpoint is prefilled. Relay traffic is TLS-encrypted, but
+   certificate and hostname verification are disabled because the production
+   Nice relay presents a self-signed, expired certificate.
+7. If the extracted `source_id` differs from the username, enable **Show
+   advanced settings** and enter it as **Source/controller ID**. Port, NHK
+   device ID, and T4 timeout are also under Advanced.
+8. Close MyNice/MyNice Pro before pressing submit when a local route is used.
 
-The integration stores these values in Home Assistant's normal config entry
-storage. They are entered by the user during setup and are not hard-coded in the
-integration.
+The relay is a private Nice service and may change without notice. Its current
+self-signed certificate expired in 2021 and does not match the configured relay
+hostname, so it cannot be validated through the Home Assistant host's normal
+trust store. For compatibility with the service and official client, the
+integration keeps TLS encryption but disables certificate and hostname
+verification for relay connections. An active network attacker could therefore
+impersonate the relay. Cloud use is opt-in through the selected connection
+policy; choose **Fully local** if this risk is unacceptable. A fallback entry
+can be created while the LAN endpoint is temporarily unavailable if relay
+authentication succeeds.
+
+For a discovered interface, Home Assistant supplies the advertised host, port,
+MAC identity, model, protocol version, and IPv4/IPv6 addresses. You only need to
+confirm the name and enter the local credentials. Provisioning-only
+advertisements are ignored because they cannot accept normal control commands.
+
+The integration stores the per-device NHK and route values in Home Assistant's
+normal config entry storage. They are entered manually or returned by the
+one-time MyNice import. Existing entries are migrated to the explicit **Fully
+local** policy without changing their entities or enabling cloud traffic.
 
 ## Troubleshooting Setup
 

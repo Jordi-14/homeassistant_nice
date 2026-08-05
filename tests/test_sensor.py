@@ -6,6 +6,9 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfTemperature
 
 from custom_components.nice_bidiwifi.sensor import (
+    ADMINISTRATION_SENSORS,
+    EVENT_SENSORS,
+    ROUTE_SENSORS,
     SENSORS,
     NiceBidiSensor,
     async_setup_entry,
@@ -15,6 +18,14 @@ from tests.conftest import FakeCoordinator, config_entry, make_status
 
 def _description(key: str):
     return next(description for description in SENSORS if description.key == key)
+
+
+def _event_description(key: str):
+    return next(description for description in EVENT_SENSORS if description.key == key)
+
+
+def _route_description(key: str):
+    return next(description for description in ROUTE_SENSORS if description.key == key)
 
 
 class TestNiceBidiSensorProperties:
@@ -36,9 +47,68 @@ class TestNiceBidiSensorProperties:
         assert not any(key.startswith("beta_") for key in keys)
         assert not any(description.name.startswith("BETA") for description in SENSORS)
 
+    def test_event_sensor_descriptions_are_additive_and_unprotected(self) -> None:
+        keys = [description.key for description in EVENT_SENSORS]
+        assert len(keys) == len(set(keys))
+        assert set(keys).isdisjoint(description.key for description in SENSORS)
+        assert all(not description.protected for description in EVENT_SENSORS)
+
+        coordinator = FakeCoordinator()
+        coordinator.last_event_cause = "C02"
+        entity = NiceBidiSensor(
+            coordinator,
+            config_entry(),
+            _event_description("last_event_cause"),
+        )
+        assert entity.unique_id == "aabbccddeeff_1_last_event_cause"
+        assert entity.native_value == "C02"
+
+    def test_route_sensor_descriptions_are_additive_and_unprotected(self) -> None:
+        keys = [description.key for description in ROUTE_SENSORS]
+        assert keys == [
+            "active_connection_route",
+            "local_connection_state",
+            "cloud_connection_state",
+        ]
+        assert set(keys).isdisjoint(description.key for description in SENSORS)
+        assert all(not description.protected for description in ROUTE_SENSORS)
+        assert all(
+            description.entity_registry_visible_default
+            for description in ROUTE_SENSORS
+        )
+
+    def test_route_sensors_report_active_and_available_connections(self) -> None:
+        coordinator = FakeCoordinator()
+
+        active = NiceBidiSensor(
+            coordinator,
+            config_entry(),
+            _route_description("active_connection_route"),
+        )
+        local = NiceBidiSensor(
+            coordinator,
+            config_entry(),
+            _route_description("local_connection_state"),
+        )
+        cloud = NiceBidiSensor(
+            coordinator,
+            config_entry(),
+            _route_description("cloud_connection_state"),
+        )
+
+        assert active.unique_id == "aabbccddeeff_1_active_connection_route"
+        assert active.native_value == "local"
+        assert local.native_value == "connected"
+        assert cloud.native_value == "not_configured"
+        assert active.available is True
+        assert local.available is True
+        assert cloud.available is True
+
     def test_connection_state_sensor(self) -> None:
         coordinator = FakeCoordinator()
-        entity = NiceBidiSensor(coordinator, config_entry(), _description("connection_state"))
+        entity = NiceBidiSensor(
+            coordinator, config_entry(), _description("connection_state")
+        )
         assert entity.unique_id == "aabbccddeeff_1_connection_state"
         assert entity.native_value == "connected"
         assert entity.available is True
@@ -52,49 +122,123 @@ class TestNiceBidiSensorProperties:
 
     def test_reconnect_count_sensor_reads_client(self) -> None:
         coordinator = FakeCoordinator()
-        entity = NiceBidiSensor(coordinator, config_entry(), _description("reconnect_count"))
+        entity = NiceBidiSensor(
+            coordinator, config_entry(), _description("reconnect_count")
+        )
         assert entity.native_value == 3
 
     def test_encoder_position_sensor_reads_status(self) -> None:
         coordinator = FakeCoordinator()
-        entity = NiceBidiSensor(coordinator, config_entry(), _description("current_encoder_position"))
+        entity = NiceBidiSensor(
+            coordinator, config_entry(), _description("current_encoder_position")
+        )
         assert entity.native_value == 424
 
     def test_extended_bus_t4_sensors_read_status(self) -> None:
         coordinator = FakeCoordinator()
 
-        assert NiceBidiSensor(coordinator, config_entry(), _description("opening_speed")).native_value == 60
-        assert NiceBidiSensor(coordinator, config_entry(), _description("opening_force")).native_value == 70
-        assert NiceBidiSensor(coordinator, config_entry(), _description("maintenance_count")).native_value == 12
-        assert NiceBidiSensor(coordinator, config_entry(), _description("total_maneuver_count")).native_value == 345
-        assert NiceBidiSensor(coordinator, config_entry(), _description("last_stop_reason")).native_value == "obstacle_by_encoder"
-        assert NiceBidiSensor(coordinator, config_entry(), _description("oxi_product")).native_value == "OXI"
+        assert (
+            NiceBidiSensor(
+                coordinator, config_entry(), _description("opening_speed")
+            ).native_value
+            == 60
+        )
+        assert (
+            NiceBidiSensor(
+                coordinator, config_entry(), _description("opening_force")
+            ).native_value
+            == 70
+        )
+        assert (
+            NiceBidiSensor(
+                coordinator, config_entry(), _description("maintenance_count")
+            ).native_value
+            == 12
+        )
+        assert (
+            NiceBidiSensor(
+                coordinator, config_entry(), _description("total_maneuver_count")
+            ).native_value
+            == 345
+        )
+        assert (
+            NiceBidiSensor(
+                coordinator, config_entry(), _description("last_stop_reason")
+            ).native_value
+            == "obstacle_by_encoder"
+        )
+        assert (
+            NiceBidiSensor(
+                coordinator, config_entry(), _description("oxi_product")
+            ).native_value
+            == "OXI"
+        )
 
     def test_issue_15_final_diagnostics_read_d2_payload(self) -> None:
         coordinator = FakeCoordinator()
 
-        motor_temperature = NiceBidiSensor(coordinator, config_entry(), _description("motor_temperature"))
+        motor_temperature = NiceBidiSensor(
+            coordinator, config_entry(), _description("motor_temperature")
+        )
         assert motor_temperature.native_value == 42
-        assert motor_temperature.entity_description.device_class == SensorDeviceClass.TEMPERATURE
-        assert motor_temperature.entity_description.native_unit_of_measurement == UnitOfTemperature.CELSIUS
-        assert motor_temperature.entity_description.state_class == SensorStateClass.MEASUREMENT
-        assert motor_temperature.entity_description.entity_registry_enabled_default is True
-        assert motor_temperature.entity_description.entity_registry_visible_default is False
+        assert (
+            motor_temperature.entity_description.device_class
+            == SensorDeviceClass.TEMPERATURE
+        )
+        assert (
+            motor_temperature.entity_description.native_unit_of_measurement
+            == UnitOfTemperature.CELSIUS
+        )
+        assert (
+            motor_temperature.entity_description.state_class
+            == SensorStateClass.MEASUREMENT
+        )
+        assert (
+            motor_temperature.entity_description.entity_registry_enabled_default is True
+        )
+        assert (
+            motor_temperature.entity_description.entity_registry_visible_default
+            is False
+        )
 
-        service_voltage = NiceBidiSensor(coordinator, config_entry(), _description("service_voltage"))
+        service_voltage = NiceBidiSensor(
+            coordinator, config_entry(), _description("service_voltage")
+        )
         assert service_voltage.native_value == 32
-        assert service_voltage.entity_description.device_class == SensorDeviceClass.VOLTAGE
-        assert service_voltage.entity_description.native_unit_of_measurement == UnitOfElectricPotential.VOLT
-        assert service_voltage.entity_description.state_class == SensorStateClass.MEASUREMENT
-        assert service_voltage.entity_description.entity_registry_enabled_default is False
-        assert service_voltage.entity_description.entity_registry_visible_default is False
+        assert (
+            service_voltage.entity_description.device_class == SensorDeviceClass.VOLTAGE
+        )
+        assert (
+            service_voltage.entity_description.native_unit_of_measurement
+            == UnitOfElectricPotential.VOLT
+        )
+        assert (
+            service_voltage.entity_description.state_class
+            == SensorStateClass.MEASUREMENT
+        )
+        assert (
+            service_voltage.entity_description.entity_registry_enabled_default is False
+        )
+        assert (
+            service_voltage.entity_description.entity_registry_visible_default is False
+        )
 
     def test_issue_15_diagnostics_are_unavailable_without_d2_payload(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.data = make_status(diagnostics_parameters="00 00 00 00")
 
-        assert NiceBidiSensor(coordinator, config_entry(), _description("motor_temperature")).native_value is None
-        assert NiceBidiSensor(coordinator, config_entry(), _description("service_voltage")).native_value is None
+        assert (
+            NiceBidiSensor(
+                coordinator, config_entry(), _description("motor_temperature")
+            ).native_value
+            is None
+        )
+        assert (
+            NiceBidiSensor(
+                coordinator, config_entry(), _description("service_voltage")
+            ).native_value
+            is None
+        )
 
     def test_gate_position_sensor_reads_display_position(self) -> None:
         coordinator = FakeCoordinator()
@@ -111,7 +255,9 @@ class TestNiceBidiSensorProperties:
 
         simulated_coordinator = SimulatedCoordinator()
         simulated_coordinator.data = coordinator.data
-        entity = NiceBidiSensor(simulated_coordinator, config_entry(), _description("gate_position"))
+        entity = NiceBidiSensor(
+            simulated_coordinator, config_entry(), _description("gate_position")
+        )
 
         assert entity.native_value == 75.9
         assert entity.native_unit_of_measurement == PERCENTAGE
@@ -120,20 +266,26 @@ class TestNiceBidiSensorProperties:
 
     def test_device_info_sensor_reads_info_metadata(self) -> None:
         coordinator = FakeCoordinator()
-        entity = NiceBidiSensor(coordinator, config_entry(), _description("control_unit_serial"))
+        entity = NiceBidiSensor(
+            coordinator, config_entry(), _description("control_unit_serial")
+        )
         assert entity.native_value == "0E6809FF"
         assert entity.device_info["serial_number"] == "0E6809FF"
 
     def test_report_sensor_exposes_extra_attributes(self) -> None:
         coordinator = FakeCoordinator()
-        entity = NiceBidiSensor(coordinator, config_entry(), _description("position_calibration_report"))
+        entity = NiceBidiSensor(
+            coordinator, config_entry(), _description("position_calibration_report")
+        )
         assert entity.native_value == "good: 8/8 repeatable targets"
         assert entity.extra_state_attributes == {"quality": "good", "point_count": 8}
 
     def test_unavailable_when_value_is_none(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.device_info = None
-        entity = NiceBidiSensor(coordinator, config_entry(), _description("interface_serial"))
+        entity = NiceBidiSensor(
+            coordinator, config_entry(), _description("interface_serial")
+        )
         assert entity.native_value is None
         assert entity.available is False
 
@@ -150,5 +302,10 @@ async def test_async_setup_entry_adds_all_sensors() -> None:
 
     await async_setup_entry(None, entry, add_entities)
 
-    assert len(created) == len(SENSORS)
+    assert len(created) == (
+        len(SENSORS)
+        + len(ROUTE_SENSORS)
+        + len(EVENT_SENSORS)
+        + len(ADMINISTRATION_SENSORS)
+    )
     assert all(isinstance(entity, NiceBidiSensor) for entity in created)

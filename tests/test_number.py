@@ -118,6 +118,50 @@ class TestNiceBidiNumberProperties:
         assert opening_force.native_value == 70
         assert opening_force.available is True
 
+    @pytest.mark.parametrize(
+        ("product", "description"),
+        [("ARIA200S", "Control unit"), ("Generic", "CLBOX")],
+    )
+    def test_speed_policy_accepts_each_confirmed_unsafe_identity(
+        self,
+        product: str,
+        description: str,
+    ) -> None:
+        """Test either identity reported by real controllers disables writes."""
+        coordinator = FakeCoordinator()
+        coordinator.device_info = make_device_info(
+            device_product=product,
+            device_description=description,
+            device_product_detail=None,
+        )
+        coordinator.data = make_status(state="open")
+
+        entity = NiceBidiNumber(
+            coordinator,
+            config_entry(),
+            _description("bus_t4_opening_speed"),
+        )
+
+        assert entity.available is False
+
+    def test_speed_policy_leaves_unrelated_controller_available(self) -> None:
+        """Test speed writes remain available without a confirmed unsafe identity."""
+        coordinator = FakeCoordinator()
+        coordinator.device_info = make_device_info(
+            device_product="ROBUS",
+            device_description="RBA3",
+            device_product_detail=None,
+        )
+        coordinator.data = make_status(state="open")
+
+        entity = NiceBidiNumber(
+            coordinator,
+            config_entry(),
+            _description("bus_t4_opening_speed"),
+        )
+
+        assert entity.available is True
+
     async def test_number_writes_single_byte_register(self) -> None:
         coordinator = FakeCoordinator()
         entity = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_speed"))

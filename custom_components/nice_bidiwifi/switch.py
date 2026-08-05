@@ -11,23 +11,50 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .calibration_constants import CALIBRATION_STATE_RUNNING
 from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_PARTIALLY_OPEN, STATE_STOPPED, NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
-from .entity import bidi_device_info, bidi_suggested_entity_id, bidi_unique_id
+from .entities.factory import (
+    NiceCapabilityKey,
+    NiceCoreEntityDescription,
+    NiceEntityDescriptionMixin,
+    build_described_entities,
+    entity_support,
+    EntitySupport,
+)
+from .entity import NiceCoordinatorEntity
 from .runtime import get_coordinator
+from .protocol.t4.settings import (
+    ALWAYS_CLOSE,
+    AUTO_CLOSE,
+    KEY_LOCK,
+    PHOTO_CLOSE,
+    PRE_FLASH,
+    STANDBY,
+    DmpSetting,
+)
 
 PARALLEL_UPDATES = 1
 
+COVER_SWITCHES = (
+    NiceCoreEntityDescription(
+        key="cover_switch",
+        required_capability=NiceCapabilityKey.OPEN_CLOSE,
+    ),
+)
+
 
 @dataclass(frozen=True, kw_only=True)
-class NiceBidiConfigSwitchEntityDescription(SwitchEntityDescription):
+class NiceBidiConfigSwitchEntityDescription(
+    NiceEntityDescriptionMixin,
+    SwitchEntityDescription,
+):
     """Description for a writable Nice BusT4 switch."""
 
-    register_parameter: int
+    setting: DmpSetting
     value_fn: Callable[[NiceBidiStatus], bool | None]
+    required_capability: NiceCapabilityKey = NiceCapabilityKey.DMP
 
 
 CONFIG_SWITCHES: tuple[NiceBidiConfigSwitchEntityDescription, ...] = (
@@ -36,7 +63,7 @@ CONFIG_SWITCHES: tuple[NiceBidiConfigSwitchEntityDescription, ...] = (
         name="Auto close setting",
         entity_category=EntityCategory.CONFIG,
         icon="mdi:timer-sync-outline",
-        register_parameter=0x80,
+        setting=AUTO_CLOSE,
         value_fn=lambda status: status.auto_close,
     ),
     NiceBidiConfigSwitchEntityDescription(
@@ -44,7 +71,7 @@ CONFIG_SWITCHES: tuple[NiceBidiConfigSwitchEntityDescription, ...] = (
         name="Photo close setting",
         entity_category=EntityCategory.CONFIG,
         icon="mdi:camera-timer",
-        register_parameter=0x84,
+        setting=PHOTO_CLOSE,
         value_fn=lambda status: status.photo_close,
     ),
     NiceBidiConfigSwitchEntityDescription(
@@ -52,7 +79,7 @@ CONFIG_SWITCHES: tuple[NiceBidiConfigSwitchEntityDescription, ...] = (
         name="Always close setting",
         entity_category=EntityCategory.CONFIG,
         icon="mdi:gate-arrow-left",
-        register_parameter=0x88,
+        setting=ALWAYS_CLOSE,
         value_fn=lambda status: status.always_close,
     ),
     NiceBidiConfigSwitchEntityDescription(
@@ -61,7 +88,7 @@ CONFIG_SWITCHES: tuple[NiceBidiConfigSwitchEntityDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
         entity_registry_visible_default=False,
         icon="mdi:power-sleep",
-        register_parameter=0x8C,
+        setting=STANDBY,
         value_fn=lambda status: status.standby,
     ),
     NiceBidiConfigSwitchEntityDescription(
@@ -70,7 +97,7 @@ CONFIG_SWITCHES: tuple[NiceBidiConfigSwitchEntityDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
         entity_registry_visible_default=False,
         icon="mdi:alarm-light-outline",
-        register_parameter=0x94,
+        setting=PRE_FLASH,
         value_fn=lambda status: status.pre_flash,
     ),
     NiceBidiConfigSwitchEntityDescription(
@@ -79,7 +106,7 @@ CONFIG_SWITCHES: tuple[NiceBidiConfigSwitchEntityDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
         entity_registry_visible_default=False,
         icon="mdi:lock",
-        register_parameter=0x9C,
+        setting=KEY_LOCK,
         value_fn=lambda status: status.key_lock,
     ),
 )
@@ -93,15 +120,25 @@ async def async_setup_entry(
     """Set up switch from a config entry."""
     coordinator = get_coordinator(entry)
     async_add_entities(
-        [NiceBidiCoverSwitch(coordinator, entry)]
-        + [
-            NiceBidiConfigSwitch(coordinator, entry, description)
-            for description in CONFIG_SWITCHES
-        ]
+        build_described_entities(
+            coordinator,
+            entry,
+            COVER_SWITCHES,
+            lambda entity_coordinator, entity_entry, _description: NiceBidiCoverSwitch(
+                entity_coordinator,
+                entity_entry,
+            ),
+        )
+        + build_described_entities(
+            coordinator,
+            entry,
+            CONFIG_SWITCHES,
+            NiceBidiConfigSwitch,
+        )
     )
 
 
-class NiceBidiCoverSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SwitchEntity):
+class NiceBidiCoverSwitch(NiceCoordinatorEntity, SwitchEntity):
     """Nice gate state switch."""
 
     _attr_has_entity_name = True
@@ -109,16 +146,14 @@ class NiceBidiCoverSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Swit
 
     def __init__(self, coordinator: NiceBidiDataUpdateCoordinator, entry: ConfigEntry) -> None:
         """Initialize the switch."""
-        super().__init__(coordinator)
-        self._entry = entry
-        self._attr_unique_id = bidi_unique_id(entry, "cover_switch")
-        self._attr_name = "Open/close switch"
-        self.entity_id = bidi_suggested_entity_id(SWITCH_DOMAIN, entry)
-
-    @property
-    def device_info(self):
-        """Return device info, enriched with INFO metadata when available."""
-        return bidi_device_info(self._entry, self.coordinator.device_info)
+        super().__init__(
+            coordinator,
+            entry,
+            platform_domain=SWITCH_DOMAIN,
+            unique_id_suffix="cover_switch",
+            name="Open/close switch",
+            suggested_id_suffix=None,
+        )
 
     @property
     def available(self) -> bool:
@@ -127,6 +162,8 @@ class NiceBidiCoverSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Swit
             self.coordinator.last_update_success
             and self.status is not None
             and self.status.state is not None
+            and entity_support(self.coordinator, COVER_SWITCHES[0])
+            is not EntitySupport.UNSUPPORTED
         )
 
     @property
@@ -155,7 +192,7 @@ class NiceBidiCoverSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Swit
         await self.coordinator.async_send_action("close")
 
 
-class NiceBidiConfigSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], SwitchEntity):
+class NiceBidiConfigSwitch(NiceCoordinatorEntity, SwitchEntity):
     """Writable Nice BusT4 configuration switch."""
 
     _attr_has_entity_name = True
@@ -169,19 +206,16 @@ class NiceBidiConfigSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Swi
         description: NiceBidiConfigSwitchEntityDescription,
     ) -> None:
         """Initialize the config switch."""
-        super().__init__(coordinator)
-        self._entry = entry
+        super().__init__(
+            coordinator,
+            entry,
+            platform_domain=SWITCH_DOMAIN,
+            unique_id_suffix=description.key,
+            name=description.name,
+            suggested_id_suffix=description.name,
+            description=description,
+        )
         self.entity_description = description
-        self._attr_unique_id = bidi_unique_id(entry, description.key)
-        self._attr_name = description.name
-        self.entity_id = bidi_suggested_entity_id(SWITCH_DOMAIN, entry, description.name)
-        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
-        self._attr_entity_registry_visible_default = description.entity_registry_visible_default
-
-    @property
-    def device_info(self):
-        """Return device info, enriched with INFO metadata when available."""
-        return bidi_device_info(self._entry, self.coordinator.device_info)
 
     @property
     def available(self) -> bool:
@@ -205,16 +239,14 @@ class NiceBidiConfigSwitch(CoordinatorEntity[NiceBidiDataUpdateCoordinator], Swi
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable the BusT4 setting."""
-        await self.coordinator.async_write_dmp_register(
-            0x04,
-            self.entity_description.register_parameter,
+        await self.coordinator.async_write_setting(
+            self.entity_description.setting,
             1,
         )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable the BusT4 setting."""
-        await self.coordinator.async_write_dmp_register(
-            0x04,
-            self.entity_description.register_parameter,
+        await self.coordinator.async_write_setting(
+            self.entity_description.setting,
             0,
         )

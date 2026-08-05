@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import sys
+import threading
 import time
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -19,22 +20,23 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from custom_components.nice_bidiwifi.client import (  # noqa: E402
-    STATUS_BY_BYTE,
-    NiceBidiClient,
-    NiceBidiCredentials,
-    NiceBidiDeviceInfo,
-    NiceBidiStatus,
-    _attr,
-    _frame,
-    _printable,
-    _response_summary,
-    _xml_payload,
-    build_dmp_read_frame,
-    nice_bidi_error_code,
-    parse_dmp_response,
-    parse_info_xml,
-)
+from scripts._standalone_client import load_client_module  # noqa: E402
+
+_client_module = load_client_module(REPO_ROOT)
+STATUS_BY_BYTE = _client_module.STATUS_BY_BYTE
+NiceBidiClient = _client_module.NiceBidiClient
+NiceBidiCredentials = _client_module.NiceBidiCredentials
+NiceBidiDeviceInfo = _client_module.NiceBidiDeviceInfo
+NiceBidiStatus = _client_module.NiceBidiStatus
+_attr = _client_module._attr
+_frame = _client_module._frame
+_printable = _client_module._printable
+_response_summary = _client_module._response_summary
+_xml_payload = _client_module._xml_payload
+build_dmp_read_frame = _client_module.build_dmp_read_frame
+nice_bidi_error_code = _client_module.nice_bidi_error_code
+parse_dmp_response = _client_module.parse_dmp_response
+parse_info_xml = _client_module.parse_info_xml
 
 INFO_CONTAINERS = {"Commands", "Events", "Properties", "Scheduled", "Services", "Settings"}
 PRIORITY_READ_NAMES = {"DoorStatus", "Obstruct", "T4_allowed", "LastEvent", "Name", "Location"}
@@ -242,35 +244,26 @@ class ProbeClient(NiceBidiClient):
 
         def operation() -> dict[str, Any]:
             self._ensure_connected_locked()
-            if not self._socket:
-                raise RuntimeError("socket is not open")
+            if self._dispatcher is None:
+                raise RuntimeError("connection dispatcher is not open")
 
             xml, request_id = self._signed_request_with_id(request_type, body)
-            self._socket.settimeout(self.timeout)
-            self._socket.sendall(_frame(xml))
-
             timeout = wait_timeout if wait_timeout is not None else self.timeout
-            frames: list[bytes] = []
-            expected_frame_index: int | None = None
-            deadline = time.monotonic() + max(0.1, timeout)
-            post_deadline: float | None = None
-
-            while True:
-                now = time.monotonic()
-                active_deadline = post_deadline if post_deadline is not None else deadline
-                if now >= active_deadline:
-                    break
-
-                response = self._recv_frame_locked(max(0.1, active_deadline - now))
-                if not response:
-                    break
-
-                frames.append(response)
-                if expected_frame_index is None and self._matches_response(response, None, request_id):
-                    expected_frame_index = len(frames) - 1
-                    if post_response_listen_seconds <= 0:
-                        break
-                    post_deadline = time.monotonic() + post_response_listen_seconds
+            frames = self._dispatcher.exchange(
+                _frame(xml),
+                expected_type=None,
+                expected_id=request_id,
+                timeout=max(0.1, timeout),
+                post_response_listen_seconds=post_response_listen_seconds,
+            )
+            expected_frame_index = next(
+                (
+                    index
+                    for index, response in enumerate(frames)
+                    if self._matches_response(response, None, request_id)
+                ),
+                None,
+            )
 
             return {
                 "request_id": request_id,
@@ -282,19 +275,29 @@ class ProbeClient(NiceBidiClient):
 
     def listen_frames(self, duration_s: float, poll_timeout_s: float) -> list[bytes]:
         """Listen on the current authenticated session without sending commands."""
+        frames: list[bytes] = []
+        changed = threading.Condition()
+
+        def receive(frame: bytes) -> None:
+            with changed:
+                frames.append(frame)
+                changed.notify_all()
+
+        remove_callback = self.add_event_callback(receive)
 
         def operation() -> list[bytes]:
             self._ensure_connected_locked()
-            frames: list[bytes] = []
             deadline = time.monotonic() + max(0.0, duration_s)
-            while time.monotonic() < deadline:
-                remaining = deadline - time.monotonic()
-                response = self._recv_frame_locked(max(0.1, min(poll_timeout_s, remaining)))
-                if response:
-                    frames.append(response)
-            return frames
+            with changed:
+                while time.monotonic() < deadline:
+                    remaining = deadline - time.monotonic()
+                    changed.wait(timeout=max(0.01, min(poll_timeout_s, remaining)))
+            return list(frames)
 
-        return self._run_with_reconnect(operation)
+        try:
+            return self._run_with_reconnect(operation)
+        finally:
+            remove_callback()
 
     def decrypt_t4_payloads(self, response: bytes) -> list[bytes]:
         """Decrypt T4 payloads contained in a response or async event frame."""
@@ -424,6 +427,18 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.05,
         help="Delay between DMP reads to avoid hammering the interface",
+    )
+    parser.add_argument(
+        "--dmp-start-index",
+        type=int,
+        default=1,
+        help="Resume the generated DMP scan at this 1-based read index",
+    )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=50,
+        help="Write a partial report to --output after this many DMP reads; set 0 to disable",
     )
     parser.add_argument(
         "--include-sensitive",
@@ -1641,6 +1656,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             "dmp_profile": args.dmp_profile,
             "max_dmp_reads": args.max_dmp_reads,
             "dmp_delay": args.dmp_delay,
+            "dmp_start_index": args.dmp_start_index,
+            "checkpoint_every": args.checkpoint_every,
         },
         "info_samples": [],
         "live_capture": None,
@@ -1683,10 +1700,25 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
 
         dmp_reads = _generate_dmp_reads(args.dmp_profile, args.max_dmp_reads)
         total_dmp = len(dmp_reads)
-        for index, read in enumerate(dmp_reads, start=1):
+        start_index = max(1, args.dmp_start_index)
+        selected_dmp_reads = dmp_reads[start_index - 1 :]
+        for completed_in_run, (index, read) in enumerate(
+            zip(
+                range(start_index, total_dmp + 1),
+                selected_dmp_reads,
+                strict=False,
+            ),
+            start=1,
+        ):
             if index == 1 or index == total_dmp or index % 25 == 0:
                 _progress(args, f"Running DMP read probe {index}/{total_dmp}")
             report["dmp_register_probes"].append(_run_dmp_probe(client, args, read, started))
+            if (
+                args.output is not None
+                and args.checkpoint_every > 0
+                and completed_in_run % args.checkpoint_every == 0
+            ):
+                _write_probe_checkpoint(args.output, report, started)
             if args.dmp_delay > 0 and index < total_dmp:
                 time.sleep(args.dmp_delay)
 
@@ -1701,6 +1733,21 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     report["duration_s"] = round(time.monotonic() - started, 3)
     report["summary"] = _summarize_results(report)
     return report
+
+
+def _write_probe_checkpoint(
+    output_path: Path,
+    report: dict[str, Any],
+    started: float,
+) -> None:
+    """Persist a resumable partial report during a long DMP scan."""
+    checkpoint = dict(report)
+    checkpoint["checkpoint"] = True
+    checkpoint["duration_s"] = round(time.monotonic() - started, 3)
+    checkpoint["summary"] = _summarize_results(checkpoint)
+    temporary_path = output_path.with_name(f".{output_path.name}.tmp")
+    temporary_path.write_text(json.dumps(checkpoint, indent=2, sort_keys=True) + "\n")
+    temporary_path.replace(output_path)
 
 
 def main() -> int:

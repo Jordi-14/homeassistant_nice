@@ -9,12 +9,12 @@ import logging
 import time
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .calibration import NiceBidiCalibrationMixin
+from .calibration import NiceBidiCalibrationController
+from .capabilities import NiceCapabilityService
 from .calibration_constants import (  # noqa: F401 - re-exported for compatibility.
     CALIBRATION_COMMAND_PAUSE_SECONDS,
     CALIBRATION_ENDPOINT_TOLERANCE,
@@ -42,14 +42,11 @@ from .client import (
     DEP_ACTION_PARTIAL_OPEN_3,
     DEP_ACTION_STEP_STEP,
     NiceBidiAuthError,
-    NiceBidiClient,
     NiceBidiConnectionError,
-    NiceBidiCredentials,
     NiceBidiDeviceInfo,
     NiceBidiError,
     nice_bidi_error_code,
     NiceBidiStatus,
-    device_info_supports_nhk_status,
 )
 from .connection import (
     CONNECTION_STATE_AUTH_FAILED,
@@ -57,15 +54,14 @@ from .connection import (
     CONNECTION_STATE_FAILED,
     CONNECTION_STATE_RECONNECTING,
     CONNECTION_STATE_UNKNOWN,
+    NiceConnectionHealth,
+    NiceConnectionRoute,
 )
+from .connection_router import NiceConnectionRouter
+from .controllers.base import controller_defines
+from .controllers.events import NiceEventController
+from .controllers.administration import NiceAdministrationController
 from .const import (
-    CONF_SOURCE_ID,
-    CONF_DEVICE_ID,
-    CONF_T4_TIMEOUT_MS,
-    CONF_TARGET_MAC,
-    DEFAULT_DEVICE_ID,
-    DEFAULT_PORT,
-    DEFAULT_T4_TIMEOUT_MS,
     DOMAIN,
     ERROR_UPDATE_INTERVAL,
     IDLE_UPDATE_INTERVAL,
@@ -82,8 +78,19 @@ from .position import (  # noqa: F401 - constants are re-exported for compatibil
     POSITION_TARGET_POLL_SECONDS,
     POSITION_TARGET_TOLERANCE,
     RECENT_STOP_STATUS_OVERRIDE_SECONDS,
-    NiceBidiPositionMixin,
+    NiceBidiPositionController,
 )
+from .models.capabilities import NiceCapabilities
+from .models.commands import (
+    CommandAcknowledgement,
+    CommandKind,
+    NiceCommand,
+    NiceCommandResult,
+)
+from .models.config import NiceEntryConfig
+from .protocol.t4.settings import DmpSetting
+from .protocol.t4.actions import T4_ACTION_BY_KEY
+from .write_policy import dmp_write_block_reason
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,6 +101,11 @@ DEP_MOVEMENT_ACTIONS = {
     DEP_ACTION_PARTIAL_OPEN_2,
     DEP_ACTION_PARTIAL_OPEN_3,
     DEP_ACTION_STEP_STEP,
+}
+DEP_PARTIAL_OPEN_ACTIONS = {
+    DEP_ACTION_PARTIAL_OPEN_1,
+    DEP_ACTION_PARTIAL_OPEN_2,
+    DEP_ACTION_PARTIAL_OPEN_3,
 }
 CORE_STATUS_FIELD_NAMES = frozenset(
     {
@@ -123,42 +135,58 @@ def _unknown_status() -> NiceBidiStatus:
 
 
 class NiceBidiDataUpdateCoordinator(
-    NiceBidiCalibrationMixin,
-    NiceBidiPositionMixin,
     DataUpdateCoordinator[NiceBidiStatus],
 ):
     """DataUpdateCoordinator for one Nice interface."""
 
     config_entry: ConfigEntry
+    _validate_position_bounds = staticmethod(
+        NiceBidiPositionController._validate_position_bounds
+    )
+    _raw_for_percent = staticmethod(NiceBidiPositionController._raw_for_percent)
+    _percent_for_raw = staticmethod(NiceBidiPositionController._percent_for_raw)
+    _raw_reached = staticmethod(NiceBidiPositionController._raw_reached)
+    _clamp_raw = staticmethod(NiceBidiPositionController._clamp_raw)
+    _select_calibration_sample = staticmethod(
+        NiceBidiCalibrationController._select_calibration_sample
+    )
+    _has_encoder_calibration_data = staticmethod(
+        NiceBidiCalibrationController._has_encoder_calibration_data
+    )
+    _is_at_endpoint = staticmethod(NiceBidiCalibrationController._is_at_endpoint)
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
         self.config_entry = entry
+        self.entry_config = NiceEntryConfig.from_mapping(
+            entry.data,
+            title=entry.title,
+        )
+        self.connection_health = NiceConnectionHealth.from_policy(
+            self.entry_config.connection
+        )
+        self.position_controller = NiceBidiPositionController(self)
+        self.calibration_controller = NiceBidiCalibrationController(self)
         self.connection_state = CONNECTION_STATE_UNKNOWN
         self.device_info: NiceBidiDeviceInfo | None = None
+        self.capabilities: NiceCapabilities | None = None
         self.status_polling_supported = True
         self._use_nhk_status = False
         self.last_command: str | None = None
         self.last_command_latency_ms: int | None = None
+        self.last_command_result: NiceCommandResult | None = None
         self.last_error: str | None = None
         self.last_successful_update: datetime | None = None
-        self._init_position_state()
+        self.position_controller._init_position_state()
         self._extended_status_cache: NiceBidiStatus | None = None
         self._extended_status_next_refresh_monotonic = 0.0
-        self._init_calibration_state(hass, entry)
-        data = entry.data
-        credentials = NiceBidiCredentials(
-            username=data[CONF_USERNAME],
-            password_hex=data[CONF_PASSWORD],
-            target_mac=data[CONF_TARGET_MAC],
-            source_id=data.get(CONF_SOURCE_ID) or None,
+        self.calibration_controller._init_calibration_state(hass, entry)
+        self._capability_service = NiceCapabilityService(
+            self.entry_config.device_id
         )
-        self.client = NiceBidiClient(
-            host=data[CONF_HOST],
-            port=data.get(CONF_PORT, DEFAULT_PORT),
-            credentials=credentials,
-            device_id=data.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID),
-            t4_timeout_ms=data.get(CONF_T4_TIMEOUT_MS, DEFAULT_T4_TIMEOUT_MS),
+        self.client = NiceConnectionRouter(
+            self.entry_config,
+            self.connection_health,
         )
         super().__init__(
             hass,
@@ -167,22 +195,72 @@ class NiceBidiDataUpdateCoordinator(
             update_interval=IDLE_UPDATE_INTERVAL,
             config_entry=entry,
         )
+        self.event_controller = NiceEventController(self)
+        self.administration_controller = NiceAdministrationController(self)
+
+    def __getattr__(self, name: str):
+        """Expose composed controller operations through the stable coordinator API."""
+        for attribute in (
+            "position_controller",
+            "calibration_controller",
+            "event_controller",
+            "administration_controller",
+        ):
+            controller = self.__dict__.get(attribute)
+            if controller is not None and controller_defines(controller, name):
+                return getattr(controller, name)
+        raise AttributeError(
+            f"{type(self).__name__!s} has no attribute {name!r}"
+        )
+
+    @property
+    def active_connection_route(self) -> str:
+        """Return the route currently carrying protocol traffic."""
+        return self.connection_health.active.value
+
+    @property
+    def local_connection_state(self) -> str:
+        """Return current LAN route reachability."""
+        return self.connection_health.local.value
+
+    @property
+    def cloud_connection_state(self) -> str:
+        """Return current Nice relay route reachability."""
+        return self.connection_health.cloud.value
+
+    def _set_connection_state(
+        self,
+        state: str,
+        *,
+        route: NiceConnectionRoute | None = None,
+    ) -> None:
+        """Update legacy and per-route connection state together."""
+        self.connection_state = state
+        if route is None:
+            route = getattr(
+                self.client,
+                "active_route",
+                NiceConnectionRoute.LOCAL,
+            )
+        if route is not NiceConnectionRoute.NONE:
+            self.connection_health.mark_overall_state(state, route=route)
 
     async def _async_update_data(self) -> NiceBidiStatus:
         """Fetch state from the BiDi."""
+        self.event_controller.ensure_registered()
         try:
             if self.connection_state == CONNECTION_STATE_FAILED:
-                self.connection_state = CONNECTION_STATE_RECONNECTING
+                self._set_connection_state(CONNECTION_STATE_RECONNECTING)
             status = await self.hass.async_add_executor_job(self._read_status_and_maybe_info)
         except NiceBidiAuthError as err:
             self.client.close()
-            self.connection_state = CONNECTION_STATE_AUTH_FAILED
+            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise ConfigEntryAuthFailed(str(err)) from err
         except (NiceBidiConnectionError, OSError) as err:
             self.client.close()
-            self.connection_state = CONNECTION_STATE_FAILED
+            self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             self.update_interval = ERROR_UPDATE_INTERVAL
             self._clear_position_simulation()
@@ -190,18 +268,19 @@ class NiceBidiDataUpdateCoordinator(
 
         status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
+        self.event_controller.mark_connected()
         return status
 
     def _read_status_and_maybe_info(self) -> NiceBidiStatus:
         """Read dynamic status and cache static device info."""
         if not self.status_polling_supported:
             if self.device_info is None:
-                self.device_info = self.client.read_info()
+                self._store_device_info(self.client.read_info())
             return _unknown_status()
 
         if self._use_nhk_status:
             if self.device_info is None:
-                self.device_info = self.client.read_info()
+                self._store_device_info(self.client.read_info())
             return self.client.read_nhk_status()
 
         try:
@@ -211,7 +290,8 @@ class NiceBidiDataUpdateCoordinator(
             if nice_bidi_error_code(err) != "14":
                 raise
             try:
-                self.device_info = self.device_info or self.client.read_info()
+                if self.device_info is None:
+                    self._store_device_info(self.client.read_info())
             except NiceBidiError:
                 raise err from None
             if self._supports_nhk_status():
@@ -237,10 +317,32 @@ class NiceBidiDataUpdateCoordinator(
             status = self._merge_cached_extended_status(status)
         if self.device_info is None:
             try:
-                self.device_info = self.client.read_info()
+                self._store_device_info(self.client.read_info())
             except NiceBidiError as err:
                 _LOGGER.debug("Could not read Nice INFO metadata: %s", err)
         return status
+
+    def _store_device_info(self, device_info: NiceBidiDeviceInfo) -> None:
+        """Store INFO metadata and its normalized capability view together."""
+        self.device_info = device_info
+        self.capabilities = self._with_route_capabilities(
+            self._capability_service.discover(
+                device_info,
+                status=self.data,
+                previous=self.capabilities,
+            )
+        )
+
+    def _with_route_capabilities(
+        self,
+        capabilities: NiceCapabilities,
+    ) -> NiceCapabilities:
+        """Record which transports this entry is configured to use."""
+        return replace(
+            capabilities,
+            local_available=self.entry_config.connection.local is not None,
+            relay_available=self.entry_config.connection.relay is not None,
+        )
 
     def _should_read_extended_status(self) -> bool:
         """Return true when the slower BusT4 diagnostic scan is due."""
@@ -266,55 +368,76 @@ class NiceBidiDataUpdateCoordinator(
 
     def _supports_high_level_actions(self) -> bool:
         """Return true when INFO advertises writable DoorAction support."""
-        if self.device_info is None:
-            return False
-        device_id = str(self.config_entry.data.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID))
-        for service in self.device_info.services:
-            if service.name != "DoorAction":
-                continue
-            if service.owner != "Device" or service.owner_id not in {None, device_id}:
-                continue
-            if "w" in (service.permission or ""):
-                return True
-        return False
+        return bool(self.capabilities and self.capabilities.high_level_actions)
 
     def _supports_nhk_status(self) -> bool:
         """Return true when INFO advertises readable NHK status properties."""
-        if self.device_info is None:
-            return False
-        return device_info_supports_nhk_status(
-            self.device_info,
-            self.config_entry.data.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID),
-        )
+        return bool(self.capabilities and self.capabilities.readable_status)
 
     def _store_successful_status(self, status: NiceBidiStatus) -> None:
         """Store successful status read metadata."""
-        self.connection_state = CONNECTION_STATE_CONNECTED
+        if self.device_info is not None:
+            self.capabilities = self._with_route_capabilities(
+                self._capability_service.discover(
+                    self.device_info,
+                    status=status,
+                    previous=self.capabilities,
+                )
+            )
+        self._set_connection_state(CONNECTION_STATE_CONNECTED)
         self.last_error = None
         self.last_successful_update = datetime.now(UTC)
         if status.position is not None:
+            self._position_reporting_observed = True
             self._last_known_position = status.position
         self.update_interval = self._update_interval_for_status(status)
         self._sync_position_simulation_from_status(status)
 
-    async def _async_cancel_background_tasks(self, *, stop_calibration: bool = True) -> None:
+    async def _async_cancel_background_tasks(
+        self,
+        *,
+        calibration_reason: str,
+        stop_calibration: bool = True,
+    ) -> None:
         """Cancel background tasks owned by this coordinator."""
         await self._async_cancel_position_target()
         await self._async_cancel_post_command_refresh()
         await self._async_cancel_position_simulation()
-        await self._async_cancel_calibration(stop=stop_calibration)
+        await self._async_cancel_calibration(
+            reason=calibration_reason,
+            stop=stop_calibration,
+        )
 
     async def async_send_action(self, action: str) -> None:
         """Send an open, close, or stop command."""
         await self._async_cancel_position_target()
-        await self._async_cancel_calibration(stop=action != "stop")
+        await self._async_cancel_calibration(
+            reason=f"cover_action:{action}",
+            stop=action != "stop",
+        )
         await self._async_send_action(action)
 
     async def async_send_dep_action(self, action: str) -> None:
         """Send a low-level DEP action command."""
+        if not self.t4_action_supported(action):
+            raise HomeAssistantError(
+                f"Nice T4 action {action!r} is not advertised by this device"
+            )
         await self._async_cancel_position_target()
-        await self._async_cancel_calibration()
+        await self._async_cancel_calibration(reason=f"dep_action:{action}")
         await self._async_send_dep_action(action)
+
+    def t4_action_supported(self, action: str) -> bool:
+        """Return whether a reviewed action is safe to offer and execute."""
+        definition = T4_ACTION_BY_KEY.get(action)
+        if definition is None:
+            return False
+        if self.capabilities is None:
+            return definition.compatibility_entity
+        advertised = self.capabilities.supports_t4_action(definition.code)
+        if advertised is None:
+            return definition.compatibility_entity
+        return advertised
 
     async def async_write_dmp_register(
         self,
@@ -325,11 +448,40 @@ class NiceBidiDataUpdateCoordinator(
         size: int = 1,
     ) -> None:
         """Write a BusT4/DMP register and refresh extended status."""
+        block_reason = dmp_write_block_reason(self.device_info, group, parameter)
+        if block_reason is not None:
+            raise HomeAssistantError(f"Nice DMP write is disabled for this controller: {block_reason}")
         if self.data is not None and self.data.is_moving:
             raise HomeAssistantError("Nice DMP writes are blocked while the gate is moving")
         await self._async_cancel_position_target()
-        await self._async_cancel_calibration()
+        await self._async_cancel_calibration(
+            reason=f"config_write:{group:02X}/{parameter:02X}"
+        )
         await self._async_write_dmp_register(group, parameter, value, size=size)
+
+    async def async_write_setting(
+        self,
+        setting: DmpSetting,
+        value: int,
+    ) -> None:
+        """Write one reviewed semantic DMP setting."""
+        await self.async_write_dmp_register(
+            setting.group,
+            setting.parameter,
+            value,
+            size=setting.size,
+        )
+
+    def setting_write_block_reason(
+        self,
+        setting: DmpSetting,
+    ) -> str | None:
+        """Return a device-specific block reason for a reviewed setting."""
+        return dmp_write_block_reason(
+            self.device_info,
+            setting.group,
+            setting.parameter,
+        )
 
     async def _async_send_action(
         self,
@@ -341,28 +493,31 @@ class NiceBidiDataUpdateCoordinator(
     ) -> None:
         """Send an open, close, or stop command without touching target watchers."""
         started = time.monotonic()
+        command = NiceCommand(key=action, kind=CommandKind.DOOR_ACTION)
         stop_started_from_motion = action == "stop" and (
             self._position_simulation_action is not None
             or (self.data is not None and self.data.is_moving)
         )
+        stop_display_position = self.display_position if stop_started_from_motion else None
         try:
             await self.hass.async_add_executor_job(self.client.send_action, action)
         except NiceBidiAuthError as err:
+            self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_AUTH_FAILED
+            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise HomeAssistantError(f"Nice authentication failed: {err}") from err
         except (NiceBidiConnectionError, OSError) as err:
+            self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_FAILED
+            self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise HomeAssistantError(f"Nice command failed: {err}") from err
 
-        self.connection_state = CONNECTION_STATE_CONNECTED
-        self.last_command = action
-        self.last_command_latency_ms = round((time.monotonic() - started) * 1000)
+        self._set_connection_state(CONNECTION_STATE_CONNECTED)
+        self._store_accepted_command(command, started)
         self.last_error = None
         self._extend_post_command_fast_poll_window()
         if action == "stop":
@@ -375,6 +530,8 @@ class NiceBidiDataUpdateCoordinator(
         if action in {"open", "close"} and simulate:
             self._start_position_simulation(action, target_position=simulation_target_position)
         elif action == "stop":
+            if stop_display_position is not None:
+                self._last_known_position = max(0.0, min(100.0, stop_display_position))
             self._clear_position_simulation()
         if refresh:
             self._schedule_post_command_refresh()
@@ -382,35 +539,64 @@ class NiceBidiDataUpdateCoordinator(
 
     async def _async_send_dep_action(self, action: str, *, refresh: bool = True) -> None:
         """Send a low-level DEP action command."""
+        if not self.t4_action_supported(action):
+            raise HomeAssistantError(
+                f"Nice T4 action {action!r} is not advertised by this device"
+            )
         started = time.monotonic()
+        command = NiceCommand(key=action, kind=CommandKind.T4_ACTION)
         try:
             await self.hass.async_add_executor_job(self.client.send_dep_action, action)
         except NiceBidiAuthError as err:
+            self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_AUTH_FAILED
+            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise HomeAssistantError(f"Nice authentication failed: {err}") from err
         except (NiceBidiConnectionError, OSError) as err:
+            self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_FAILED
+            self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise HomeAssistantError(f"Nice command failed: {err}") from err
 
-        self.connection_state = CONNECTION_STATE_CONNECTED
-        self.last_command = action
-        self.last_command_latency_ms = round((time.monotonic() - started) * 1000)
+        self._set_connection_state(CONNECTION_STATE_CONNECTED)
+        self._store_accepted_command(command, started)
         self.last_error = None
         self._extend_post_command_fast_poll_window()
         if action in DEP_MOVEMENT_ACTIONS:
             self._recent_stop_command_monotonic = None
             self._recent_stop_started_from_motion = False
         self.update_interval = MOVING_UPDATE_INTERVAL
-        self._clear_position_simulation()
+        if action in DEP_PARTIAL_OPEN_ACTIONS:
+            self._start_position_simulation(
+                "open",
+                target_position=self._partial_open_target_position(action),
+            )
+        else:
+            self._clear_position_simulation()
         if refresh:
             self._schedule_post_command_refresh()
             await self.async_request_refresh()
+
+    def _partial_open_target_position(self, action: str) -> float | None:
+        """Return a configured partial-open target as percent when available."""
+        status = self.data
+        if status is None:
+            return None
+        raw_by_action = {
+            DEP_ACTION_PARTIAL_OPEN_1: status.partial_open_1_position,
+            DEP_ACTION_PARTIAL_OPEN_2: status.partial_open_2_position,
+            DEP_ACTION_PARTIAL_OPEN_3: status.partial_open_3_position,
+        }
+        raw = raw_by_action.get(action)
+        if raw is None or status.closed_position is None or status.open_position is None:
+            return None
+        if status.closed_position == status.open_position:
+            return None
+        return self._percent_for_raw(status, raw)
 
     async def _async_write_dmp_register(
         self,
@@ -424,24 +610,35 @@ class NiceBidiDataUpdateCoordinator(
         """Write a BusT4/DMP register without touching target watchers."""
         command_name = f"dmp_{group:02X}_{parameter:02X}_set"
         started = time.monotonic()
+        command = NiceCommand(
+            key=command_name,
+            kind=CommandKind.DMP_WRITE,
+            arguments=(
+                ("group", group),
+                ("parameter", parameter),
+                ("value", value),
+                ("size", size),
+            ),
+        )
         try:
             await self.hass.async_add_executor_job(
                 lambda: self.client.write_dmp_register(group, parameter, value, size=size)
             )
         except NiceBidiAuthError as err:
+            self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_AUTH_FAILED
+            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             raise HomeAssistantError(f"Nice authentication failed: {err}") from err
         except (NiceBidiConnectionError, OSError, ValueError) as err:
+            self._store_failed_command(command, started, err)
             self.client.close()
-            self.connection_state = CONNECTION_STATE_FAILED
+            self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             raise HomeAssistantError(f"Nice DMP write failed: {err}") from err
 
-        self.connection_state = CONNECTION_STATE_CONNECTED
-        self.last_command = command_name
-        self.last_command_latency_ms = round((time.monotonic() - started) * 1000)
+        self._set_connection_state(CONNECTION_STATE_CONNECTED)
+        self._store_accepted_command(command, started)
         self.last_error = None
         self._extend_post_command_fast_poll_window()
         self.update_interval = MOVING_UPDATE_INTERVAL
@@ -449,14 +646,45 @@ class NiceBidiDataUpdateCoordinator(
         if refresh:
             await self.async_request_refresh()
 
+    def _store_accepted_command(
+        self,
+        command: NiceCommand,
+        started: float,
+    ) -> None:
+        """Store a successful normalized acknowledgement and compatibility fields."""
+        result = NiceCommandResult(
+            command=command,
+            acknowledgement=CommandAcknowledgement.ACCEPTED,
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
+        self.last_command_result = result
+        self.last_command = command.key
+        self.last_command_latency_ms = result.latency_ms
+
+    def _store_failed_command(
+        self,
+        command: NiceCommand,
+        started: float,
+        error: Exception,
+    ) -> None:
+        """Store a rejected normalized acknowledgement."""
+        self.last_command_result = NiceCommandResult(
+            command=command,
+            acknowledgement=CommandAcknowledgement.REJECTED,
+            latency_ms=round((time.monotonic() - started) * 1000),
+            error_code=nice_bidi_error_code(error),
+        )
+
     async def async_reconnect(self) -> None:
         """Force the current NHK/TLS session to be recreated."""
-        await self._async_cancel_background_tasks()
-        self.connection_state = CONNECTION_STATE_RECONNECTING
+        await self._async_cancel_background_tasks(calibration_reason="reconnect")
+        self.event_controller.mark_reconnecting()
+        self._set_connection_state(CONNECTION_STATE_RECONNECTING)
         await self.hass.async_add_executor_job(self.client.close)
         await self.async_request_refresh()
 
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
-        await self._async_cancel_background_tasks()
+        await self._async_cancel_background_tasks(calibration_reason="shutdown")
+        self.event_controller.shutdown()
         await self.hass.async_add_executor_job(self.client.close)

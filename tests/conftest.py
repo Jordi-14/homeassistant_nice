@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import deque
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -26,6 +28,13 @@ from custom_components.nice_bidiwifi.const import (
     CONF_T4_TIMEOUT_MS,
     CONF_TARGET_MAC,
 )
+from custom_components.nice_bidiwifi.models.administration import (
+    NiceGroupSnapshot,
+    NiceInterfaceClock,
+    NiceLogSnapshot,
+)
+from custom_components.nice_bidiwifi.protocol.t4.settings import DmpSetting
+from custom_components.nice_bidiwifi.write_policy import dmp_write_block_reason
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +62,9 @@ def config_entry_data(**overrides: Any) -> dict[str, Any]:
 
 def config_entry(entry_id: str = "entry-1", **overrides: Any) -> SimpleNamespace:
     """Return a minimal config entry-like object for direct entity tests."""
-    return SimpleNamespace(entry_id=entry_id, data=config_entry_data(**overrides), runtime_data=None)
+    return SimpleNamespace(
+        entry_id=entry_id, data=config_entry_data(**overrides), runtime_data=None
+    )
 
 
 def make_status(
@@ -90,11 +101,15 @@ def make_status(
     pre_flash: bool | None = False,
     key_lock: bool | None = False,
     last_stop_reason: str | None = "obstacle_by_encoder",
-    diagnostics_parameters: str | None = "00 00 00 bc 00 bc 00 00 00 20 00 00 00 00 00 33 00 00 00 00 00 00 00 00 00 00 00 00",
+    diagnostics_parameters: str
+    | None = "00 00 00 bc 00 bc 00 00 00 20 00 00 00 00 00 33 00 00 00 00 00 00 00 00 00 00 00 00",
     oxi_detected: bool | None = True,
     oxi_product: str | None = "OXI",
 ) -> NiceBidiStatus:
     """Create a Nice status object."""
+    diagnostic_bytes = (
+        bytes.fromhex(diagnostics_parameters) if diagnostics_parameters else b""
+    )
     return NiceBidiStatus(
         state=state,
         position=position,
@@ -130,6 +145,10 @@ def make_status(
         key_lock=key_lock,
         last_stop_reason=last_stop_reason,
         diagnostics_parameters=diagnostics_parameters,
+        motor_temperature=(
+            diagnostic_bytes[15] - 9 if len(diagnostic_bytes) > 15 else None
+        ),
+        service_voltage=(diagnostic_bytes[9] if len(diagnostic_bytes) > 9 else None),
         oxi_detected=oxi_detected,
         oxi_product=oxi_product,
     )
@@ -181,6 +200,11 @@ def make_device_info(
         device_fw_version="FG01h",
         device_serial="0E6809FF",
         device_product_detail=device_product_detail,
+        interface_name="Parking interface",
+        interface_date="2026-05-28T12:00:00Z",
+        interface_zone="+01:00",
+        interface_dst="+01:00",
+        interface_commands=("Reboot",),
         services=(
             NiceBidiServiceCapability(
                 owner="Device",
@@ -206,7 +230,9 @@ class FakeClient:
         self.actions: list[str] = []
         self.dep_actions: list[str] = []
         self.closed = False
-        self.read_status_result = make_status(state="open", position=100.0, current_position=1000)
+        self.read_status_result = make_status(
+            state="open", position=100.0, current_position=1000
+        )
         self.read_nhk_status_result = make_status(
             state="open",
             position=None,
@@ -221,10 +247,62 @@ class FakeClient:
         self.send_action_error: Exception | None = None
         self.send_dep_action_error: Exception | None = None
         self.write_dmp_register_error: Exception | None = None
+        self.read_logs_result = NiceLogSnapshot(events=())
+        self.read_groups_result = NiceGroupSnapshot(groups=())
+        self.read_logs_error: Exception | None = None
+        self.read_groups_error: Exception | None = None
+        self.update_interface_name_error: Exception | None = None
+        self.update_interface_clock_error: Exception | None = None
+        self.reboot_interface_error: Exception | None = None
+        self.updated_interface_names: list[str] = []
+        self.updated_interface_clocks: list[NiceInterfaceClock] = []
+        self.interface_reboots = 0
         self.info_reads = 0
         self.nhk_status_reads = 0
         self.read_status_include_extended: list[bool] = []
         self.dmp_writes: list[tuple[int, int, int, int]] = []
+        self.event_callbacks: list = []
+        self.event_failure_callbacks: list = []
+
+    def add_event_callback(self, callback):
+        """Register an unsolicited frame callback."""
+        self.event_callbacks.append(callback)
+
+        def remove() -> None:
+            if callback in self.event_callbacks:
+                self.event_callbacks.remove(callback)
+
+        return remove
+
+    def add_event_failure_callback(self, callback):
+        """Register a reader failure callback."""
+        self.event_failure_callbacks.append(callback)
+
+        def remove() -> None:
+            if callback in self.event_failure_callbacks:
+                self.event_failure_callbacks.remove(callback)
+
+        return remove
+
+    def emit_event(self, frame: bytes) -> None:
+        """Publish an unsolicited frame."""
+        for callback in tuple(self.event_callbacks):
+            callback(frame)
+
+    def fail_event_stream(self, error: Exception) -> None:
+        """Publish a reader failure."""
+        for callback in tuple(self.event_failure_callbacks):
+            callback(error)
+
+    @property
+    def event_stream_active(self) -> bool:
+        """Return whether the fake has an event callback."""
+        return bool(self.event_callbacks)
+
+    @property
+    def event_stream_error(self) -> str | None:
+        """Return no persistent fake error."""
+        return None
 
     def read_status(self, *, include_extended: bool = False) -> NiceBidiStatus:
         """Return status or raise a configured error."""
@@ -253,13 +331,55 @@ class FakeClient:
             raise self.send_action_error
         self.actions.append(action)
 
+    def read_logs(self) -> NiceLogSnapshot:
+        """Return a bounded log snapshot or raise a configured error."""
+        if self.read_logs_error is not None:
+            raise self.read_logs_error
+        return self.read_logs_result
+
+    def read_groups(self) -> NiceGroupSnapshot:
+        """Return a group snapshot or raise a configured error."""
+        if self.read_groups_error is not None:
+            raise self.read_groups_error
+        return self.read_groups_result
+
+    def update_interface_name(self, name: str) -> None:
+        """Record a name update and expose it to the INFO round trip."""
+        if self.update_interface_name_error is not None:
+            raise self.update_interface_name_error
+        self.updated_interface_names.append(name)
+        self.read_info_result = replace(
+            self.read_info_result,
+            interface_name=name,
+        )
+
+    def update_interface_clock(self, clock: NiceInterfaceClock) -> None:
+        """Record a clock update and expose it to the INFO round trip."""
+        if self.update_interface_clock_error is not None:
+            raise self.update_interface_clock_error
+        self.updated_interface_clocks.append(clock)
+        self.read_info_result = replace(
+            self.read_info_result,
+            interface_date=clock.date,
+            interface_zone=clock.zone,
+            interface_dst=clock.dst,
+        )
+
+    def reboot_interface(self) -> None:
+        """Record an interface reboot request."""
+        if self.reboot_interface_error is not None:
+            raise self.reboot_interface_error
+        self.interface_reboots += 1
+
     def send_dep_action(self, action: str) -> None:
         """Record a DEP command or raise a configured error."""
         if self.send_dep_action_error is not None:
             raise self.send_dep_action_error
         self.dep_actions.append(action)
 
-    def write_dmp_register(self, group: int, parameter: int, value: int, *, size: int = 1) -> None:
+    def write_dmp_register(
+        self, group: int, parameter: int, value: int, *, size: int = 1
+    ) -> None:
         """Record a DMP write or raise a configured error."""
         if self.write_dmp_register_error is not None:
             raise self.write_dmp_register_error
@@ -276,9 +396,13 @@ class FakeCoordinator:
     def __init__(self) -> None:
         self.data = make_status()
         self.device_info = make_device_info()
+        self.capabilities = None
         self.status_polling_supported = True
         self.last_update_success = True
         self.connection_state = "connected"
+        self.active_connection_route = "local"
+        self.local_connection_state = "connected"
+        self.cloud_connection_state = "not_configured"
         self.last_successful_update = datetime(2026, 5, 28, tzinfo=UTC)
         self.last_error = None
         self.client = FakeClient()
@@ -287,20 +411,51 @@ class FakeCoordinator:
         self.calibration_state = "calibrated"
         self.calibration_updated_at = datetime(2026, 5, 27, tzinfo=UTC)
         self.calibration_last_error = None
+        self.calibration_cancel_reason = None
+        self.calibration_cancel_stop_requested = False
+        self.calibration_cancel_stop_sent = False
         self.calibration_quality = "good"
         self.calibration_report_summary = "good: 8/8 repeatable targets"
         self.calibration_report_attributes = {"quality": "good", "point_count": 8}
+        self.supported_t4_actions: set[str] | None = None
         self.calls: list[tuple[str, object | None]] = []
+        self.event_stream_state = "active"
+        self.event_stream_error = None
+        self.latest_event = None
+        self.event_sequence = 0
+        self.protocol_event_count = 0
+        self.malformed_protocol_event_count = 0
+        self.last_event_at = None
+        self.last_event_cause = None
+        self.basic_diagnostic_code = None
+        self.advanced_diagnostic_code = None
+        self.bluebus_error_status = None
+        self.manoeuvre_average_current = None
+        self.last_reset_cause = None
+        self.last_reset_device_class = None
+        self.event_battery_level = None
+        self.event_battery_device_type = None
+        self.event_history = deque(maxlen=32)
+        self.interface_log_snapshot = None
+        self.access_group_snapshot = None
+        self.last_administration_operation = None
 
     @property
     def display_position(self) -> float | None:
         """Return the displayed cover position."""
-        return self.data.position if self.data and self.data.position is not None else None
+        return (
+            self.data.position if self.data and self.data.position is not None else None
+        )
 
     @property
     def display_position_estimated(self) -> bool:
         """Return whether the displayed position is estimated."""
         return False
+
+    @property
+    def position_reporting_observed(self) -> bool:
+        """Return whether the fake controller reports numeric position."""
+        return self.data is not None and self.data.position is not None
 
     @property
     def position_simulation_action(self) -> str | None:
@@ -311,6 +466,21 @@ class FakeCoordinator:
     def position_simulation_speed_percent_per_second(self) -> float | None:
         """Return active simulated movement speed."""
         return None
+
+    @property
+    def state_source(self) -> str:
+        """Return fake state provenance."""
+        return "dmp_04_01"
+
+    @property
+    def position_source(self) -> str:
+        """Return fake position provenance."""
+        return "dmp_encoder"
+
+    @property
+    def position_confidence(self) -> str:
+        """Return fake position confidence."""
+        return "measured"
 
     def async_add_listener(self, update_callback, context=None):
         """Return a no-op listener remover for registered CoordinatorEntity tests."""
@@ -323,6 +493,20 @@ class FakeCoordinator:
     async def async_send_dep_action(self, action: str) -> None:
         """Record a DEP action."""
         self.calls.append(("dep_action", action))
+
+    def t4_action_supported(self, action: str) -> bool:
+        """Return configurable action support for entity tests."""
+        return self.supported_t4_actions is None or action in self.supported_t4_actions
+
+    def administration_capability(self, capability: str) -> bool:
+        """Return shared Wi-Fi administration support for entity tests."""
+        return capability in {
+            "logs",
+            "groups",
+            "interface_name_write",
+            "time_sync",
+            "reboot",
+        }
 
     async def async_set_position(self, position: int) -> None:
         """Record a set-position request."""
@@ -340,6 +524,26 @@ class FakeCoordinator:
         """Record a calibration request."""
         self.calls.append(("calibrate", None))
 
+    async def async_refresh_interface_logs(self) -> None:
+        """Record a bounded log refresh."""
+        self.calls.append(("refresh_logs", None))
+
+    async def async_refresh_access_groups(self) -> None:
+        """Record a group refresh."""
+        self.calls.append(("refresh_groups", None))
+
+    async def async_sync_interface_time(self) -> None:
+        """Record a clock synchronization."""
+        self.calls.append(("sync_time", None))
+
+    async def async_reboot_interface(self) -> None:
+        """Record an interface reboot."""
+        self.calls.append(("reboot_interface", None))
+
+    async def async_update_interface_name(self, name: str) -> None:
+        """Record an interface-name update."""
+        self.calls.append(("interface_name", name))
+
     async def async_write_dmp_register(
         self,
         group: int,
@@ -350,3 +554,27 @@ class FakeCoordinator:
     ) -> None:
         """Record a DMP write."""
         self.calls.append(("dmp_write", (group, parameter, value, size)))
+
+    async def async_write_setting(
+        self,
+        setting: DmpSetting,
+        value: int,
+    ) -> None:
+        """Record a semantic DMP setting write."""
+        await self.async_write_dmp_register(
+            setting.group,
+            setting.parameter,
+            value,
+            size=setting.size,
+        )
+
+    def setting_write_block_reason(
+        self,
+        setting: DmpSetting,
+    ) -> str | None:
+        """Return the production device-specific setting block reason."""
+        return dmp_write_block_reason(
+            self.device_info,
+            setting.group,
+            setting.parameter,
+        )
