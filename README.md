@@ -17,7 +17,7 @@ certificate and hostname verification are disabled for those NHK connections.
 Local mode also relies on LAN isolation; both routes require the per-device NHK
 credentials.
 
-Latest stable release: `v0.7.5`
+Latest stable release: `v0.8.0`
 
 ## Documentation
 
@@ -144,8 +144,8 @@ Known working setup:
 This integration was originally tested with BiDi-WiFi devices and depends on the
 local NHK/T4/DMP protocol surface, which is not publicly documented by Nice.
 Some devices reporting `interface_product: CU_WIFI` expose enough of the same
-local NHK/T4 command surface for open, stop, and close. Newer beta builds also
-include experimental CU_WIFI status support from live NHK and T4 events, but
+local NHK/T4 command surface for open, stop, and close. Version `0.8.0` also
+includes CU_WIFI status support from live NHK and T4 events, but
 CU_WIFI position may be coarser and less frequent than the encoder-derived DMP
 position available on the originally tested BiDi-WiFi setup.
 
