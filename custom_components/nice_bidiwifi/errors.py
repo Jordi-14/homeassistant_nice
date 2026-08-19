@@ -5,6 +5,10 @@ from __future__ import annotations
 import re
 
 
+DMP_STATUS_NHK_FALLBACK_ERROR_CODES = frozenset({"5", "14"})
+DMP_STATUS_COMMAND_ONLY_ERROR_CODES = frozenset({"14"})
+
+
 class NiceBidiError(Exception):
     """Base error for Nice operations."""
 

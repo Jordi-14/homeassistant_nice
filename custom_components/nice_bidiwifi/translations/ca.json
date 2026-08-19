@@ -47,7 +47,8 @@
           "relay_host": "Nom d'amfitrió del relé Nice",
           "relay_port": "Port del relé Nice",
           "device_id": "ID del dispositiu",
-          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons"
+          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons",
+          "legacy_local_tls": "Compatibilitat TLS local per a dispositius antics"
         },
         "data_description": {
           "name": "Nom visible d'aquesta porta a Home Assistant.",
@@ -56,7 +57,8 @@
           "relay_host": "Nom d'amfitrió del relé d'Internet. TLS xifra el trànsit, però la verificació del certificat i del nom d'amfitrió està desactivada perquè el relé Nice utilitza un certificat autosignat.",
           "relay_port": "Port TLS del relé d'Internet. El valor predeterminat és 7890.",
           "device_id": "ID de dispositiu NHK que es vol controlar. Mantén 1 excepte si estàs diagnosticant un altre dispositiu.",
-          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons."
+          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons.",
+          "legacy_local_tls": "Activa-ho només per a una interfície local antiga que no pugui completar la connexió TLS normal. No afecta les connexions al núvol."
         }
       },
       "local": {
@@ -80,7 +82,7 @@
           "target_mac": "Adreça MAC de la interfície extreta de les credencials de MyNice.",
           "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
-          "advanced": "Configura l'ID d'origen/controlador, el port, l'ID del dispositiu o el temps d'espera T4."
+          "advanced": "Configura l'ID d'origen/controlador, el port, l'ID del dispositiu, el temps d'espera T4 o la compatibilitat TLS local per a dispositius antics."
         }
       },
       "local_advanced": {
@@ -90,13 +92,15 @@
           "source_id": "ID d'origen/controlador",
           "port": "Port",
           "device_id": "ID del dispositiu",
-          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons"
+          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons",
+          "legacy_local_tls": "Compatibilitat TLS local per a dispositius antics"
         },
         "data_description": {
           "source_id": "ID d'origen/controlador extret de les credencials de MyNice. Deixa'l buit per utilitzar el nom d'usuari.",
           "port": "Port TLS local de la interfície Nice. El valor predeterminat és 443.",
           "device_id": "ID de dispositiu NHK que es vol controlar. Mantén 1 excepte si estàs diagnosticant un altre dispositiu.",
-          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons."
+          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons.",
+          "legacy_local_tls": "Activa-ho només per a una interfície local antiga que no pugui completar la connexió TLS normal. La configuració TLS normal continua sent la predeterminada."
         }
       },
       "zeroconf_confirm": {
@@ -112,7 +116,7 @@
           "name": "Nom visible d'aquesta porta a Home Assistant.",
           "username": "Nom d'usuari NHK extret de les credencials de MyNice.",
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
-          "advanced": "Configura l'ID d'origen/controlador, el port, l'ID del dispositiu o el temps d'espera T4."
+          "advanced": "Configura l'ID d'origen/controlador, el port, l'ID del dispositiu, el temps d'espera T4 o la compatibilitat TLS local per a dispositius antics."
         }
       },
       "reauth_confirm": {
@@ -130,7 +134,8 @@
           "password": "Contrasenya NHK en hexadecimal",
           "source_id": "ID d'origen/controlador",
           "device_id": "ID del dispositiu",
-          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons"
+          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons",
+          "legacy_local_tls": "Compatibilitat TLS local per a dispositius antics"
         },
         "data_description": {
           "name": "Nom visible d'aquesta porta a Home Assistant.",
@@ -143,7 +148,8 @@
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
           "source_id": "ID d'origen/controlador extret de les credencials de MyNice. Deixa'l buit per utilitzar el nom d'usuari.",
           "device_id": "ID de dispositiu NHK que es vol controlar. Mantén 1 excepte si estàs diagnosticant un altre dispositiu.",
-          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons."
+          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons.",
+          "legacy_local_tls": "Activa-ho només per a una interfície local antiga que no pugui completar la connexió TLS normal. No afecta les connexions al núvol."
         }
       },
       "reconfigure": {
@@ -161,7 +167,8 @@
           "password": "Contrasenya NHK en hexadecimal",
           "source_id": "ID d'origen/controlador",
           "device_id": "ID del dispositiu",
-          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons"
+          "t4_timeout_ms": "Temps d'espera T4 en mil·lisegons",
+          "legacy_local_tls": "Compatibilitat TLS local per a dispositius antics"
         },
         "data_description": {
           "name": "Nom visible d'aquesta porta a Home Assistant.",
@@ -174,7 +181,8 @@
           "password": "Contrasenya NHK hexadecimal de 64 caràcters extreta de les credencials de MyNice.",
           "source_id": "ID d'origen/controlador extret de les credencials de MyNice. Deixa'l buit per utilitzar el nom d'usuari.",
           "device_id": "ID de dispositiu NHK que es vol controlar. Mantén 1 excepte si estàs diagnosticant un altre dispositiu.",
-          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons."
+          "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons.",
+          "legacy_local_tls": "Activa-ho només per a una interfície local antiga que no pugui completar la connexió TLS normal. No afecta les connexions al núvol."
         }
       }
     },

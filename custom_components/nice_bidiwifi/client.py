@@ -13,6 +13,7 @@ import time
 from typing import Any
 
 from .errors import (
+    DMP_STATUS_NHK_FALLBACK_ERROR_CODES,
     NiceAuthError as NiceBidiAuthError,
     NiceConnectionError as NiceBidiConnectionError,
     NiceError as NiceBidiError,
@@ -179,6 +180,21 @@ class NiceBidiClient:
             else None
         )
 
+    @property
+    def legacy_tls_active(self) -> bool:
+        """Return whether the connected transport uses legacy TLS compatibility."""
+        return bool(
+            self._transport
+            and getattr(self._transport, "legacy_compatibility", False)
+        )
+
+    @property
+    def tls_cipher_security_level(self) -> int | None:
+        """Return the configured OpenSSL cipher security level when known."""
+        if self._transport is None:
+            return None
+        return getattr(self._transport, "cipher_security_level", None)
+
     @_socket.setter
     def _socket(self, connected_socket: SocketLike | None) -> None:
         """Attach a socket through the framed transport compatibility boundary."""
@@ -344,7 +360,8 @@ class NiceBidiClient:
         try:
             return self.read_status()
         except NiceBidiConnectionError as err:
-            if nice_bidi_error_code(err) != "14":
+            error_code = nice_bidi_error_code(err)
+            if error_code not in DMP_STATUS_NHK_FALLBACK_ERROR_CODES:
                 raise
             info = self.read_info()
             if device_info_supports_nhk_status(info, self.device_id):
@@ -352,9 +369,12 @@ class NiceBidiClient:
                     return self.read_nhk_status()
                 except NiceBidiError:
                     _LOGGER.debug(
-                        "Nice NHK status validation failed after DMP Code 14",
+                        "Nice NHK status validation failed after DMP Code %s",
+                        error_code,
                         exc_info=True,
                     )
+            if error_code == "5":
+                raise err from None
             return NiceBidiStatus(
                 state=None,
                 position=None,

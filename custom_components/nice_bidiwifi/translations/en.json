@@ -47,7 +47,8 @@
           "relay_host": "Nice relay hostname",
           "relay_port": "Nice relay port",
           "device_id": "Device ID",
-          "t4_timeout_ms": "T4 timeout in milliseconds"
+          "t4_timeout_ms": "T4 timeout in milliseconds",
+          "legacy_local_tls": "Legacy local TLS compatibility"
         },
         "data_description": {
           "name": "Display name for this gate in Home Assistant.",
@@ -56,7 +57,8 @@
           "relay_host": "Internet relay hostname. TLS encrypts relay traffic, but certificate and hostname verification are disabled because the Nice relay uses a self-signed certificate.",
           "relay_port": "Internet relay TLS port. The default is 7890.",
           "device_id": "NHK device ID to control. Leave at 1 unless troubleshooting a different device.",
-          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
+          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds.",
+          "legacy_local_tls": "Enable only for an older local interface that cannot complete the normal TLS handshake. This does not affect cloud connections."
         }
       },
       "local": {
@@ -80,7 +82,7 @@
           "target_mac": "Interface MAC address from the extracted MyNice credentials.",
           "username": "NHK username from the extracted MyNice credentials.",
           "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
-          "advanced": "Configure the source/controller ID, port, device ID, or T4 timeout."
+          "advanced": "Configure the source/controller ID, port, device ID, T4 timeout, or legacy local TLS compatibility."
         }
       },
       "local_advanced": {
@@ -90,13 +92,15 @@
           "source_id": "Source/controller ID",
           "port": "Port",
           "device_id": "Device ID",
-          "t4_timeout_ms": "T4 timeout in milliseconds"
+          "t4_timeout_ms": "T4 timeout in milliseconds",
+          "legacy_local_tls": "Legacy local TLS compatibility"
         },
         "data_description": {
           "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
           "port": "Local Nice interface TLS port. The default is 443.",
           "device_id": "NHK device ID to control. Leave at 1 unless troubleshooting a different device.",
-          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
+          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds.",
+          "legacy_local_tls": "Enable only for an older local interface that cannot complete the normal TLS handshake. The normal TLS settings remain the default."
         }
       },
       "zeroconf_confirm": {
@@ -112,7 +116,7 @@
           "name": "Display name for this gate in Home Assistant.",
           "username": "NHK username from the extracted MyNice credentials.",
           "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
-          "advanced": "Configure the source/controller ID, port, device ID, or T4 timeout."
+          "advanced": "Configure the source/controller ID, port, device ID, T4 timeout, or legacy local TLS compatibility."
         }
       },
       "reauth_confirm": {
@@ -130,7 +134,8 @@
           "password": "NHK password hex",
           "source_id": "Source/controller ID",
           "device_id": "Device ID",
-          "t4_timeout_ms": "T4 timeout in milliseconds"
+          "t4_timeout_ms": "T4 timeout in milliseconds",
+          "legacy_local_tls": "Legacy local TLS compatibility"
         },
         "data_description": {
           "name": "Display name for this gate in Home Assistant.",
@@ -143,7 +148,8 @@
           "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
           "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
           "device_id": "NHK device ID to control. Leave at 1 unless troubleshooting a different device.",
-          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
+          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds.",
+          "legacy_local_tls": "Enable only for an older local interface that cannot complete the normal TLS handshake. This does not affect cloud connections."
         }
       },
       "reconfigure": {
@@ -161,7 +167,8 @@
           "password": "NHK password hex",
           "source_id": "Source/controller ID",
           "device_id": "Device ID",
-          "t4_timeout_ms": "T4 timeout in milliseconds"
+          "t4_timeout_ms": "T4 timeout in milliseconds",
+          "legacy_local_tls": "Legacy local TLS compatibility"
         },
         "data_description": {
           "name": "Display name for this gate in Home Assistant.",
@@ -174,7 +181,8 @@
           "password": "64-character hexadecimal NHK password from the extracted MyNice credentials.",
           "source_id": "Source/controller ID from the extracted MyNice credentials. Leave empty to use the username.",
           "device_id": "NHK device ID to control. Leave at 1 unless troubleshooting a different device.",
-          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds."
+          "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds.",
+          "legacy_local_tls": "Enable only for an older local interface that cannot complete the normal TLS handshake. This does not affect cloud connections."
         }
       }
     },

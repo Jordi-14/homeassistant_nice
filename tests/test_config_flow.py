@@ -37,6 +37,7 @@ from custom_components.nice_bidiwifi.const import (
     CONF_DISCOVERY_MODEL,
     CONF_DISCOVERY_PROTOCOL,
     CONF_DISCOVERY_STATUS_FLAG,
+    CONF_LEGACY_LOCAL_TLS,
     CONF_RELAY_HOST,
     CONF_RELAY_PORT,
     CONF_SOURCE_ID,
@@ -840,10 +841,17 @@ async def test_cloud_bootstrap_omits_already_configured_accessories(
     )
     entry.add_to_hass(hass)
     result = await _start_cloud_flow(hass)
-    with patch.object(
-        config_flow,
-        "_async_fetch_cloud_accessories",
-        return_value=_cloud_result(),
+    with (
+        patch.object(
+            config_flow,
+            "_async_fetch_cloud_accessories",
+            return_value=_cloud_result(),
+        ),
+        patch.object(config_flow, "NiceBidiClient", FakeClient),
+        patch(
+            "custom_components.nice_bidiwifi.async_setup_entry",
+            return_value=True,
+        ),
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -861,6 +869,71 @@ async def test_cloud_bootstrap_omits_already_configured_accessories(
     options = schema[config_flow.CONF_CLOUD_ACCESSORIES].config["options"]
     assert result["step_id"] == "cloud_accessories"
     assert options == [{"value": "0", "label": "Garage"}]
+
+
+async def test_cloud_bootstrap_does_not_count_ignored_discovery_as_configured(
+    hass: HomeAssistant,
+) -> None:
+    """An ignored discovery record can still be selected during manual import."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        source="ignore",
+        data={},
+        entry_id="ignored-entry",
+        unique_id="AA:BB:CC:DD:EE:FF",
+    )
+    entry.add_to_hass(hass)
+    result = await _start_cloud_flow(hass)
+    with (
+        patch.object(
+            config_flow,
+            "_async_fetch_cloud_accessories",
+            return_value=_cloud_result(),
+        ),
+        patch.object(config_flow, "NiceBidiClient", FakeClient),
+        patch(
+            "custom_components.nice_bidiwifi.async_setup_entry",
+            return_value=True,
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                config_flow.CONF_CLOUD_ACCOUNT: "account",
+                config_flow.CONF_CLOUD_ACCOUNT_PASSWORD: "password",
+                config_flow.CONF_CLOUD_CONFIRM: True,
+            },
+        )
+
+        schema = {
+            key.schema: value
+            for key, value in result["data_schema"].schema.items()
+        }
+        options = schema[config_flow.CONF_CLOUD_ACCESSORIES].config["options"]
+        assert result["step_id"] == "cloud_accessories"
+        assert options == [
+            {"value": "0", "label": "Driveway"},
+            {"value": "1", "label": "Garage"},
+        ]
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {config_flow.CONF_CLOUD_ACCESSORIES: ["0"]},
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Driveway",
+                CONF_HOST: "192.0.2.10",
+                CONF_PORT: 443,
+                CONF_DEVICE_ID: 1,
+                CONF_T4_TIMEOUT_MS: 200,
+            },
+        )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    entries = hass.config_entries.async_entries(DOMAIN, include_ignore=True)
+    assert len(entries) == 1
+    assert entries[0].source != "ignore"
 
 
 async def test_manual_setup_separates_normal_and_advanced_fields(
@@ -892,6 +965,7 @@ async def test_manual_setup_separates_normal_and_advanced_fields(
                 CONF_PORT: 8443,
                 CONF_DEVICE_ID: 2,
                 CONF_T4_TIMEOUT_MS: 350,
+                CONF_LEGACY_LOCAL_TLS: True,
             },
         )
 
@@ -905,11 +979,17 @@ async def test_manual_setup_separates_normal_and_advanced_fields(
         CONF_PORT,
         CONF_DEVICE_ID,
         CONF_T4_TIMEOUT_MS,
+        CONF_LEGACY_LOCAL_TLS,
     }
     assert result["data"][CONF_SOURCE_ID] == "controller"
     assert result["data"][CONF_PORT] == 8443
     assert result["data"][CONF_DEVICE_ID] == 2
     assert result["data"][CONF_T4_TIMEOUT_MS] == 350
+    assert result["data"][CONF_LEGACY_LOCAL_TLS] is True
+    assert (
+        FakeClient.instances[0].kwargs["transport_factory"]
+        == config_flow.LegacyLanTlsTransport.connect
+    )
 
 
 async def test_zeroconf_discovery_creates_local_entry(

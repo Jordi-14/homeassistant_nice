@@ -284,6 +284,17 @@ local** policy without changing their entities or enabling cloud traffic.
 - TLS EOF or temporary connection errors: close MyNice/MyNice Pro, wait a few
   seconds, then retry. The integration reconnects automatically after transient
   drops once configured.
+- TLS handshake failures on older local interfaces: enable **Legacy local TLS
+  compatibility** under the advanced local settings only when the normal local
+  connection fails. This option is off by default, applies only to the LAN
+  route, and is reported in diagnostics. It never changes cloud TLS behavior.
+- First movement delayed after a long idle period: the BusT4 **Standby setting**
+  is a controller configuration register, not a Home Assistant connection sleep
+  control. Before changing it, capture diagnostics immediately after one delayed
+  command and one prompt command. Compare `last_command_latency_ms`,
+  `reconnect_count`, the active route, and event-stream state; include those
+  diagnostics in the issue so transport delay can be separated from controller
+  wake-up or motor-start delay.
 
 For deeper setup diagnostics, temporarily enable debug logging:
 

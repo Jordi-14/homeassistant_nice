@@ -12,7 +12,11 @@ from custom_components.nice_bidiwifi.protocol.nhk.codec import frame_xml
 from custom_components.nice_bidiwifi.transport.dispatcher import (
     ResponseDispatcher,
 )
-from custom_components.nice_bidiwifi.transport.lan import SocketFrameTransport
+from custom_components.nice_bidiwifi.transport.lan import (
+    LegacyLanTlsTransport,
+    SocketFrameTransport,
+    make_local_tls_context,
+)
 from custom_components.nice_bidiwifi.transport.relay import make_relay_tls_context
 
 
@@ -232,3 +236,79 @@ def test_relay_tls_context_uses_encryption_without_peer_verification() -> None:
     assert context.verify_mode is ssl.CERT_NONE
     assert context.check_hostname is False
     assert context.minimum_version >= ssl.TLSVersion.TLSv1_2
+
+
+def test_legacy_local_tls_context_is_explicit_and_constrained() -> None:
+    """Legacy options are absent by default and bounded when explicitly enabled."""
+    standard = make_local_tls_context()
+    legacy = make_local_tls_context(
+        legacy_compatibility=True,
+        cipher_security_level=1,
+    )
+
+    assert standard.minimum_version is ssl.TLSVersion.TLSv1_2
+    assert standard.maximum_version is ssl.TLSVersion.TLSv1_2
+    assert legacy.options & ssl.OP_LEGACY_SERVER_CONNECT
+    assert legacy.security_level == 1
+
+
+def test_legacy_local_tls_relaxes_only_for_small_dh_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Security level 0 is retried only for OpenSSL's exact DH-key rejection."""
+    attempts: list[int | None] = []
+    connected = object()
+
+    def connect_once(
+        cls,
+        host,
+        port,
+        timeout,
+        context,
+        *,
+        legacy_compatibility=False,
+        cipher_security_level=None,
+    ):
+        attempts.append(cipher_security_level)
+        if cipher_security_level == 1:
+            raise ssl.SSLError("[SSL: DH_KEY_TOO_SMALL] dh key too small")
+        return connected
+
+    monkeypatch.setattr(
+        LegacyLanTlsTransport,
+        "_connect_with_context",
+        classmethod(connect_once),
+    )
+
+    assert LegacyLanTlsTransport.connect("192.0.2.10", 443, 10.0) is connected
+    assert attempts == [1, 0]
+
+
+def test_legacy_local_tls_does_not_relax_for_other_handshake_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unrelated TLS failures retain security level 1 and propagate."""
+    attempts: list[int | None] = []
+
+    def connect_once(
+        cls,
+        host,
+        port,
+        timeout,
+        context,
+        *,
+        legacy_compatibility=False,
+        cipher_security_level=None,
+    ):
+        attempts.append(cipher_security_level)
+        raise ssl.SSLError("certificate failure")
+
+    monkeypatch.setattr(
+        LegacyLanTlsTransport,
+        "_connect_with_context",
+        classmethod(connect_once),
+    )
+
+    with pytest.raises(ssl.SSLError, match="certificate failure"):
+        LegacyLanTlsTransport.connect("192.0.2.10", 443, 10.0)
+    assert attempts == [1]

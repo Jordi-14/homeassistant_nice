@@ -2,11 +2,17 @@
 
 from .base import FrameTransport
 from .dispatcher import ResponseDispatcher
-from .lan import LanTlsTransport, SocketFrameTransport, make_local_tls_context
+from .lan import (
+    LanTlsTransport,
+    LegacyLanTlsTransport,
+    SocketFrameTransport,
+    make_local_tls_context,
+)
 
 __all__ = [
     "FrameTransport",
     "LanTlsTransport",
+    "LegacyLanTlsTransport",
     "ResponseDispatcher",
     "SocketFrameTransport",
     "make_local_tls_context",

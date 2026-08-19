@@ -2194,6 +2194,9 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
 
     def _position_simulation_speed(self, action: str) -> float:
         """Return display animation speed in percent per second."""
+        observed_speed = self._observed_position_speed_percent_per_second.get(action)
+        if observed_speed is not None:
+            return observed_speed
         calibrated_speed = self._calibrated_travel_speed_percent_per_second(action)
         if calibrated_speed is None:
             return POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND

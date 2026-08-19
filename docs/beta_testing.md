@@ -74,6 +74,24 @@ Do not test force, speed, installer rules, binding, reset, firmware, or other
 high-risk writes unless the exact controller behavior and recovery procedure are
 already known.
 
+## 0.8.1 compatibility checklist
+
+- On IT4WIFI firmware that rejects the normal handshake, enable **Legacy local
+  TLS compatibility** and confirm diagnostics report the option active. Leave it
+  disabled on interfaces that connect normally.
+- If DMP status returns Code 5, confirm setup succeeds only when INFO advertises
+  readable `DoorStatus` and NHK status is actually returned.
+- Confirm a DEP action rejected with Code 5 becomes unavailable without hiding
+  unrelated action buttons. Do not repeat movement commands just to test this.
+- Confirm partial-open 2 and 3 remain available when their corresponding action
+  bits are advertised, even if their optional position registers are absent.
+- On a position-reporting gate, watch movement between sparse live updates and
+  confirm the displayed percentage advances at the observed travel speed without
+  large periodic jumps.
+- For a delayed first command after idle, capture diagnostics after the delayed
+  command and again after an immediate command. Do not change the BusT4 standby
+  setting solely as a connection workaround.
+
 ## Report a beta problem
 
 Include:

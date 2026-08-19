@@ -9,6 +9,7 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 
 from custom_components.nice_bidiwifi.const import (
     CONF_CONNECTION_MODE,
+    CONF_LEGACY_LOCAL_TLS,
     CONF_SOURCE_ID,
     CONF_TARGET_MAC,
 )
@@ -84,6 +85,12 @@ async def test_diagnostics_redacts_sensitive_data(hass) -> None:
         "hostname_verification": None,
         "compatibility_reason": None,
     }
+    assert diagnostics["connection"]["local_tls"] == {
+        "configured": True,
+        "legacy_compatibility_enabled": False,
+        "legacy_compatibility_active": False,
+        "cipher_security_level": None,
+    }
     assert diagnostics["device_info"]["interface_serial"] == "**REDACTED**"
     assert diagnostics["device_info"]["device_serial"] == "**REDACTED**"
     assert diagnostics["status"]["state"] == "opening"
@@ -134,4 +141,23 @@ async def test_diagnostics_reports_unverified_relay_tls(hass) -> None:
         "certificate_verification": False,
         "hostname_verification": False,
         "compatibility_reason": "nice_relay_unverifiable_certificate",
+    }
+
+
+async def test_diagnostics_reports_legacy_local_tls_opt_in(hass) -> None:
+    """Diagnostics make the local TLS compatibility choice explicit."""
+    coordinator = FakeCoordinator()
+    coordinator.client.local_tls_legacy_active = True
+    coordinator.client.local_tls_cipher_security_level = 0
+    entry = config_entry(**{CONF_LEGACY_LOCAL_TLS: True})
+    entry.runtime_data = coordinator
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diagnostics["entry"][CONF_LEGACY_LOCAL_TLS] is True
+    assert diagnostics["connection"]["local_tls"] == {
+        "configured": True,
+        "legacy_compatibility_enabled": True,
+        "legacy_compatibility_active": True,
+        "cipher_security_level": 0,
     }

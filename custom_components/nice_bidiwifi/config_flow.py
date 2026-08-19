@@ -8,7 +8,7 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry, ConfigFlow
+from homeassistant.config_entries import SOURCE_IGNORE, ConfigEntry, ConfigFlow
 from homeassistant.const import (
     CONF_HOST,
     CONF_NAME,
@@ -34,6 +34,7 @@ from .const import (
     CONFIG_ENTRY_VERSION,
     CONF_CONNECTION_MODE,
     CONF_DEVICE_ID,
+    CONF_LEGACY_LOCAL_TLS,
     CONF_DISCOVERY_MODEL,
     CONF_DISCOVERY_NAME,
     CONF_RELAY_HOST,
@@ -62,6 +63,7 @@ from .models.config import ConnectionMode, NiceEntryConfig
 from .models.discovery import NiceDiscoveryInfo, normalize_device_id
 from .redaction import configured_secrets, redact_text
 from .transport.relay import RelayTlsTransport
+from .transport.lan import LegacyLanTlsTransport
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -230,6 +232,12 @@ def _cloud_local_schema(
                 default=user_input.get(CONF_PORT, DEFAULT_PORT),
             )
         ] = _PORT_SELECTOR
+        fields[
+            vol.Optional(
+                CONF_LEGACY_LOCAL_TLS,
+                default=bool(user_input.get(CONF_LEGACY_LOCAL_TLS, False)),
+            )
+        ] = _ADVANCED_SELECTOR
     if mode is not ConnectionMode.LOCAL_ONLY:
         fields[
             vol.Required(
@@ -346,6 +354,10 @@ def _advanced_schema(
             CONF_PORT,
             default=user_input.get(CONF_PORT, DEFAULT_PORT),
         )] = _PORT_SELECTOR
+        fields[vol.Optional(
+            CONF_LEGACY_LOCAL_TLS,
+            default=bool(user_input.get(CONF_LEGACY_LOCAL_TLS, False)),
+        )] = _ADVANCED_SELECTOR
     return vol.Schema(fields)
 
 
@@ -411,6 +423,11 @@ def _schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
         CONF_RELAY_PORT,
         default=user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT),
     )] = _PORT_SELECTOR
+    if mode is not ConnectionMode.CLOUD_ONLY:
+        fields[vol.Optional(
+            CONF_LEGACY_LOCAL_TLS,
+            default=bool(user_input.get(CONF_LEGACY_LOCAL_TLS, False)),
+        )] = _ADVANCED_SELECTOR
     return vol.Schema(fields)
 
 
@@ -447,6 +464,8 @@ def _normalize_input(user_input: dict[str, Any]) -> dict[str, Any]:
         data[CONF_CONNECTION_MODE] = ConnectionMode(
             str(data[CONF_CONNECTION_MODE])
         ).value
+    if CONF_LEGACY_LOCAL_TLS in data:
+        data[CONF_LEGACY_LOCAL_TLS] = bool(data[CONF_LEGACY_LOCAL_TLS])
     data.pop(CONF_ADVANCED, None)
     return data
 
@@ -459,6 +478,9 @@ def _with_local_defaults(data: dict[str, Any]) -> dict[str, Any]:
     )
     if mode is not ConnectionMode.CLOUD_ONLY:
         normalized.setdefault(CONF_PORT, DEFAULT_PORT)
+        normalized.setdefault(CONF_LEGACY_LOCAL_TLS, False)
+    else:
+        normalized.pop(CONF_LEGACY_LOCAL_TLS, None)
     if mode is not ConnectionMode.LOCAL_ONLY:
         normalized.setdefault(CONF_RELAY_HOST, DEFAULT_RELAY_HOST)
         normalized.setdefault(CONF_RELAY_PORT, DEFAULT_RELAY_PORT)
@@ -487,6 +509,25 @@ def _configuration_url(host: str) -> str:
     return f"https://{host}"
 
 
+async def _async_remove_ignored_discovery_entry(
+    hass: HomeAssistant,
+    identity: str,
+) -> None:
+    """Replace an ignored discovery marker during an explicit manual import."""
+    for entry in hass.config_entries.async_entries(
+        DOMAIN,
+        include_ignore=True,
+    ):
+        if entry.source != SOURCE_IGNORE:
+            continue
+        entry_identity = normalize_device_id(
+            entry.unique_id
+            or str(entry.data.get(CONF_TARGET_MAC) or "")
+        )
+        if entry_identity == identity:
+            await hass.config_entries.async_remove(entry.entry_id)
+
+
 def _test_route(config: NiceEntryConfig, *, cloud: bool) -> None:
     endpoint = config.connection.relay if cloud else config.connection.local
     if endpoint is None:
@@ -497,6 +538,8 @@ def _test_route(config: NiceEntryConfig, *, cloud: bool) -> None:
             transport_factory=RelayTlsTransport.connect,
             route_name="cloud",
         )
+    elif config.legacy_local_tls:
+        kwargs["transport_factory"] = LegacyLanTlsTransport.connect
     client = NiceBidiClient(
         host=endpoint.host,
         port=endpoint.port,
@@ -685,8 +728,10 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                             or str(entry.data.get(CONF_TARGET_MAC) or "")
                         )
                         for entry in self.hass.config_entries.async_entries(
-                            DOMAIN
+                            DOMAIN,
+                            include_ignore=True,
                         )
+                        if entry.source != SOURCE_IGNORE
                     }
                     accessories = tuple(
                         accessory
@@ -800,6 +845,10 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 ),
             )
+            if state.mode is not ConnectionMode.CLOUD_ONLY:
+                data[CONF_LEGACY_LOCAL_TLS] = bool(
+                    user_input.get(CONF_LEGACY_LOCAL_TLS, False)
+                )
             data = _with_local_defaults(data)
             try:
                 await _async_validate_input(self.hass, data)
@@ -833,6 +882,10 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
 
         first = entries[0]
         first_identity = str(first[CONF_TARGET_MAC])
+        await _async_remove_ignored_discovery_entry(
+            self.hass,
+            first_identity,
+        )
         await self.async_set_unique_id(first_identity)
         self._abort_if_unique_id_configured()
 
@@ -870,6 +923,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
             NiceEntryConfig.from_mapping(data)
         except (TypeError, ValueError):
             return self.async_abort(reason="invalid_import")
+        await _async_remove_ignored_discovery_entry(self.hass, identity)
         await self.async_set_unique_id(identity)
         self._abort_if_unique_id_configured()
         return self.async_create_entry(

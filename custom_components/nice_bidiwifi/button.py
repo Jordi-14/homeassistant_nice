@@ -48,33 +48,12 @@ class NiceBidiButtonEntityDescription(
     requires_stationary: bool = False
 
 
-def _partial_open_position_known(
-    coordinator: NiceBidiDataUpdateCoordinator,
-    index: int,
-) -> bool:
-    """Return whether an optional partial-open slot is configured."""
-    status = coordinator.data
-    return status is not None and getattr(status, f"partial_open_{index}_position") is not None
-
-
 def _t4_action_supported(
     coordinator: NiceBidiDataUpdateCoordinator,
     action_key: str,
 ) -> bool:
     """Return whether a reviewed T4 action can be used on this device."""
     return coordinator.t4_action_supported(action_key)
-
-
-def _partial_open_supported(
-    coordinator: NiceBidiDataUpdateCoordinator,
-    action_key: str,
-    index: int,
-) -> bool:
-    """Require both an allowed T4 action and a configured partial-open slot."""
-    return (
-        coordinator.t4_action_supported(action_key)
-        and _partial_open_position_known(coordinator, index)
-    )
 
 
 async def _async_press_t4_action(
@@ -125,9 +104,8 @@ COMPATIBILITY_BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
             action_key=DEP_ACTION_PARTIAL_OPEN_2,
         ),
         supported_fn=partial(
-            _partial_open_supported,
+            _t4_action_supported,
             action_key=DEP_ACTION_PARTIAL_OPEN_2,
-            index=2,
         ),
     ),
     NiceBidiButtonEntityDescription(
@@ -140,9 +118,8 @@ COMPATIBILITY_BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
             action_key=DEP_ACTION_PARTIAL_OPEN_3,
         ),
         supported_fn=partial(
-            _partial_open_supported,
+            _t4_action_supported,
             action_key=DEP_ACTION_PARTIAL_OPEN_3,
-            index=3,
         ),
     ),
     NiceBidiButtonEntityDescription(

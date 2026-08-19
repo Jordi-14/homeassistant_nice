@@ -66,6 +66,7 @@ def allowed_config_diagnostics(data: Mapping[str, Any]) -> dict[str, Any]:
         "device_id",
         "t4_timeout_ms",
         "connection_mode",
+        "legacy_local_tls",
         "relay_host",
         "relay_port",
     )

@@ -18,6 +18,7 @@ from custom_components.nice_bidiwifi.errors import (
     NiceBidiConnectionError,
 )
 from custom_components.nice_bidiwifi.models.config import NiceEntryConfig
+from custom_components.nice_bidiwifi.transport.lan import LegacyLanTlsTransport
 from custom_components.nice_bidiwifi.transport.relay import RelayTlsTransport
 from tests.conftest import config_entry_data
 
@@ -77,11 +78,12 @@ class RouteClient:
         return None
 
 
-def _router(mode: str, *, clock=None):
+def _router(mode: str, *, clock=None, legacy_local_tls: bool = False):
     data = config_entry_data(
         connection_mode=mode,
         relay_host="relay.example",
         relay_port=7890,
+        legacy_local_tls=legacy_local_tls,
     )
     config = NiceEntryConfig.from_mapping(data)
     health = NiceConnectionHealth.from_policy(config.connection)
@@ -125,6 +127,20 @@ def test_router_only_constructs_policy_routes(mode: str, routes: list[str]) -> N
     )
     if mode == "cloud_only":
         assert clients[0].kwargs["transport_factory"] == RelayTlsTransport.connect
+    router.close()
+
+
+def test_legacy_tls_factory_is_used_only_for_the_local_route() -> None:
+    """The opt-in compatibility transport never changes the cloud route."""
+    router, _, clients = _router(
+        "local_with_cloud_fallback",
+        legacy_local_tls=True,
+    )
+    local, cloud = clients
+
+    assert local.kwargs["transport_factory"] == LegacyLanTlsTransport.connect
+    assert cloud.kwargs["transport_factory"] == RelayTlsTransport.connect
+    assert router.legacy_local_tls_enabled is True
     router.close()
 
 

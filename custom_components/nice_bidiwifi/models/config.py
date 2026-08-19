@@ -62,6 +62,7 @@ class NiceEntryConfig:
     connection: NiceConnectionPolicy
     device_id: int
     t4_timeout_ms: int
+    legacy_local_tls: bool
 
     @classmethod
     def from_mapping(
@@ -101,6 +102,7 @@ class NiceEntryConfig:
                 data.get("t4_timeout_ms", 200),
                 "t4_timeout_ms",
             ),
+            legacy_local_tls=bool(data.get("legacy_local_tls", False)),
         )
 
 

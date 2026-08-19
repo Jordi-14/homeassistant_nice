@@ -10,6 +10,7 @@ CONFIG_ENTRY_VERSION = 2
 
 CONF_CONNECTION_MODE = "connection_mode"
 CONF_DEVICE_ID = "device_id"
+CONF_LEGACY_LOCAL_TLS = "legacy_local_tls"
 CONF_DISCOVERY_ADDRESSES = "discovery_addresses"
 CONF_DISCOVERY_HARDWARE = "discovery_hardware"
 CONF_DISCOVERY_MANUFACTURER = "discovery_manufacturer"
@@ -46,6 +47,7 @@ CONFIG_FIELDS = {
     CONF_SOURCE_ID,
     CONF_TARGET_MAC,
     CONF_DEVICE_ID,
+    CONF_LEGACY_LOCAL_TLS,
     CONF_T4_TIMEOUT_MS,
     CONF_RELAY_HOST,
     CONF_RELAY_PORT,

@@ -37,7 +37,12 @@ POST_COMMAND_FAST_POLL_SECONDS = 60.0
 RECENT_STOP_STATUS_OVERRIDE_SECONDS = 20.0
 POSITION_SIMULATION_TICK_SECONDS = 1.0
 POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND = 1.0
-POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR = 0.8
+POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR = 1.0
+POSITION_OBSERVED_SPEED_MIN_DELTA_PERCENT = 0.5
+POSITION_OBSERVED_SPEED_MIN_INTERVAL_SECONDS = 0.25
+POSITION_OBSERVED_SPEED_MAX_INTERVAL_SECONDS = 30.0
+POSITION_OBSERVED_SPEED_MAX_PERCENT_PER_SECOND = 25.0
+POSITION_OBSERVED_SPEED_SMOOTHING_FACTOR = 0.5
 POSITION_SIMULATION_START_GRACE_SECONDS = 8.0
 POSITION_SIMULATION_TIMEOUT_PADDING_SECONDS = 30.0
 POSITION_TARGET_LIVE_POSITION_TOLERANCE = 0.5
@@ -65,6 +70,8 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         self._position_simulation_confirmed_moving = False
         self._position_simulation_target_position: float | None = None
         self._position_simulation_speed_percent_per_second: float | None = None
+        self._position_observation: tuple[str, float, float] | None = None
+        self._observed_position_speed_percent_per_second: dict[str, float] = {}
 
     async def _async_cancel_position_target(self) -> None:
         """Cancel a pending target-position watcher."""
@@ -273,6 +280,14 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         return round(speed, 2) if speed is not None else None
 
     @property
+    def observed_position_speed_percent_per_second(self) -> dict[str, float]:
+        """Return movement speeds learned from live position updates."""
+        return {
+            action: round(speed, 2)
+            for action, speed in self._observed_position_speed_percent_per_second.items()
+        }
+
+    @property
     def state_source(self) -> str | None:
         """Return the source currently responsible for the displayed state."""
         status = self.data
@@ -393,6 +408,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
 
     def _sync_position_simulation_from_status(self, status: NiceBidiStatus) -> None:
         """Rebase or stop simulated display movement from a real status update."""
+        self._observe_position_speed(status)
         if self.calibration_state == CALIBRATION_STATE_RUNNING:
             self._clear_position_simulation(notify=False)
             return
@@ -435,6 +451,49 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             ):
                 return
         self._clear_position_simulation(notify=False)
+
+    def _observe_position_speed(self, status: NiceBidiStatus) -> None:
+        """Learn movement speed from consecutive live position samples."""
+        action = self._motion_action_from_state(status.state)
+        position = status.position
+        if action is None or position is None:
+            self._position_observation = None
+            return
+
+        now = time.monotonic()
+        previous = self._position_observation
+        if previous is None or previous[0] != action:
+            self._position_observation = (action, position, now)
+            return
+
+        _, previous_position, previous_time = previous
+        elapsed = now - previous_time
+        if elapsed < POSITION_OBSERVED_SPEED_MIN_INTERVAL_SECONDS:
+            return
+        if elapsed > POSITION_OBSERVED_SPEED_MAX_INTERVAL_SECONDS:
+            self._position_observation = (action, position, now)
+            return
+
+        distance = (
+            position - previous_position
+            if action == "open"
+            else previous_position - position
+        )
+        if distance <= 0:
+            self._position_observation = (action, position, now)
+            return
+        if distance < POSITION_OBSERVED_SPEED_MIN_DELTA_PERCENT:
+            return
+
+        speed = distance / elapsed
+        self._position_observation = (action, position, now)
+        if not 0 < speed <= POSITION_OBSERVED_SPEED_MAX_PERCENT_PER_SECOND:
+            return
+        previous_speed = self._observed_position_speed_percent_per_second.get(action)
+        if previous_speed is not None:
+            smoothing = POSITION_OBSERVED_SPEED_SMOOTHING_FACTOR
+            speed = (previous_speed * (1 - smoothing)) + (speed * smoothing)
+        self._observed_position_speed_percent_per_second[action] = speed
 
     def _hold_position_simulation(self) -> None:
         """Freeze an estimated position when movement ends without real position."""

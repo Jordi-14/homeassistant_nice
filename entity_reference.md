@@ -52,7 +52,7 @@ Quick recommendations:
 | Separate position display | Gate position | Same displayed percentage as the cover card; real only when `real_position` is available, cached/estimated when marked by the cover attributes. |
 | Remote-control style action | Step-step | Follows the controller's configured step-step cycle. |
 | Alarm open/not closed state | Gate open | Read-only binary sensor; on means the gate is not fully closed. |
-| Pedestrian or partial opening | Partial open 1/2/3 | Partial open 1 is the common action; optional slots 2/3 are available only when their configuration registers are reported. Position follows the same measured-first rules as normal movement. |
+| Pedestrian or partial opening | Partial open 1/2/3 | Each button is available when the controller advertises its corresponding T4 action. A missing position register affects only the reported/configurable target, not whether the action can be sent. Position follows the same measured-first rules as normal movement. |
 | Connection route health | Overall connection state, active route, local/cloud route state, last successful update, reconnect count | Shows which configured routes are reachable and whether LAN or cloud is currently carrying traffic. |
 | Controller tuning | Entities ending in `setting` | Advanced; these write controller registers. |
 | Raw diagnostics | Diagnostics I/O byte and diagnostics parameters | Developer/debug data for comparing controllers. |
@@ -152,8 +152,8 @@ current device profile.
 | Switch | Pre-flash setting | `bus_t4_pre_flash` | Writes BusT4 pre-flash on/off to register `04/94`. | Hidden | Enabled | Advanced controller setting. |
 | Switch | Key lock setting | `bus_t4_key_lock` | Writes BusT4 key-lock on/off to register `04/9C`. | Hidden | Enabled | Advanced controller setting; not a daily dashboard control. |
 | Button | Partial open 1 | `partial_open_1` | Sends the controller partial-open 1 action. | Visible | Enabled | Daily-use action when configured on the controller. |
-| Button | Partial open 2 | `partial_open_2` | Sends the controller partial-open 2 action. | Visible | Enabled | Daily-use action when configured on the controller. |
-| Button | Partial open 3 | `partial_open_3` | Sends the controller partial-open 3 action. | Visible | Enabled | Daily-use action when configured on the controller. |
+| Button | Partial open 2 | `partial_open_2` | Sends the controller partial-open 2 action. | Visible | Enabled | Available when advertised by the controller, even if its optional position register is not reported. |
+| Button | Partial open 3 | `partial_open_3` | Sends the controller partial-open 3 action. | Visible | Enabled | Available when advertised by the controller, even if its optional position register is not reported. |
 | Button | Step-step | `step_step` | Sends the controller step-step action. | Visible | Enabled | Common remote-control style action. |
 | Button | Courtesy light | `courtesy_light` | Sends the courtesy-light action. | Hidden | Enabled | Optional wiring/output; useful only on some installations. |
 | Button | Courtesy light timer | `courtesy_light_timer` | Sends the courtesy-light timer action. | Hidden | Enabled | Optional wiring/output; useful only on some installations. |

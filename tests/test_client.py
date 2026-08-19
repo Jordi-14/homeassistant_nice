@@ -33,6 +33,7 @@ from custom_components.nice_bidiwifi.client import (
     parse_dmp_response,
     parse_info_xml,
 )
+from tests.conftest import make_device_info, make_status
 
 
 def _dmp_response(group: int, parameter: int, value: bytes) -> bytes:
@@ -922,6 +923,52 @@ def test_test_connection_falls_back_to_info_when_dmp_status_is_unsupported() -> 
     assert status.position is None
     assert status.registers == {}
     assert client.info_reads == 1
+
+
+def test_test_connection_accepts_code_5_only_with_working_nhk_status() -> None:
+    """Code 5 is compatible only when INFO and NHK status confirm the fallback."""
+
+    class NhkStatusClient(NiceBidiClient):
+        def read_status(self):
+            raise NiceBidiConnectionError(
+                '<Response><Error><Code>5</Code></Error></Response>'
+            )
+
+        def read_info(self):
+            return make_device_info(nhk_status=True)
+
+        def read_nhk_status(self):
+            return make_status(state="closed", position=None)
+
+    client = NhkStatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+    )
+
+    assert client.test_connection().state == "closed"
+
+
+def test_test_connection_rejects_code_5_without_nhk_status() -> None:
+    """Code 5 is not treated as command-only or globally harmless."""
+
+    class UnsupportedClient(NiceBidiClient):
+        def read_status(self):
+            raise NiceBidiConnectionError(
+                '<Response><Error><Code>5</Code></Error></Response>'
+            )
+
+        def read_info(self):
+            return make_device_info(nhk_status=False)
+
+    client = UnsupportedClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+    )
+
+    with pytest.raises(NiceBidiConnectionError, match="<Code>5</Code>"):
+        client.test_connection()
 
 
 def test_run_with_reconnect_retries_once(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -25,7 +25,11 @@ class SocketLike(Protocol):
         """Close the socket."""
 
 
-def make_local_tls_context() -> ssl.SSLContext:
+def make_local_tls_context(
+    *,
+    legacy_compatibility: bool = False,
+    cipher_security_level: int | None = None,
+) -> ssl.SSLContext:
     """Create the TLS context required by the local Nice endpoint."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     # The local interface exposes a device certificate outside the HA trust
@@ -34,6 +38,20 @@ def make_local_tls_context() -> ssl.SSLContext:
     context.verify_mode = ssl.CERT_NONE
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.maximum_version = ssl.TLSVersion.TLSv1_2
+    if legacy_compatibility:
+        legacy_option = getattr(ssl, "OP_LEGACY_SERVER_CONNECT", None)
+        if legacy_option is None:
+            raise ssl.SSLError(
+                "Legacy server compatibility is unavailable in this OpenSSL build"
+            )
+        if cipher_security_level not in {0, 1}:
+            raise ValueError(
+                "Legacy local TLS cipher security level must be 0 or 1"
+            )
+        context.options |= legacy_option
+        context.set_ciphers(
+            f"DEFAULT:@SECLEVEL={cipher_security_level}"
+        )
     return context
 
 
@@ -103,6 +121,17 @@ class SocketFrameTransport:
 class LanTlsTransport(SocketFrameTransport):
     """A local Nice TLS socket transport."""
 
+    def __init__(
+        self,
+        connected_socket: SocketLike,
+        *,
+        legacy_compatibility: bool = False,
+        cipher_security_level: int | None = None,
+    ) -> None:
+        super().__init__(connected_socket)
+        self.legacy_compatibility = legacy_compatibility
+        self.cipher_security_level = cipher_security_level
+
     @classmethod
     def connect(
         cls,
@@ -111,21 +140,90 @@ class LanTlsTransport(SocketFrameTransport):
         timeout: float,
     ) -> LanTlsTransport:
         """Connect and complete the constrained local TLS handshake."""
+        return cls._connect_with_context(
+            host,
+            port,
+            timeout,
+            make_local_tls_context(),
+        )
+
+    @classmethod
+    def _connect_with_context(
+        cls,
+        host: str,
+        port: int,
+        timeout: float,
+        context: ssl.SSLContext,
+        *,
+        legacy_compatibility: bool = False,
+        cipher_security_level: int | None = None,
+    ) -> LanTlsTransport:
+        """Open one socket and complete its TLS handshake."""
         raw: socket.socket | None = None
         tls_socket: ssl.SSLSocket | None = None
         try:
             raw = socket.create_connection((host, port), timeout=timeout)
             raw.settimeout(timeout)
-            tls_socket = make_local_tls_context().wrap_socket(
+            tls_socket = context.wrap_socket(
                 raw,
                 server_hostname=None,
                 do_handshake_on_connect=False,
             )
             tls_socket.do_handshake()
-            return cls(tls_socket)
+            return cls(
+                tls_socket,
+                legacy_compatibility=legacy_compatibility,
+                cipher_security_level=cipher_security_level,
+            )
         except BaseException:
             if tls_socket is not None:
                 tls_socket.close()
             elif raw is not None:
                 raw.close()
             raise
+
+
+def _requires_security_level_zero(err: ssl.SSLError) -> bool:
+    """Return whether OpenSSL rejected a legacy endpoint's small DH key."""
+    reason = str(getattr(err, "reason", "") or "")
+    detail = f"{reason} {err}".replace("-", "_").replace(" ", "_").upper()
+    return "DH_KEY_TOO_SMALL" in detail
+
+
+class LegacyLanTlsTransport(LanTlsTransport):
+    """Explicitly enabled TLS compatibility for older local interfaces."""
+
+    @classmethod
+    def connect(
+        cls,
+        host: str,
+        port: int,
+        timeout: float,
+    ) -> LegacyLanTlsTransport:
+        """Try security level 1, relaxing to 0 only for a small DH key."""
+        try:
+            return cls._connect_with_context(
+                host,
+                port,
+                timeout,
+                make_local_tls_context(
+                    legacy_compatibility=True,
+                    cipher_security_level=1,
+                ),
+                legacy_compatibility=True,
+                cipher_security_level=1,
+            )
+        except ssl.SSLError as err:
+            if not _requires_security_level_zero(err):
+                raise
+        return cls._connect_with_context(
+            host,
+            port,
+            timeout,
+            make_local_tls_context(
+                legacy_compatibility=True,
+                cipher_security_level=0,
+            ),
+            legacy_compatibility=True,
+            cipher_security_level=0,
+        )

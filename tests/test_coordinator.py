@@ -161,14 +161,16 @@ async def test_update_data_falls_back_to_command_only_when_dmp_status_is_unsuppo
     assert client.info_reads == 1
 
 
+@pytest.mark.parametrize("error_code", ["5", "14"])
 async def test_update_data_uses_nhk_status_when_dmp_status_is_unsupported(
     hass: HomeAssistant,
+    error_code: str,
 ) -> None:
-    """Test CU_WIFI devices can use NHK DoorStatus when DMP status returns Code 14."""
+    """Test NHK DoorStatus is used for known DMP status compatibility errors."""
     instance = _coordinator(hass)
     client = FakeClient()
     client.read_status_error = NiceBidiConnectionError(
-        '<Response type="T4_REQUEST"><Error><Code>14</Code></Error></Response>'
+        f'<Response type="T4_REQUEST"><Error><Code>{error_code}</Code></Error></Response>'
     )
     client.read_info_result = make_device_info(nhk_status=True)
     client.read_nhk_status_result = make_status(
@@ -389,6 +391,23 @@ async def test_update_data_does_not_fallback_to_command_only_for_other_status_er
 
     assert instance.status_polling_supported is True
     assert instance.connection_state == coordinator_module.CONNECTION_STATE_FAILED
+
+
+async def test_update_data_does_not_use_command_only_mode_for_code_5(
+    hass: HomeAssistant,
+) -> None:
+    """Code 5 still fails when INFO does not provide readable NHK status."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.read_status_error = NiceBidiConnectionError(
+        '<Response type="T4_REQUEST"><Error><Code>5</Code></Error></Response>'
+    )
+    instance.client = client
+
+    with pytest.raises(UpdateFailed):
+        await instance._async_update_data()
+
+    assert instance.status_polling_supported is True
 
 
 async def test_update_data_maps_auth_failure(hass: HomeAssistant) -> None:
@@ -733,7 +752,7 @@ async def test_cancel_post_command_delay_does_not_cancel_started_refresh(
 async def test_position_simulation_uses_calibrated_travel_speed(
     hass: HomeAssistant,
 ) -> None:
-    """Test display animation uses 80% of full-travel calibration speed."""
+    """Test display animation uses measured full-travel calibration speed."""
     instance = _coordinator(hass)
     client = FakeClient()
     instance.client = client
@@ -749,7 +768,7 @@ async def test_position_simulation_uses_calibrated_travel_speed(
     await instance._async_send_action("open", refresh=False)
 
     assert instance.position_simulation_action == "open"
-    assert instance.position_simulation_speed_percent_per_second == 4.0
+    assert instance.position_simulation_speed_percent_per_second == 5.0
 
     await instance._async_cancel_position_simulation()
 
@@ -767,6 +786,31 @@ async def test_position_simulation_falls_back_without_calibration(
 
     assert instance.position_simulation_action == "close"
     assert instance.position_simulation_speed_percent_per_second == 1.0
+
+    await instance._async_cancel_position_simulation()
+
+
+async def test_position_simulation_learns_speed_from_sparse_live_samples(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sparse T4 positions set the interpolation speed instead of causing jumps."""
+    instance = _coordinator(hass)
+    now = [100.0]
+    monkeypatch.setattr(position_module.time, "monotonic", lambda: now[0])
+
+    instance._sync_position_simulation_from_status(
+        make_status(state="opening", position=20.0, current_position=200)
+    )
+    now[0] = 105.0
+    instance._sync_position_simulation_from_status(
+        make_status(state="opening", position=40.0, current_position=400)
+    )
+
+    assert instance.observed_position_speed_percent_per_second == {"open": 4.0}
+    assert instance.position_simulation_speed_percent_per_second == 4.0
+    now[0] = 107.0
+    assert instance._current_simulated_position() == 48.0
 
     await instance._async_cancel_position_simulation()
 
@@ -901,6 +945,28 @@ async def test_send_dep_action_wraps_connection_errors(hass: HomeAssistant) -> N
     assert instance.connection_state == coordinator_module.CONNECTION_STATE_FAILED
     assert instance.last_error == "offline"
     assert client.closed is True
+
+
+async def test_code_5_disables_only_the_rejected_dep_action(
+    hass: HomeAssistant,
+) -> None:
+    """A rejected DEP action is hidden for the session without disabling peers."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.send_dep_action_error = NiceBidiConnectionError(
+        '<Response><Error><Code>5</Code></Error></Response>'
+    )
+    instance.client = client
+
+    with pytest.raises(HomeAssistantError, match="command failed"):
+        await instance._async_send_dep_action(
+            DEP_ACTION_PARTIAL_OPEN_1,
+            refresh=False,
+        )
+
+    assert instance.rejected_t4_actions == (DEP_ACTION_PARTIAL_OPEN_1,)
+    assert instance.t4_action_supported(DEP_ACTION_PARTIAL_OPEN_1) is False
+    assert instance.t4_action_supported(DEP_ACTION_COURTESY_LIGHT) is True
 
 
 async def test_write_dmp_register_records_command_metadata(hass: HomeAssistant) -> None:

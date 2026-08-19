@@ -67,6 +67,10 @@ from .const import (
     IDLE_UPDATE_INTERVAL,
     MOVING_UPDATE_INTERVAL,
 )
+from .errors import (
+    DMP_STATUS_COMMAND_ONLY_ERROR_CODES,
+    DMP_STATUS_NHK_FALLBACK_ERROR_CODES,
+)
 from .position import (  # noqa: F401 - constants are re-exported for compatibility.
     POST_COMMAND_FAST_POLL_SECONDS,
     POST_COMMAND_REFRESH_DELAY_SECONDS,
@@ -172,6 +176,7 @@ class NiceBidiDataUpdateCoordinator(
         self.capabilities: NiceCapabilities | None = None
         self.status_polling_supported = True
         self._use_nhk_status = False
+        self._rejected_t4_actions: set[str] = set()
         self.last_command: str | None = None
         self.last_command_latency_ms: int | None = None
         self.last_command_result: NiceCommandResult | None = None
@@ -287,7 +292,8 @@ class NiceBidiDataUpdateCoordinator(
             include_extended = self._should_read_extended_status()
             status = self.client.read_status(include_extended=include_extended)
         except NiceBidiConnectionError as err:
-            if nice_bidi_error_code(err) != "14":
+            error_code = nice_bidi_error_code(err)
+            if error_code not in DMP_STATUS_NHK_FALLBACK_ERROR_CODES:
                 raise
             try:
                 if self.device_info is None:
@@ -304,6 +310,8 @@ class NiceBidiDataUpdateCoordinator(
                 return status
             if not self._supports_high_level_actions():
                 raise
+            if error_code not in DMP_STATUS_COMMAND_ONLY_ERROR_CODES:
+                raise err from None
             self.status_polling_supported = False
             _LOGGER.info(
                 "Nice DMP status polling is not supported by this device; "
@@ -429,6 +437,8 @@ class NiceBidiDataUpdateCoordinator(
 
     def t4_action_supported(self, action: str) -> bool:
         """Return whether a reviewed action is safe to offer and execute."""
+        if action in getattr(self, "_rejected_t4_actions", ()):
+            return False
         definition = T4_ACTION_BY_KEY.get(action)
         if definition is None:
             return False
@@ -438,6 +448,11 @@ class NiceBidiDataUpdateCoordinator(
         if advertised is None:
             return definition.compatibility_entity
         return advertised
+
+    @property
+    def rejected_t4_actions(self) -> tuple[str, ...]:
+        """Return actions rejected as unsupported during this runtime session."""
+        return tuple(sorted(self._rejected_t4_actions))
 
     async def async_write_dmp_register(
         self,
@@ -555,6 +570,9 @@ class NiceBidiDataUpdateCoordinator(
             self._clear_position_simulation()
             raise HomeAssistantError(f"Nice authentication failed: {err}") from err
         except (NiceBidiConnectionError, OSError) as err:
+            if nice_bidi_error_code(err) == "5":
+                self._rejected_t4_actions.add(action)
+                self.async_update_listeners()
             self._store_failed_command(command, started, err)
             self.client.close()
             self._set_connection_state(CONNECTION_STATE_FAILED)

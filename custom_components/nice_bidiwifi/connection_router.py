@@ -11,6 +11,7 @@ from .client import NiceBidiAuthError, NiceBidiClient, NiceBidiConnectionError
 from .connection import NiceConnectionHealth, NiceConnectionRoute, NiceRouteState
 from .models.config import ConnectionMode, NiceEntryConfig, NiceEndpoint
 from .protocol.nhk.administration import LOG_EVENTS_PER_SCOPE
+from .transport.lan import LegacyLanTlsTransport
 from .transport.relay import RelayTlsTransport
 
 LOCAL_FAILURE_THRESHOLD = 2
@@ -39,9 +40,13 @@ class NiceConnectionRouter:
             "device_id": config.device_id,
             "t4_timeout_ms": config.t4_timeout_ms,
         }
+        local_kwargs: dict[str, Any] = {}
+        if config.legacy_local_tls:
+            local_kwargs["transport_factory"] = LegacyLanTlsTransport.connect
         self._local = self._make_client(
             client_factory,
             config.connection.local,
+            **local_kwargs,
             **common,
         )
         self._cloud = self._make_client(
@@ -60,6 +65,7 @@ class NiceConnectionRouter:
         self._local_recovery_successes = 0
         self._probe_interval = LOCAL_PROBE_INTERVAL_SECONDS
         self._next_local_probe = 0.0
+        self._legacy_local_tls_enabled = config.legacy_local_tls
 
     @staticmethod
     def _make_client(
@@ -84,6 +90,26 @@ class NiceConnectionRouter:
             for client in (self._local, self._cloud)
             if client is not None
         )
+
+    @property
+    def legacy_local_tls_enabled(self) -> bool:
+        """Return whether legacy compatibility is enabled for the local route."""
+        return self._legacy_local_tls_enabled
+
+    @property
+    def local_tls_legacy_active(self) -> bool:
+        """Return whether the current local transport uses legacy compatibility."""
+        return bool(
+            self._local
+            and getattr(self._local, "legacy_tls_active", False)
+        )
+
+    @property
+    def local_tls_cipher_security_level(self) -> int | None:
+        """Return the local TLS cipher security level when connected."""
+        if self._local is None:
+            return None
+        return getattr(self._local, "tls_cipher_security_level", None)
 
     @property
     def local_failure_count(self) -> int:

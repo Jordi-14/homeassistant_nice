@@ -468,6 +468,16 @@ class FakeCoordinator:
         return None
 
     @property
+    def observed_position_speed_percent_per_second(self) -> dict[str, float]:
+        """Return no learned movement speed for the fake coordinator."""
+        return {}
+
+    @property
+    def rejected_t4_actions(self) -> tuple[str, ...]:
+        """Return no runtime action rejections for the fake coordinator."""
+        return ()
+
+    @property
     def state_source(self) -> str:
         """Return fake state provenance."""
         return "dmp_04_01"

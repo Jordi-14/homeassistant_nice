@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_CONNECTION_MODE,
+    CONF_LEGACY_LOCAL_TLS,
     CONF_SOURCE_ID,
     CONF_TARGET_MAC,
 )
@@ -123,6 +124,13 @@ async def async_get_config_entry_diagnostics(
         ConnectionMode.LOCAL_WITH_CLOUD_FALLBACK.value,
         ConnectionMode.CLOUD_ONLY.value,
     }
+    local_configured = connection_mode in {
+        ConnectionMode.LOCAL_WITH_CLOUD_FALLBACK.value,
+        ConnectionMode.LOCAL_ONLY.value,
+    }
+    legacy_local_tls_enabled = bool(
+        entry.data.get(CONF_LEGACY_LOCAL_TLS, False)
+    )
 
     diagnostics: dict[str, Any] = {
         "entry": allowed_config_diagnostics(entry.data),
@@ -142,6 +150,22 @@ async def async_get_config_entry_diagnostics(
                 ),
                 "compatibility_reason": (
                     RELAY_TLS_COMPATIBILITY_REASON if relay_configured else None
+                ),
+            },
+            "local_tls": {
+                "configured": local_configured,
+                "legacy_compatibility_enabled": (
+                    legacy_local_tls_enabled if local_configured else False
+                ),
+                "legacy_compatibility_active": getattr(
+                    coordinator.client,
+                    "local_tls_legacy_active",
+                    False,
+                ),
+                "cipher_security_level": getattr(
+                    coordinator.client,
+                    "local_tls_cipher_security_level",
+                    None,
                 ),
             },
             "status_polling_supported": coordinator.status_polling_supported,
@@ -212,7 +236,11 @@ async def async_get_config_entry_diagnostics(
             "position_simulation_speed_percent_per_second": (
                 coordinator.position_simulation_speed_percent_per_second
             ),
+            "observed_position_speed_percent_per_second": (
+                coordinator.observed_position_speed_percent_per_second
+            ),
             "is_moving": status.is_moving if status else None,
+            "rejected_t4_actions": coordinator.rejected_t4_actions,
             "protocol_observations": (
                 bounded_protocol_observations(status.registers) if status else {}
             ),
