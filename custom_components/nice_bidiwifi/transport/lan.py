@@ -8,6 +8,13 @@ from typing import Protocol
 
 from ..protocol.nhk.codec import ETX, STX
 
+LEGACY_TLS_SECURITY_LEVEL_ZERO_REASONS = frozenset(
+    {
+        "DH_KEY_TOO_SMALL",
+        "WRONG_SIGNATURE_TYPE",
+    }
+)
+
 
 class SocketLike(Protocol):
     """The socket operations required by the framed transport."""
@@ -184,10 +191,15 @@ class LanTlsTransport(SocketFrameTransport):
 
 
 def _requires_security_level_zero(err: ssl.SSLError) -> bool:
-    """Return whether OpenSSL rejected a legacy endpoint's small DH key."""
-    reason = str(getattr(err, "reason", "") or "")
-    detail = f"{reason} {err}".replace("-", "_").replace(" ", "_").upper()
-    return "DH_KEY_TOO_SMALL" in detail
+    """Return whether OpenSSL reported an approved legacy security error."""
+    reason = str(getattr(err, "reason", "") or "").upper()
+    if reason in LEGACY_TLS_SECURITY_LEVEL_ZERO_REASONS:
+        return True
+    detail = str(err).upper()
+    return any(
+        f"[SSL: {approved_reason}]" in detail
+        for approved_reason in LEGACY_TLS_SECURITY_LEVEL_ZERO_REASONS
+    )
 
 
 class LegacyLanTlsTransport(LanTlsTransport):

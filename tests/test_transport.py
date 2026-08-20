@@ -252,10 +252,18 @@ def test_legacy_local_tls_context_is_explicit_and_constrained() -> None:
     assert legacy.security_level == 1
 
 
-def test_legacy_local_tls_relaxes_only_for_small_dh_key(
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        "[SSL: DH_KEY_TOO_SMALL] dh key too small",
+        "[SSL: WRONG_SIGNATURE_TYPE] wrong signature type",
+    ],
+)
+def test_legacy_local_tls_relaxes_only_for_approved_security_errors(
     monkeypatch: pytest.MonkeyPatch,
+    error_message: str,
 ) -> None:
-    """Security level 0 is retried only for OpenSSL's exact DH-key rejection."""
+    """Security level 0 is retried only for approved OpenSSL reasons."""
     attempts: list[int | None] = []
     connected = object()
 
@@ -271,7 +279,7 @@ def test_legacy_local_tls_relaxes_only_for_small_dh_key(
     ):
         attempts.append(cipher_security_level)
         if cipher_security_level == 1:
-            raise ssl.SSLError("[SSL: DH_KEY_TOO_SMALL] dh key too small")
+            raise ssl.SSLError(error_message)
         return connected
 
     monkeypatch.setattr(
