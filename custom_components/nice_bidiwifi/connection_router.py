@@ -9,6 +9,7 @@ from typing import Any
 
 from .client import NiceBidiAuthError, NiceBidiClient, NiceBidiConnectionError
 from .connection import NiceConnectionHealth, NiceConnectionRoute, NiceRouteState
+from .errors import RUNTIME_RETRYABLE_CONNECT_ERROR_CODES, nice_error_code
 from .models.config import ConnectionMode, NiceEntryConfig, NiceEndpoint
 from .protocol.nhk.administration import LOG_EVENTS_PER_SCOPE
 from .transport.lan import LegacyLanTlsTransport
@@ -66,6 +67,7 @@ class NiceConnectionRouter:
         self._probe_interval = LOCAL_PROBE_INTERVAL_SECONDS
         self._next_local_probe = 0.0
         self._legacy_local_tls_enabled = config.legacy_local_tls
+        self._authenticated_once = False
 
     @staticmethod
     def _make_client(
@@ -166,6 +168,26 @@ class NiceConnectionRouter:
             self._local_failures += 1
             self._local_recovery_successes = 0
 
+    def _release_other_session(self, route: NiceConnectionRoute) -> None:
+        """Release the other route before opening the sole allowed NHK session."""
+        other_route = (
+            NiceConnectionRoute.CLOUD
+            if route is NiceConnectionRoute.LOCAL
+            else NiceConnectionRoute.LOCAL
+        )
+        other_state = (
+            self._health.cloud
+            if other_route is NiceConnectionRoute.CLOUD
+            else self._health.local
+        )
+        if other_state is not NiceRouteState.CONNECTED:
+            return
+        self._client(other_route).close()
+        self._health.set_route_state(
+            other_route,
+            NiceRouteState.DISCONNECTED,
+        )
+
     def _call(
         self,
         route: NiceConnectionRoute,
@@ -174,15 +196,25 @@ class NiceConnectionRouter:
         active: bool = True,
         **kwargs,
     ):
+        self._release_other_session(route)
         try:
             result = getattr(self._client(route), method)(*args, **kwargs)
-        except NiceBidiAuthError:
+        except NiceBidiAuthError as err:
+            self._client(route).close()
             self._mark_failure(route)
+            # Coded authentication errors currently originate only from CONNECT.
+            if (
+                self._authenticated_once
+                and nice_error_code(err)
+                in RUNTIME_RETRYABLE_CONNECT_ERROR_CODES
+            ):
+                raise NiceBidiConnectionError(str(err)) from err
             raise
         except (NiceBidiConnectionError, OSError):
             self._mark_failure(route)
             raise
         self._mark_success(route, active=active)
+        self._authenticated_once = True
         return result
 
     def _read(self, method: str, *args, **kwargs):

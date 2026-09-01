@@ -7,6 +7,7 @@ import re
 
 DMP_STATUS_NHK_FALLBACK_ERROR_CODES = frozenset({"5", "14"})
 DMP_STATUS_COMMAND_ONLY_ERROR_CODES = frozenset({"14"})
+RUNTIME_RETRYABLE_CONNECT_ERROR_CODES = frozenset({"7", "15"})
 
 
 class NiceBidiError(Exception):

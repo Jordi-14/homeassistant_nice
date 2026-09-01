@@ -35,6 +35,7 @@ class RouteClient:
         self.callbacks: list = []
         self.failure_callbacks: list = []
         self.reconnect_count = 0
+        self.close_count = 0
         self.event_stream_active = False
         self.event_stream_error = None
 
@@ -75,7 +76,7 @@ class RouteClient:
         return lambda: self.failure_callbacks.remove(callback)
 
     def close(self) -> None:
-        return None
+        self.close_count += 1
 
 
 def _router(mode: str, *, clock=None, legacy_local_tls: bool = False):
@@ -190,6 +191,37 @@ def test_fallback_requires_stable_local_recovery() -> None:
     assert health.active is NiceConnectionRoute.LOCAL
 
 
+def test_recovery_probe_releases_the_other_nhk_session() -> None:
+    now = [0.0]
+    router, health, clients = _router(
+        "local_with_cloud_fallback",
+        clock=lambda: now[0],
+    )
+    local, cloud = clients
+    local.read_results.extend(
+        [
+            NiceBidiConnectionError("down"),
+            NiceBidiConnectionError("down"),
+            "local-probe-1",
+        ]
+    )
+    cloud.read_results.extend(["cloud-1", "cloud-2"])
+
+    with pytest.raises(NiceBidiConnectionError):
+        router.read_status()
+    assert router.read_status() == "cloud-1"
+    assert cloud.close_count == 0
+
+    now[0] = 30.0
+    assert router.read_status() == "cloud-2"
+
+    assert cloud.close_count == 1
+    assert local.close_count == 1
+    assert health.active is NiceConnectionRoute.CLOUD
+    assert health.local is NiceRouteState.DISCONNECTED
+    assert health.cloud is NiceRouteState.CONNECTED
+
+
 def test_auth_failure_does_not_try_another_route() -> None:
     router, health, clients = _router("local_with_cloud_fallback")
     local, cloud = clients
@@ -200,6 +232,145 @@ def test_auth_failure_does_not_try_another_route() -> None:
         router.read_status()
     assert len(cloud.read_results) == 1
     assert health.active is NiceConnectionRoute.NONE
+
+
+@pytest.mark.parametrize("error_code", ["7", "15"])
+def test_runtime_connect_error_is_retryable_after_success(
+    error_code: str,
+) -> None:
+    router, health, clients = _router("local_only")
+    local = clients[0]
+    local.read_results.extend(
+        [
+            "initial-status",
+            NiceBidiAuthError(
+                f"<Error><Code>{error_code}</Code></Error> (type=CONNECT)"
+            ),
+        ]
+    )
+
+    assert router.read_status() == "initial-status"
+    with pytest.raises(NiceBidiConnectionError) as caught:
+        router.read_status()
+
+    assert f"<Code>{error_code}</Code>" in str(caught.value)
+    assert health.active is NiceConnectionRoute.NONE
+    assert health.local is NiceRouteState.DISCONNECTED
+
+
+@pytest.mark.parametrize("error_code", ["7", "15"])
+def test_connect_error_remains_auth_failure_before_runtime_success(
+    error_code: str,
+) -> None:
+    router, health, clients = _router("local_with_cloud_fallback")
+    local, cloud = clients
+    local.read_results.append(
+        NiceBidiAuthError(
+            f"<Error><Code>{error_code}</Code></Error> (type=CONNECT)"
+        )
+    )
+    cloud.read_results.append("must-not-run")
+
+    with pytest.raises(NiceBidiAuthError):
+        router.read_status()
+
+    assert len(cloud.read_results) == 1
+    assert health.active is NiceConnectionRoute.NONE
+
+
+def test_unobserved_connect_code_remains_auth_failure_after_success() -> None:
+    router, _, clients = _router("local_with_cloud_fallback")
+    local, cloud = clients
+    local.read_results.extend(
+        [
+            "initial-status",
+            NiceBidiAuthError(
+                "<Error><Code>1</Code></Error> (type=CONNECT)"
+            ),
+        ]
+    )
+    cloud.read_results.append("must-not-run")
+
+    assert router.read_status() == "initial-status"
+    with pytest.raises(NiceBidiAuthError):
+        router.read_status()
+
+    assert len(cloud.read_results) == 1
+
+
+def test_first_cloud_connect_error_is_retryable_after_local_success() -> None:
+    router, health, clients = _router("local_with_cloud_fallback")
+    local, cloud = clients
+    local.read_results.extend(
+        [
+            "initial-local-status",
+            NiceBidiConnectionError("down"),
+            NiceBidiConnectionError("down"),
+        ]
+    )
+    cloud.read_results.append(
+        NiceBidiAuthError(
+            "<Error><Code>15</Code></Error> (type=CONNECT)"
+        )
+    )
+
+    assert router.read_status() == "initial-local-status"
+    with pytest.raises(NiceBidiConnectionError):
+        router.read_status()
+    with pytest.raises(NiceBidiConnectionError) as caught:
+        router.read_status()
+
+    assert "<Code>15</Code>" in str(caught.value)
+    assert isinstance(caught.value.__cause__, NiceBidiAuthError)
+    assert router.selected_route == "cloud"
+    assert health.active is NiceConnectionRoute.NONE
+    assert health.local is NiceRouteState.DISCONNECTED
+    assert health.cloud is NiceRouteState.DISCONNECTED
+
+
+def test_retryable_connect_error_releases_local_before_cloud_fallback() -> None:
+    router, health, clients = _router("local_with_cloud_fallback")
+    local, cloud = clients
+    local.read_results.extend(
+        [
+            "initial-local-status",
+            NiceBidiConnectionError("down"),
+            NiceBidiAuthError(
+                "<Error><Code>7</Code></Error> (type=CONNECT)"
+            ),
+        ]
+    )
+    cloud.read_results.append("cloud-status")
+
+    assert router.read_status() == "initial-local-status"
+    with pytest.raises(NiceBidiConnectionError):
+        router.read_status()
+    assert router.read_status() == "cloud-status"
+
+    assert local.close_count == 1
+    assert health.active is NiceConnectionRoute.CLOUD
+    assert health.local is NiceRouteState.DISCONNECTED
+    assert health.cloud is NiceRouteState.CONNECTED
+
+
+def test_retryable_connect_error_never_replays_a_command() -> None:
+    router, _, clients = _router("local_with_cloud_fallback")
+    local, cloud = clients
+    local.read_results.extend(
+        [
+            "initial-status",
+            NiceBidiAuthError(
+                "<Error><Code>7</Code></Error> (type=CONNECT)"
+            ),
+        ]
+    )
+
+    assert router.read_status() == "initial-status"
+    with pytest.raises(NiceBidiConnectionError):
+        router.send_action("open")
+
+    assert local.commands == ["open"]
+    assert cloud.commands == []
 
 
 def test_ambiguous_command_is_never_replayed_on_cloud() -> None:

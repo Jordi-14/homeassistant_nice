@@ -8,7 +8,12 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import SOURCE_IGNORE, ConfigEntry, ConfigFlow
+from homeassistant.config_entries import (
+    SOURCE_IGNORE,
+    ConfigEntry,
+    ConfigEntryState,
+    ConfigFlow,
+)
 from homeassistant.const import (
     CONF_HOST,
     CONF_NAME,
@@ -1159,6 +1164,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="reconfigure",
             log_context="reconfigure",
             success_reason="reconfigure_successful",
+            release_existing_session=True,
         )
 
     async def _async_update_existing_entry(
@@ -1169,6 +1175,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
         step_id: str,
         log_context: str,
         success_reason: str,
+        release_existing_session: bool = False,
     ) -> FlowResult:
         """Validate and atomically update an existing config entry."""
         errors: dict[str, str] = {}
@@ -1181,21 +1188,53 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
             if data[CONF_TARGET_MAC] != expected_identity:
                 errors["base"] = "wrong_device"
             else:
-                try:
-                    await _async_validate_input(self.hass, data)
-                except Exception as err:
-                    _log_validation_failure(log_context, data, err)
-                    errors["base"] = _error_from_exception(err)
-                else:
-                    self.hass.config_entries.async_update_entry(
-                        entry,
-                        title=data[CONF_NAME],
-                        data=data,
-                    )
-                    await self.hass.config_entries.async_reload(
+                cannot_release_session = (
+                    release_existing_session
+                    and not entry.state.recoverable
+                )
+                release_before_validation = (
+                    release_existing_session
+                    and entry.state is not ConfigEntryState.NOT_LOADED
+                )
+                if cannot_release_session:
+                    errors["base"] = "cannot_connect"
+                elif (
+                    release_before_validation
+                    and not await self.hass.config_entries.async_unload(
                         entry.entry_id
                     )
-                    return self.async_abort(reason=success_reason)
+                ):
+                    _LOGGER.warning(
+                        "Nice %s could not release the existing NHK session",
+                        log_context,
+                    )
+                    errors["base"] = "cannot_connect"
+                else:
+                    validation_succeeded = False
+                    try:
+                        await _async_validate_input(self.hass, data)
+                    except Exception as err:
+                        _log_validation_failure(log_context, data, err)
+                        errors["base"] = _error_from_exception(err)
+                    else:
+                        self.hass.config_entries.async_update_entry(
+                            entry,
+                            title=data[CONF_NAME],
+                            data=data,
+                        )
+                        validation_succeeded = True
+                    finally:
+                        if release_before_validation:
+                            await self.hass.config_entries.async_setup(
+                                entry.entry_id
+                            )
+
+                    if validation_succeeded:
+                        if not release_before_validation:
+                            await self.hass.config_entries.async_reload(
+                                entry.entry_id
+                            )
+                        return self.async_abort(reason=success_reason)
             user_input = data
 
         return self.async_show_form(
