@@ -51,7 +51,7 @@ def test_calibration_profile_migration_is_versioned_and_non_destructive() -> Non
 def test_current_calibration_profile_preserves_identity() -> None:
     """A complete current profile is not rewritten on every load."""
     profile = {
-        "version": 6,
+        "version": 7,
         "mode": "time",
         "targets": [],
         "bounds": {},
@@ -64,6 +64,26 @@ def test_current_calibration_profile_preserves_identity() -> None:
 
     assert current is profile
     assert changed is False
+
+
+def test_time_calibration_profile_version_six_migrates_without_losing_data() -> None:
+    profile = {
+        "version": 6,
+        "mode": "time",
+        "targets": [],
+        "bounds": {"full_travel_attempts": 3},
+        "travel_speed": {"open": {"duration_ms": 20_000}},
+        "samples": {"open": [], "close": []},
+        "events": [],
+    }
+
+    migrated, changed = migrate_calibration_profile(profile)
+
+    assert changed is True
+    assert migrated["version"] == 7
+    assert migrated["bounds"] == profile["bounds"]
+    assert migrated["travel_speed"] == profile["travel_speed"]
+    assert profile["version"] == 6
 
 
 def test_calibration_estimators_select_stable_low_error_samples() -> None:

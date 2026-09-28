@@ -9,7 +9,7 @@ from .calibration_types import CalibrationProfile
 
 PROFILE_VERSION_BY_MODE = {
     "encoder": 5,
-    "time": 6,
+    "time": 7,
     "live_percent": 7,
     "live_scalar": 7,
 }

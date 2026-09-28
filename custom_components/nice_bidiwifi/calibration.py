@@ -604,7 +604,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         updated_at = datetime.now(UTC)
 
         return {
-            "version": 6,
+            "version": 7,
             "mode": "time",
             "created_at": started_at.isoformat(),
             "updated_at": updated_at.isoformat(),

@@ -1300,7 +1300,7 @@ async def test_time_based_calibration_builds_full_travel_profile(
     )
 
     assert profile["mode"] == "time"
-    assert profile["version"] == 6
+    assert profile["version"] == 7
     assert actions == ["open", "close", "open", "close", "open", "close"]
     assert profile["travel_speed"]["open"]["mode"] == "time"
     assert profile["travel_speed"]["open"]["selection_strategy"] == "median_duration"
@@ -1905,6 +1905,34 @@ async def test_load_calibration_builds_report_from_stored_profile(
     assert instance.calibration_state == coordinator_module.CALIBRATION_STATE_CALIBRATED
     assert instance.calibration_report["point_count"] == 2
     assert instance.calibration_updated_at.isoformat() == profile["updated_at"]
+
+
+async def test_load_calibration_keeps_version_seven_time_profile(
+    hass: HomeAssistant,
+) -> None:
+    """A live-source fallback profile remains usable after a restart."""
+    profile = {
+        "version": 7,
+        "mode": "time",
+        "updated_at": "2026-09-28T10:00:00+00:00",
+        "targets": [],
+        "bounds": {"mode": "time", "full_travel_attempts": 3},
+        "travel_speed": {
+            "open": {"mode": "time", "speed_percent_per_second": 2.0},
+            "close": {"mode": "time", "speed_percent_per_second": 2.0},
+        },
+        "samples": {"open": [], "close": []},
+        "events": [],
+    }
+    instance = _coordinator(hass)
+    instance._calibration_store = FakeStore(profile)
+
+    await instance.async_load_calibration()
+
+    assert instance.calibration_state == coordinator_module.CALIBRATION_STATE_CALIBRATED
+    assert instance.calibration_profile is profile
+    assert instance.calibration_last_error is None
+    assert instance._calibration_store.saved is None
 
 
 async def test_load_calibration_records_storage_error(
