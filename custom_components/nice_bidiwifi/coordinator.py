@@ -99,6 +99,10 @@ from .write_policy import dmp_write_block_reason
 _LOGGER = logging.getLogger(__name__)
 
 EXTENDED_STATUS_REFRESH_SECONDS = 300.0
+# The BiDi answers <Error> for a while after a network outage (e.g. a router
+# reboot). Once an entry has connected, only ask for reauth when the rejection
+# persists this long.
+AUTH_FAILURE_GRACE_SECONDS = 900.0
 
 DEP_MOVEMENT_ACTIONS = {
     DEP_ACTION_PARTIAL_OPEN_1,
@@ -182,6 +186,7 @@ class NiceBidiDataUpdateCoordinator(
         self.last_command_result: NiceCommandResult | None = None
         self.last_error: str | None = None
         self.last_successful_update: datetime | None = None
+        self._auth_failure_since: float | None = None
         self.position_controller._init_position_state()
         self._extended_status_cache: NiceBidiStatus | None = None
         self._extended_status_next_refresh_monotonic = 0.0
@@ -259,10 +264,24 @@ class NiceBidiDataUpdateCoordinator(
             status = await self.hass.async_add_executor_job(self._read_status_and_maybe_info)
         except NiceBidiAuthError as err:
             self.client.close()
-            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
-            raise ConfigEntryAuthFailed(str(err)) from err
+            now = time.monotonic()
+            if self._auth_failure_since is None:
+                self._auth_failure_since = now
+            if (
+                self.last_successful_update is None
+                or now - self._auth_failure_since >= AUTH_FAILURE_GRACE_SECONDS
+            ):
+                self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
+                raise ConfigEntryAuthFailed(str(err)) from err
+            _LOGGER.warning(
+                "Nice rejected the session (%s); retrying before asking to reauthenticate",
+                err,
+            )
+            self._set_connection_state(CONNECTION_STATE_FAILED)
+            self.update_interval = ERROR_UPDATE_INTERVAL
+            raise UpdateFailed(str(err)) from err
         except (NiceBidiConnectionError, OSError) as err:
             self.client.close()
             self._set_connection_state(CONNECTION_STATE_FAILED)
@@ -271,6 +290,7 @@ class NiceBidiDataUpdateCoordinator(
             self._clear_position_simulation()
             raise UpdateFailed(str(err)) from err
 
+        self._auth_failure_since = None
         status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
         self.event_controller.mark_connected()

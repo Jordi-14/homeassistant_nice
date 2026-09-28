@@ -427,6 +427,64 @@ async def test_update_data_maps_auth_failure(hass: HomeAssistant) -> None:
     assert client.closed is True
 
 
+async def test_update_data_retries_auth_failure_after_connecting(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rejection after a working session only asks for reauth once it persists."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    now = [0.0]
+    monkeypatch.setattr(coordinator_module.time, "monotonic", lambda: now[0])
+    await instance._async_update_data()
+
+    client.read_status_error = NiceBidiAuthError("denied")
+    with pytest.raises(UpdateFailed):
+        await instance._async_update_data()
+
+    assert instance.connection_state == coordinator_module.CONNECTION_STATE_FAILED
+    assert instance.update_interval == coordinator_module.ERROR_UPDATE_INTERVAL
+    assert instance.last_error == "denied"
+    assert client.closed is True
+
+    now[0] = coordinator_module.AUTH_FAILURE_GRACE_SECONDS - 1
+    with pytest.raises(UpdateFailed):
+        await instance._async_update_data()
+
+    now[0] = coordinator_module.AUTH_FAILURE_GRACE_SECONDS
+    with pytest.raises(ConfigEntryAuthFailed):
+        await instance._async_update_data()
+
+    assert instance.connection_state == coordinator_module.CONNECTION_STATE_AUTH_FAILED
+
+
+async def test_update_data_success_restarts_auth_failure_grace(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful read in between rejections restarts the grace period."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    now = [0.0]
+    monkeypatch.setattr(coordinator_module.time, "monotonic", lambda: now[0])
+    await instance._async_update_data()
+
+    client.read_status_error = NiceBidiAuthError("denied")
+    with pytest.raises(UpdateFailed):
+        await instance._async_update_data()
+
+    now[0] = 600.0
+    client.read_status_error = None
+    await instance._async_update_data()
+
+    now[0] = coordinator_module.AUTH_FAILURE_GRACE_SECONDS + 1
+    client.read_status_error = NiceBidiAuthError("denied")
+    with pytest.raises(UpdateFailed):
+        await instance._async_update_data()
+
+
 async def test_update_data_maps_connection_failure(hass: HomeAssistant) -> None:
     """Test connection error handling."""
     instance = _coordinator(hass)
