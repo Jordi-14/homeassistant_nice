@@ -232,7 +232,13 @@ class NiceConnectionRouter:
                 except NiceBidiAuthError:
                     raise
                 except (NiceBidiConnectionError, OSError):
-                    if self._local_failures < LOCAL_FAILURE_THRESHOLD:
+                    # Setup creates a fresh router for every retry. Waiting for
+                    # a second failure here would prevent the initial cloud
+                    # fallback from ever being reached.
+                    if (
+                        self._authenticated_once
+                        and self._local_failures < LOCAL_FAILURE_THRESHOLD
+                    ):
                         raise
                     self._selected = NiceConnectionRoute.CLOUD
                     self._next_local_probe = (

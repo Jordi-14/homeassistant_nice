@@ -149,10 +149,15 @@ def test_fallback_switches_after_bounded_local_failures() -> None:
     router, health, clients = _router("local_with_cloud_fallback")
     local, cloud = clients
     local.read_results.extend(
-        [NiceBidiConnectionError("down"), NiceBidiConnectionError("down")]
+        [
+            "initial-local-status",
+            NiceBidiConnectionError("down"),
+            NiceBidiConnectionError("down"),
+        ]
     )
     cloud.read_results.append("cloud-status")
 
+    assert router.read_status() == "initial-local-status"
     with pytest.raises(NiceBidiConnectionError):
         router.read_status()
     assert router.read_status() == "cloud-status"
@@ -160,6 +165,19 @@ def test_fallback_switches_after_bounded_local_failures() -> None:
     assert health.active is NiceConnectionRoute.CLOUD
     assert health.local is NiceRouteState.DISCONNECTED
     assert health.cloud is NiceRouteState.CONNECTED
+
+
+def test_first_local_connection_failure_uses_cloud_fallback() -> None:
+    router, health, clients = _router("local_with_cloud_fallback")
+    local, cloud = clients
+    local.read_results.append(NiceBidiConnectionError("connection reset by peer"))
+    cloud.read_results.append("cloud-status")
+
+    assert router.read_status() == "cloud-status"
+    assert router.selected_route == "cloud"
+    assert health.local is NiceRouteState.DISCONNECTED
+    assert health.cloud is NiceRouteState.CONNECTED
+    assert health.active is NiceConnectionRoute.CLOUD
 
 
 def test_fallback_requires_stable_local_recovery() -> None:
@@ -171,6 +189,7 @@ def test_fallback_requires_stable_local_recovery() -> None:
     local, cloud = clients
     local.read_results.extend(
         [
+            "initial-local-status",
             NiceBidiConnectionError("down"),
             NiceBidiConnectionError("down"),
             "local-probe-1",
@@ -179,6 +198,7 @@ def test_fallback_requires_stable_local_recovery() -> None:
     )
     cloud.read_results.extend(["cloud-1", "cloud-2"])
 
+    assert router.read_status() == "initial-local-status"
     with pytest.raises(NiceBidiConnectionError):
         router.read_status()
     assert router.read_status() == "cloud-1"
@@ -200,6 +220,7 @@ def test_recovery_probe_releases_the_other_nhk_session() -> None:
     local, cloud = clients
     local.read_results.extend(
         [
+            "initial-local-status",
             NiceBidiConnectionError("down"),
             NiceBidiConnectionError("down"),
             "local-probe-1",
@@ -207,6 +228,7 @@ def test_recovery_probe_releases_the_other_nhk_session() -> None:
     )
     cloud.read_results.extend(["cloud-1", "cloud-2"])
 
+    assert router.read_status() == "initial-local-status"
     with pytest.raises(NiceBidiConnectionError):
         router.read_status()
     assert router.read_status() == "cloud-1"
@@ -429,6 +451,7 @@ def test_failed_recovery_probe_backs_off_and_does_not_flap() -> None:
     local, cloud = clients
     local.read_results.extend(
         [
+            "initial-local-status",
             NiceBidiConnectionError("down"),
             NiceBidiConnectionError("down"),
             NiceBidiConnectionError("still down"),
@@ -437,6 +460,7 @@ def test_failed_recovery_probe_backs_off_and_does_not_flap() -> None:
     )
     cloud.read_results.extend(["cloud-1", "cloud-2", "cloud-3"])
 
+    assert router.read_status() == "initial-local-status"
     with pytest.raises(NiceBidiConnectionError):
         router.read_status()
     assert router.read_status() == "cloud-1"
