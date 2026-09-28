@@ -891,7 +891,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
             self.hass,
             first_identity,
         )
-        await self.async_set_unique_id(first_identity)
+        await self.async_set_unique_id(first_identity, raise_on_progress=False)
         self._abort_if_unique_id_configured()
 
         for extra in entries[1:]:
@@ -929,7 +929,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
         except (TypeError, ValueError):
             return self.async_abort(reason="invalid_import")
         await _async_remove_ignored_discovery_entry(self.hass, identity)
-        await self.async_set_unique_id(identity)
+        await self.async_set_unique_id(identity, raise_on_progress=False)
         self._abort_if_unique_id_configured()
         return self.async_create_entry(
             title=str(data[CONF_NAME]),
@@ -1089,7 +1089,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                 _log_validation_failure(form_step, data, err)
                 errors["base"] = _error_from_exception(err)
             else:
-                await self.async_set_unique_id(identity)
+                await self.async_set_unique_id(identity, raise_on_progress=False)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=data[CONF_NAME],
