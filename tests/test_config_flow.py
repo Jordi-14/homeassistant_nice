@@ -1177,6 +1177,85 @@ async def test_cloud_bootstrap_does_not_count_ignored_discovery_as_configured(
     assert entries[0].source != "ignore"
 
 
+async def _start_pending_discovery(hass: HomeAssistant) -> None:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "zeroconf"},
+        data=_zeroconf_info(),
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "zeroconf_confirm"
+
+
+async def test_cloud_bootstrap_completes_while_discovery_is_pending(
+    hass: HomeAssistant,
+) -> None:
+    """An unanswered discovery card must not block the MyNice import."""
+    with (
+        patch.object(
+            config_flow,
+            "_async_fetch_cloud_accessories",
+            return_value=_cloud_result(),
+        ),
+        patch.object(config_flow, "NiceBidiClient", FakeClient),
+        patch(
+            "custom_components.nice_bidiwifi.async_setup_entry",
+            return_value=True,
+        ),
+    ):
+        await _start_pending_discovery(hass)
+        result = await _start_cloud_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                config_flow.CONF_CLOUD_ACCOUNT: "account",
+                config_flow.CONF_CLOUD_ACCOUNT_PASSWORD: "password",
+                config_flow.CONF_CLOUD_CONFIRM: True,
+            },
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {config_flow.CONF_CLOUD_ACCESSORIES: ["0"]},
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Driveway",
+                CONF_HOST: "192.0.2.10",
+                CONF_PORT: 443,
+                CONF_DEVICE_ID: 1,
+                CONF_T4_TIMEOUT_MS: 200,
+            },
+        )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["result"].unique_id == "AA:BB:CC:DD:EE:FF"
+    assert hass.config_entries.flow.async_progress_by_handler(DOMAIN) == []
+
+
+async def test_manual_setup_completes_while_discovery_is_pending(
+    hass: HomeAssistant,
+) -> None:
+    """An unanswered discovery card must not block manual local setup."""
+    with (
+        patch.object(config_flow, "NiceBidiClient", FakeClient),
+        patch(
+            "custom_components.nice_bidiwifi.async_setup_entry",
+            return_value=True,
+        ),
+    ):
+        await _start_pending_discovery(hass)
+        result = await _start_local_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            _local_input(),
+        )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["result"].unique_id == "AA:BB:CC:DD:EE:FF"
+    assert hass.config_entries.flow.async_progress_by_handler(DOMAIN) == []
+
+
 async def test_manual_setup_separates_normal_and_advanced_fields(
     hass: HomeAssistant,
 ) -> None:
