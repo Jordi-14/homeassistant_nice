@@ -2179,3 +2179,23 @@ def test_select_calibration_sample_prefers_stable_window() -> None:
     assert selected["selected_attempt"] == 3
     assert selected["selected_attempts"] == [2, 3]
     assert selected["ignored_invalid_attempts"] == [4]
+
+
+async def test_failed_poll_closes_client_off_the_event_loop(
+    hass: HomeAssistant,
+) -> None:
+    """Closing waits for the session lock, so it must not block the loop."""
+    import threading
+
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.read_status_error = NiceBidiConnectionError("offline")
+    close_threads: list[threading.Thread] = []
+    client.close = lambda: close_threads.append(threading.current_thread())
+    instance.client = client
+
+    with pytest.raises(UpdateFailed):
+        await instance._async_update_data()
+
+    assert close_threads
+    assert close_threads[0] is not threading.main_thread()

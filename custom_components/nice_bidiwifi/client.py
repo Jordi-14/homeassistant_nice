@@ -262,9 +262,12 @@ class NiceBidiClient:
 
     @property
     def reconnect_count(self) -> int:
-        """Return the number of internal reconnect attempts."""
-        with self._lock:
-            return self._reconnect_count
+        """Return the number of internal reconnect attempts.
+
+        Read without the session lock: sensors call this on the event loop
+        while an operation may hold the lock for a full network timeout.
+        """
+        return self._reconnect_count
 
     def close(self) -> None:
         """Close the current session."""

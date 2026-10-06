@@ -141,7 +141,7 @@ class NiceAdministrationController(OwnerBoundController):
         try:
             result = await self.hass.async_add_executor_job(operation)
         except NiceBidiAuthError as err:
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._record_operation(
@@ -157,7 +157,7 @@ class NiceAdministrationController(OwnerBoundController):
                 f"Nice authentication failed during {action}"
             ) from err
         except (NiceBidiConnectionError, NiceBidiError, OSError, ValueError) as err:
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             self._record_operation(

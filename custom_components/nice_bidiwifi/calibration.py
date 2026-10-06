@@ -2109,12 +2109,12 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         try:
             status = await self.hass.async_add_executor_job(self._read_motion_status)
         except NiceBidiAuthError as err:
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self.connection_state = CONNECTION_STATE_AUTH_FAILED
             self.last_error = str(err)
             raise
         except (NiceBidiConnectionError, OSError) as err:
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self.connection_state = CONNECTION_STATE_FAILED
             self.last_error = str(err)
             self.update_interval = ERROR_UPDATE_INTERVAL

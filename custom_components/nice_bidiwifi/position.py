@@ -749,12 +749,12 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         except asyncio.CancelledError:
             raise
         except NiceBidiAuthError as err:
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self.connection_state = CONNECTION_STATE_AUTH_FAILED
             self.last_error = str(err)
             _LOGGER.warning("Nice target-position authentication failed: %s", err)
         except (NiceBidiConnectionError, OSError) as err:
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self.connection_state = CONNECTION_STATE_FAILED
             self.last_error = str(err)
             self.update_interval = ERROR_UPDATE_INTERVAL

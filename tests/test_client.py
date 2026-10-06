@@ -1162,3 +1162,34 @@ def test_status_reports_moving_states() -> None:
     """Test status movement helper."""
     assert NiceBidiStatus("opening", 10, 100, 0, 1000, {}).is_moving
     assert not NiceBidiStatus("open", 100, 1000, 0, 1000, {}).is_moving
+
+
+def test_reconnect_count_does_not_wait_for_the_session_lock() -> None:
+    """Sensors read this on the event loop during long network operations."""
+    import threading
+
+    client = _client()
+    held = threading.Event()
+    release = threading.Event()
+
+    def hold_lock() -> None:
+        with client._lock:
+            held.set()
+            release.wait(timeout=5.0)
+
+    holder = threading.Thread(target=hold_lock)
+    holder.start()
+    held.wait(timeout=2.0)
+    reader_done = threading.Event()
+    result: list[int] = []
+    reader = threading.Thread(
+        target=lambda: (result.append(client.reconnect_count), reader_done.set())
+    )
+    reader.start()
+    try:
+        assert reader_done.wait(timeout=1.0)
+        assert result == [0]
+    finally:
+        release.set()
+        holder.join(timeout=2.0)
+        reader.join(timeout=2.0)

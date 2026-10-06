@@ -258,13 +258,13 @@ class NiceBidiDataUpdateCoordinator(
                 self._set_connection_state(CONNECTION_STATE_RECONNECTING)
             status = await self.hass.async_add_executor_job(self._read_status_and_maybe_info)
         except NiceBidiAuthError as err:
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise ConfigEntryAuthFailed(str(err)) from err
         except (NiceBidiConnectionError, OSError) as err:
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             self.update_interval = ERROR_UPDATE_INTERVAL
@@ -518,14 +518,14 @@ class NiceBidiDataUpdateCoordinator(
             await self.hass.async_add_executor_job(self.client.send_action, action)
         except NiceBidiAuthError as err:
             self._store_failed_command(command, started, err)
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise HomeAssistantError(f"Nice authentication failed: {err}") from err
         except (NiceBidiConnectionError, OSError) as err:
             self._store_failed_command(command, started, err)
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
@@ -564,7 +564,7 @@ class NiceBidiDataUpdateCoordinator(
             await self.hass.async_add_executor_job(self.client.send_dep_action, action)
         except NiceBidiAuthError as err:
             self._store_failed_command(command, started, err)
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
@@ -574,7 +574,7 @@ class NiceBidiDataUpdateCoordinator(
                 self._rejected_t4_actions.add(action)
                 self.async_update_listeners()
             self._store_failed_command(command, started, err)
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
@@ -644,13 +644,13 @@ class NiceBidiDataUpdateCoordinator(
             )
         except NiceBidiAuthError as err:
             self._store_failed_command(command, started, err)
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             raise HomeAssistantError(f"Nice authentication failed: {err}") from err
         except (NiceBidiConnectionError, OSError, ValueError) as err:
             self._store_failed_command(command, started, err)
-            self.client.close()
+            await self.hass.async_add_executor_job(self.client.close)
             self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             raise HomeAssistantError(f"Nice DMP write failed: {err}") from err
