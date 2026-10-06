@@ -3,19 +3,29 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import logging
 import threading
 import time
 from typing import Any
 
 from .client import NiceBidiAuthError, NiceBidiClient, NiceBidiConnectionError
 from .connection import NiceConnectionHealth, NiceConnectionRoute, NiceRouteState
-from .errors import RUNTIME_RETRYABLE_CONNECT_ERROR_CODES, nice_error_code
+from .errors import (
+    RUNTIME_RETRYABLE_CONNECT_ERROR_CODES,
+    is_unsupported_request_error,
+    nice_error_code,
+)
 from .models.config import ConnectionMode, NiceEntryConfig, NiceEndpoint
 from .protocol.nhk.administration import LOG_EVENTS_PER_SCOPE
 from .transport.lan import LegacyLanTlsTransport
 from .transport.relay import RelayTlsTransport
 
+_LOGGER = logging.getLogger(__name__)
+
 LOCAL_FAILURE_THRESHOLD = 2
+# A restart can leave the previous process's NHK session open on the
+# interface for a few seconds, and the interface allows only one session.
+STARTUP_LOCAL_RETRY_DELAY_SECONDS = 3.0
 LOCAL_RECOVERY_THRESHOLD = 2
 LOCAL_PROBE_INTERVAL_SECONDS = 30.0
 LOCAL_PROBE_MAX_INTERVAL_SECONDS = 300.0
@@ -31,10 +41,12 @@ class NiceConnectionRouter:
         *,
         client_factory: Callable[..., NiceBidiClient] = NiceBidiClient,
         monotonic: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._mode = config.connection.mode
         self._health = health
         self._monotonic = monotonic
+        self._sleep = sleep
         self._lock = threading.RLock()
         common = {
             "credentials": config.credentials,
@@ -210,7 +222,12 @@ class NiceConnectionRouter:
             if nice_error_code(err) in RUNTIME_RETRYABLE_CONNECT_ERROR_CODES:
                 raise NiceBidiConnectionError(str(err)) from err
             raise
-        except (NiceBidiConnectionError, OSError):
+        except (NiceBidiConnectionError, OSError) as err:
+            if is_unsupported_request_error(err):
+                # The route works; only this request is unsupported.
+                self._mark_success(route, active=active)
+                self._authenticated_once = True
+                raise
             self._mark_failure(route)
             raise
         self._mark_success(route, active=active)
@@ -231,7 +248,9 @@ class NiceConnectionRouter:
                     )
                 except NiceBidiAuthError:
                     raise
-                except (NiceBidiConnectionError, OSError):
+                except (NiceBidiConnectionError, OSError) as local_err:
+                    if is_unsupported_request_error(local_err):
+                        raise
                     # Setup creates a fresh router for every retry. Waiting for
                     # a second failure here would prevent the initial cloud
                     # fallback from ever being reached.
@@ -240,6 +259,22 @@ class NiceConnectionRouter:
                         and self._local_failures < LOCAL_FAILURE_THRESHOLD
                     ):
                         raise
+                    failure: Exception = local_err
+                    if not self._authenticated_once:
+                        self._sleep(STARTUP_LOCAL_RETRY_DELAY_SECONDS)
+                        try:
+                            return self._call(
+                                NiceConnectionRoute.LOCAL, method, *args, **kwargs
+                            )
+                        except NiceBidiAuthError:
+                            raise
+                        except (NiceBidiConnectionError, OSError) as retry_err:
+                            failure = retry_err
+                    _LOGGER.warning(
+                        "Nice local connection failed (%s); using the cloud relay "
+                        "until the local route recovers",
+                        failure,
+                    )
                     self._selected = NiceConnectionRoute.CLOUD
                     self._next_local_probe = (
                         self._monotonic() + self._probe_interval
@@ -260,7 +295,9 @@ class NiceConnectionRouter:
                     )
                 except NiceBidiAuthError:
                     raise
-                except (NiceBidiConnectionError, OSError):
+                except (NiceBidiConnectionError, OSError) as probe_err:
+                    if is_unsupported_request_error(probe_err):
+                        raise
                     self._probe_interval = min(
                         self._probe_interval * 2,
                         LOCAL_PROBE_MAX_INTERVAL_SECONDS,

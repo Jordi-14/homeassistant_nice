@@ -17,6 +17,7 @@ from .errors import (
     NiceAuthError as NiceBidiAuthError,
     NiceConnectionError as NiceBidiConnectionError,
     NiceError as NiceBidiError,
+    is_unsupported_request_error,
     nice_error_code as nice_bidi_error_code,
 )
 from .models.credentials import NiceCredentials as NiceBidiCredentials
@@ -395,6 +396,8 @@ class NiceBidiClient:
                     self._ensure_connected_locked()
                     return operation()
                 except (OSError, ssl.SSLError, NiceBidiConnectionError) as exc:
+                    if is_unsupported_request_error(exc):
+                        raise
                     last_error = exc
                     self._close_locked()
                     if attempt == 0:
@@ -418,6 +421,8 @@ class NiceBidiClient:
                 self._close_locked()
                 raise
             except (OSError, ssl.SSLError, NiceBidiConnectionError) as exc:
+                if is_unsupported_request_error(exc):
+                    raise
                 self._close_locked()
                 raise NiceBidiConnectionError(str(exc)) from exc
 

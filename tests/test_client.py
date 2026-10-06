@@ -997,6 +997,37 @@ def test_run_with_reconnect_retries_once(monkeypatch: pytest.MonkeyPatch) -> Non
     assert client.reconnect_count == 1
 
 
+@pytest.mark.parametrize("runner", ["_run_with_reconnect", "_run_command_once"])
+def test_unsupported_request_keeps_the_session(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: str,
+) -> None:
+    """Code 14 is an answer on a working session, not a reason to reconnect."""
+    client = _client()
+    closes = 0
+    calls = 0
+
+    def close() -> None:
+        nonlocal closes
+        closes += 1
+
+    def operation() -> None:
+        nonlocal calls
+        calls += 1
+        raise NiceBidiConnectionError("<Error><Code>14</Code></Error> (type=T4_REQUEST)")
+
+    monkeypatch.setattr(client, "_ensure_connected_locked", lambda: None)
+    monkeypatch.setattr(client, "_close_locked", close)
+    monkeypatch.setattr("custom_components.nice_bidiwifi.client.time.sleep", lambda seconds: None)
+
+    with pytest.raises(NiceBidiConnectionError, match="<Code>14</Code>"):
+        getattr(client, runner)(operation)
+
+    assert calls == 1
+    assert closes == 0
+    assert client.reconnect_count == 0
+
+
 def test_command_runner_never_replays_ambiguous_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
