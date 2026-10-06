@@ -203,11 +203,11 @@ class NiceConnectionRouter:
             self._client(route).close()
             self._mark_failure(route)
             # Coded authentication errors currently originate only from CONNECT.
-            if (
-                self._authenticated_once
-                and nice_error_code(err)
-                in RUNTIME_RETRYABLE_CONNECT_ERROR_CODES
-            ):
+            # The router only serves stored entries, whose credentials were
+            # already validated by the config or reauth flow, so these session
+            # rejections stay retryable across reloads and restarts. Credential
+            # rejections such as Code 1 still trigger reauthentication.
+            if nice_error_code(err) in RUNTIME_RETRYABLE_CONNECT_ERROR_CODES:
                 raise NiceBidiConnectionError(str(err)) from err
             raise
         except (NiceBidiConnectionError, OSError):
