@@ -18,6 +18,7 @@ from custom_components.nice_bidiwifi.client import (
     NiceBidiCredentials,
     NiceBidiDeviceInfo,
     NiceBidiStatus,
+    NiceReadPreemptedError,
     _frame,
     _make_context,
     _random_t4_key,
@@ -424,6 +425,7 @@ def test_read_nhk_status_parses_status_response() -> None:
             body="",
             *,
             post_response_listen_seconds=0.0,
+            interrupt=None,
         ):
             assert request_type == "STATUS"
             return [
@@ -460,6 +462,7 @@ def test_read_nhk_status_accepts_unknown_door_status() -> None:
             body="",
             *,
             post_response_listen_seconds=0.0,
+            interrupt=None,
         ):
             assert request_type == "STATUS"
             return [
@@ -495,6 +498,7 @@ def test_read_nhk_status_accepts_change_event_frame() -> None:
             body="",
             *,
             post_response_listen_seconds=0.0,
+            interrupt=None,
         ):
             return [
                 STX
@@ -524,6 +528,7 @@ def test_read_nhk_status_parses_cuwifi_instant_position_event() -> None:
             body="",
             *,
             post_response_listen_seconds=0.0,
+            interrupt=None,
         ):
             assert request_type == "STATUS"
             assert post_response_listen_seconds > 0
@@ -561,6 +566,7 @@ def test_read_nhk_status_parses_rba4r10_raw_live_position_event() -> None:
             body="",
             *,
             post_response_listen_seconds=0.0,
+            interrupt=None,
         ):
             assert request_type == "STATUS"
             assert post_response_listen_seconds > 0
@@ -597,6 +603,7 @@ def test_read_nhk_status_scales_low_rba4r10_raw_position_as_raw_not_percent() ->
             body="",
             *,
             post_response_listen_seconds=0.0,
+            interrupt=None,
         ):
             return [
                 STX
@@ -630,6 +637,7 @@ def test_read_nhk_status_keeps_moving_state_for_intermediate_cuwifi_stopped_posi
             body="",
             *,
             post_response_listen_seconds=0.0,
+            interrupt=None,
         ):
             return [
                 STX
@@ -666,6 +674,7 @@ def test_read_nhk_status_does_not_invent_state_from_cuwifi_position_event() -> N
             body="",
             *,
             post_response_listen_seconds=0.0,
+            interrupt=None,
         ):
             return [
                 STX
@@ -698,6 +707,7 @@ def test_read_nhk_status_uses_cuwifi_t4_endpoint_state_without_position() -> Non
             body="",
             *,
             post_response_listen_seconds=0.0,
+            interrupt=None,
         ):
             return [
                 STX
@@ -734,6 +744,7 @@ def test_read_nhk_status_ignores_out_of_range_cuwifi_position_event() -> None:
             body="",
             *,
             post_response_listen_seconds=0.0,
+            interrupt=None,
         ):
             return [
                 STX
@@ -1054,6 +1065,158 @@ def test_command_runner_never_replays_ambiguous_write(
 
     assert calls == 1
     assert closes == 1
+
+
+def test_preemptible_status_read_yields_between_registers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A poll stops before its next register once a command is waiting."""
+    requested: list[tuple[int, int]] = []
+    command_waiting = False
+    closes = 0
+
+    class StatusClient(NiceBidiClient):
+        def _t4_request_locked(self, protocol, plain_payload, daddr, dendpoint, tout_ms):
+            nonlocal command_waiting
+            key = (plain_payload[9], plain_payload[10])
+            requested.append(key)
+            command_waiting = True
+            return b"<Response />", [_dmp_response(*key, b"\x02")]
+
+    client = StatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+        should_yield=lambda: command_waiting,
+    )
+    monkeypatch.setattr(client, "_ensure_connected_locked", lambda: None)
+
+    def close() -> None:
+        nonlocal closes
+        closes += 1
+
+    monkeypatch.setattr(client, "_close_locked", close)
+
+    with pytest.raises(NiceReadPreemptedError):
+        client.read_status(include_extended=True, preemptible=True)
+
+    assert requested == [(0x04, 0x01)]
+    assert closes == 0
+    assert client.reconnect_count == 0
+
+
+def test_non_preemptible_status_read_ignores_waiting_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Calibration and target watchers keep complete reads."""
+    requested: list[tuple[int, int]] = []
+
+    class StatusClient(NiceBidiClient):
+        def _t4_request_locked(self, protocol, plain_payload, daddr, dendpoint, tout_ms):
+            key = (plain_payload[9], plain_payload[10])
+            requested.append(key)
+            return b"<Response />", [_dmp_response(*key, b"\x02")]
+
+    client = StatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+        should_yield=lambda: True,
+    )
+    monkeypatch.setattr(client, "_ensure_connected_locked", lambda: None)
+
+    client.read_status()
+
+    assert len(requested) == 4
+
+
+class _Transport:
+    connected = True
+
+    def close(self) -> None:
+        self.connected = False
+
+
+class _Dispatcher:
+    def __init__(self, failure: Exception | None) -> None:
+        self.failure = failure
+
+    def close(self) -> None:
+        pass
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_opens"),
+    [(OSError("socket closed by peer"), 1), (None, 0)],
+)
+def test_command_reconnects_only_when_reader_already_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception | None,
+    expected_opens: int,
+) -> None:
+    """A dead session is replaced before the command is sent, never after."""
+    client = _client()
+    client._transport = _Transport()
+    client._dispatcher = _Dispatcher(failure)
+    client._session_key = b"session"
+    opens = 0
+    sent: list[str] = []
+
+    def open_session() -> None:
+        nonlocal opens
+        opens += 1
+
+    monkeypatch.setattr(client, "_open_locked", open_session)
+    monkeypatch.setattr(
+        client,
+        "_connect_locked",
+        lambda: setattr(client, "_session_key", b"new-session"),
+    )
+    monkeypatch.setattr(client, "_send_action_locked", sent.append)
+
+    client.send_action("open")
+
+    assert opens == expected_opens
+    assert sent == ["open"]
+
+
+@pytest.mark.parametrize("preemptible", [True, False])
+def test_nhk_status_read_yields_only_when_preemptible(preemptible: bool) -> None:
+    """Only the background poll gives up its STATUS window to a command."""
+    interrupts: list[object] = []
+
+    class NhkStatusClient(NiceBidiClient):
+        def _signed_exchange_frames_locked(
+            self,
+            request_type,
+            body="",
+            *,
+            post_response_listen_seconds=0.0,
+            interrupt=None,
+        ):
+            interrupts.append(interrupt)
+            return [
+                STX
+                + b'<Response type="STATUS" id="513"><Devices><Device id="1"><Properties>'
+                + b"<DoorStatus>closing</DoorStatus>"
+                + b"</Properties></Device></Devices></Response>"
+                + ETX
+            ]
+
+    client = NhkStatusClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+        should_yield=lambda: True,
+    )
+
+    if preemptible:
+        with pytest.raises(NiceReadPreemptedError):
+            client._read_nhk_status_locked(preemptible=True)
+        assert interrupts[0] is not None and interrupts[0]() is True
+    else:
+        assert client._read_nhk_status_locked().state == "closing"
+        assert interrupts == [None]
 
 
 def test_send_action_rejects_invalid_action() -> None:
