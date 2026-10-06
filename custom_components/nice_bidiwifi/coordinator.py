@@ -418,6 +418,7 @@ class NiceBidiDataUpdateCoordinator(
         stop_calibration: bool = True,
     ) -> None:
         """Cancel background tasks owned by this coordinator."""
+        self._reset_close_endpoint()
         await self._async_cancel_position_target()
         await self._async_cancel_post_command_refresh()
         await self._async_cancel_position_simulation()
@@ -517,6 +518,7 @@ class NiceBidiDataUpdateCoordinator(
         simulation_target_position: float | None = None,
     ) -> None:
         """Send an open, close, or stop command without touching target watchers."""
+        self._reset_close_endpoint()
         started = time.monotonic()
         command = NiceCommand(key=action, kind=CommandKind.DOOR_ACTION)
         stop_started_from_motion = action == "stop" and (
@@ -568,6 +570,7 @@ class NiceBidiDataUpdateCoordinator(
             raise HomeAssistantError(
                 f"Nice T4 action {action!r} is not advertised by this device"
             )
+        self._reset_close_endpoint()
         started = time.monotonic()
         command = NiceCommand(key=action, kind=CommandKind.T4_ACTION)
         try:

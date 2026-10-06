@@ -244,6 +244,15 @@ The cover attributes separate real source data from dashboard display values:
   held from the last known value.
 - `position_simulation_action`: simulated display direction while active.
 
+Some CU_WIFI interfaces report the closed endpoint position in a live position
+frame during a close but never report `closed`, and keep answering
+`DoorStatus=closing` afterwards. On CU_WIFI interfaces only, the cover shows
+`closed` once a live frame reports 0-2% while closing and nothing new arrives
+for 5 seconds. An obstruction, new movement, or any command clears this, and a
+stale `closing` without that endpoint frame, for example after a restart, stays
+unconfirmed. Diagnostics mark the inferred state with
+`NHK/InferredClosedEndpoint: live_endpoint_position`.
+
 Calibration is optional. Encoder, live-percent, and live-scalar sources can
 learn stop correction for intermediate targets. Endpoint-only devices can
 measure full-travel timing for diagnostics, but the integration does not turn

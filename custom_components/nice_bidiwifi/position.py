@@ -9,7 +9,9 @@ from datetime import timedelta
 import logging
 import time
 
+from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.event import async_call_later
 
 from .calibration_constants import CALIBRATION_STATE_RUNNING
 from .client import (
@@ -26,6 +28,8 @@ from .client import (
 from .connection import CONNECTION_STATE_AUTH_FAILED, CONNECTION_STATE_FAILED
 from .const import DOMAIN, ERROR_UPDATE_INTERVAL, IDLE_UPDATE_INTERVAL, MOVING_UPDATE_INTERVAL
 from .controllers.base import OwnerBoundController
+from .models.capabilities import ProductFamily
+from .models.events import NiceEvent
 from .models.position import NicePosition, resolve_position
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,6 +51,14 @@ POSITION_SIMULATION_START_GRACE_SECONDS = 8.0
 POSITION_SIMULATION_TIMEOUT_PADDING_SECONDS = 30.0
 POSITION_TARGET_LIVE_POSITION_TOLERANCE = 0.5
 POSITION_TARGET_LIVE_SPEED_MARGIN = 3.0
+# Some CU_WIFI interfaces report the closed endpoint position in a live frame
+# while closing but never report closed, and keep answering
+# DoorStatus=closing afterwards.
+CLOSE_ENDPOINT_POSITION_PERCENT = 2.0
+CLOSE_ENDPOINT_SETTLE_SECONDS = 5.0
+CLOSE_ENDPOINT_RESET_STATES = frozenset(
+    {STATE_OPENING, STATE_OPEN, STATE_STOPPED, STATE_PARTIALLY_OPEN}
+)
 
 
 class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordinator"]):
@@ -72,6 +84,9 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         self._position_simulation_speed_percent_per_second: float | None = None
         self._position_observation: tuple[str, float, float] | None = None
         self._observed_position_speed_percent_per_second: dict[str, float] = {}
+        self._close_endpoint_unsub = None
+        self._close_endpoint_latched = False
+        self._close_endpoint_logged = False
 
     async def _async_cancel_position_target(self) -> None:
         """Cancel a pending target-position watcher."""
@@ -172,8 +187,84 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         registers["NHK/RecentStopOverride"] = status.state
         return replace(status, state=STATE_STOPPED, position=None, registers=registers)
 
+    def _apply_close_endpoint_inference(self, status: NiceBidiStatus) -> NiceBidiStatus:
+        """Keep a confirmed close endpoint while stale closing polls repeat."""
+        if status.state in CLOSE_ENDPOINT_RESET_STATES or status.obstacle:
+            self._reset_close_endpoint()
+            return status
+        if status.state == STATE_CLOSED:
+            if not self._close_endpoint_latched:
+                self._reset_close_endpoint()
+            return status
+        if status.state != STATE_CLOSING or not self._close_endpoint_latched:
+            return status
+        registers = dict(status.registers)
+        registers["NHK/InferredClosedEndpoint"] = "live_endpoint_position"
+        return replace(status, state=STATE_CLOSED, position=0.0, registers=registers)
+
+    def _close_endpoint_inference_allowed(self, status: NiceBidiStatus | None) -> bool:
+        """Return whether a closing CU_WIFI status may settle to closed."""
+        capabilities = self.capabilities
+        return (
+            status is not None
+            and status.state == STATE_CLOSING
+            and not status.obstacle
+            and "04/01" not in status.registers
+            and self.calibration_state != CALIBRATION_STATE_RUNNING
+            and capabilities is not None
+            and capabilities.family is ProductFamily.CU_WIFI
+        )
+
+    def _note_live_close_endpoint(self, event: NiceEvent) -> None:
+        """Start settling after a CU_WIFI live frame reports the closed endpoint."""
+        if (
+            event.t4_payload_kind != "04/40"
+            or event.t4_position_scale != "percent"
+            or event.position is None
+            or event.position > CLOSE_ENDPOINT_POSITION_PERCENT
+        ):
+            return
+        if self._close_endpoint_latched or self._close_endpoint_unsub is not None:
+            return
+        if not self._close_endpoint_inference_allowed(self.data):
+            return
+        self._close_endpoint_unsub = async_call_later(
+            self.hass,
+            CLOSE_ENDPOINT_SETTLE_SECONDS,
+            self._latch_close_endpoint,
+        )
+
+    @callback
+    def _latch_close_endpoint(self, _now) -> None:
+        """Show closed once the endpoint report has settled without new movement."""
+        self._close_endpoint_unsub = None
+        status = self.data
+        if not self._close_endpoint_inference_allowed(status):
+            return
+        self._close_endpoint_latched = True
+        if not self._close_endpoint_logged:
+            self._close_endpoint_logged = True
+            _LOGGER.info(
+                "Nice interface did not report the end of a close; showing closed "
+                "after the live endpoint position settled for %.0f seconds",
+                CLOSE_ENDPOINT_SETTLE_SECONDS,
+            )
+        _LOGGER.debug("Nice close inferred from settled live endpoint position")
+        status = self._normalize_status_for_display(status)
+        self._store_successful_status(status)
+        self.async_set_updated_data(status)
+
+    def _reset_close_endpoint(self) -> None:
+        """Forget an inferred close after new movement, an obstruction, or a command."""
+        self._close_endpoint_latched = False
+        unsub = self._close_endpoint_unsub
+        self._close_endpoint_unsub = None
+        if unsub is not None:
+            unsub()
+
     def _normalize_status_for_display(self, status: NiceBidiStatus) -> NiceBidiStatus:
         """Align sparse status updates with the cover behavior users expect."""
+        status = self._apply_close_endpoint_inference(status)
         status = self._normalize_live_scalar_status(status)
         if (
             status.position is None

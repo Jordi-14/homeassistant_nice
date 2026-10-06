@@ -200,6 +200,7 @@ class NiceEventController(OwnerBoundController):
                 ),
             )
         self.async_set_updated_data(status)
+        self._note_live_close_endpoint(event)
 
     def _handle_reader_failure(self, error_name: str) -> None:
         """Expose event loss while leaving adaptive polling operational."""
