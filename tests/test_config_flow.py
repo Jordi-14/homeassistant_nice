@@ -1331,6 +1331,7 @@ async def test_zeroconf_discovery_creates_local_entry(
             context={"source": "zeroconf"},
             data=discovery,
         )
+        assert result["description_placeholders"]["name"] == "Driveway"
         form_fields = {
             key.schema for key in result["data_schema"].schema
         }
