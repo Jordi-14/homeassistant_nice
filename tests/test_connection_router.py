@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from collections import deque
 from typing import Any
 
@@ -19,6 +21,7 @@ from custom_components.nice_bidiwifi.connection_router import (
 from custom_components.nice_bidiwifi.errors import (
     NiceBidiAuthError,
     NiceBidiConnectionError,
+    NiceReadPreemptedError,
 )
 from custom_components.nice_bidiwifi.models.config import NiceEntryConfig
 from custom_components.nice_bidiwifi.transport.lan import LegacyLanTlsTransport
@@ -42,7 +45,7 @@ class RouteClient:
         self.event_stream_active = False
         self.event_stream_error = None
 
-    def read_status(self, *, include_extended: bool = False):
+    def read_status(self, *, include_extended: bool = False, preemptible: bool = False):
         result = self.read_results.popleft()
         if isinstance(result, Exception):
             raise result
@@ -584,3 +587,44 @@ def test_cloud_failure_is_reported_without_lan_attempt() -> None:
         router.read_status()
     assert health.cloud is NiceRouteState.DISCONNECTED
     assert health.local is NiceRouteState.NOT_CONFIGURED
+
+
+def test_command_blocked_behind_a_read_asks_it_to_yield() -> None:
+    router, _, clients = _router("local_only")
+    local = clients[0]
+    should_yield = local.kwargs["should_yield"]
+    assert should_yield() is False
+
+    router._lock.acquire()
+    command = threading.Thread(target=router.send_action, args=("open",))
+    command.start()
+    try:
+        deadline = time.monotonic() + 2.0
+        while not should_yield() and time.monotonic() < deadline:
+            time.sleep(0.001)
+        assert should_yield() is True
+        assert local.commands == []
+    finally:
+        router._lock.release()
+    command.join(timeout=2.0)
+
+    assert local.commands == ["open"]
+    assert should_yield() is False
+
+
+def test_preempted_read_is_not_a_route_failure() -> None:
+    router, health, clients = _router("local_with_cloud_fallback")
+    local, cloud = clients
+    local.read_results.extend(
+        ["initial-status", NiceReadPreemptedError("yielded")]
+    )
+    cloud.read_results.append("must-not-run")
+
+    assert router.read_status() == "initial-status"
+    with pytest.raises(NiceReadPreemptedError):
+        router.read_status(preemptible=True)
+
+    assert router.local_failure_count == 0
+    assert router.selected_route == "local"
+    assert len(cloud.read_results) == 1
+    assert health.local is NiceRouteState.CONNECTED

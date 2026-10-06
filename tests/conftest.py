@@ -260,6 +260,7 @@ class FakeClient:
         self.info_reads = 0
         self.nhk_status_reads = 0
         self.read_status_include_extended: list[bool] = []
+        self.read_status_preemptible: list[bool] = []
         self.dmp_writes: list[tuple[int, int, int, int]] = []
         self.event_callbacks: list = []
         self.event_failure_callbacks: list = []
@@ -304,14 +305,15 @@ class FakeClient:
         """Return no persistent fake error."""
         return None
 
-    def read_status(self, *, include_extended: bool = False) -> NiceBidiStatus:
+    def read_status(self, *, include_extended: bool = False, preemptible: bool = False) -> NiceBidiStatus:
         """Return status or raise a configured error."""
         self.read_status_include_extended.append(include_extended)
+        self.read_status_preemptible.append(preemptible)
         if self.read_status_error is not None:
             raise self.read_status_error
         return self.read_status_result
 
-    def read_nhk_status(self) -> NiceBidiStatus:
+    def read_nhk_status(self, *, preemptible: bool = False) -> NiceBidiStatus:
         """Return NHK status or raise a configured error."""
         self.nhk_status_reads += 1
         if self.read_nhk_status_error is not None:
