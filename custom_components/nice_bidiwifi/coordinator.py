@@ -70,6 +70,7 @@ from .const import (
 from .errors import (
     DMP_STATUS_COMMAND_ONLY_ERROR_CODES,
     DMP_STATUS_NHK_FALLBACK_ERROR_CODES,
+    NiceReadPreemptedError,
 )
 from .position import (  # noqa: F401 - constants are re-exported for compatibility.
     POST_COMMAND_FAST_POLL_SECONDS,
@@ -257,6 +258,12 @@ class NiceBidiDataUpdateCoordinator(
             if self.connection_state == CONNECTION_STATE_FAILED:
                 self._set_connection_state(CONNECTION_STATE_RECONNECTING)
             status = await self.hass.async_add_executor_job(self._read_status_and_maybe_info)
+        except NiceReadPreemptedError as err:
+            # The command that preempted this poll schedules its own refresh.
+            if self.data is None:
+                raise UpdateFailed(str(err)) from err
+            _LOGGER.debug("Nice status poll yielded to a pending command")
+            return self.data
         except NiceBidiAuthError as err:
             self.client.close()
             self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
@@ -286,11 +293,14 @@ class NiceBidiDataUpdateCoordinator(
         if self._use_nhk_status:
             if self.device_info is None:
                 self._store_device_info(self.client.read_info())
-            return self.client.read_nhk_status()
+            return self.client.read_nhk_status(preemptible=True)
 
         try:
             include_extended = self._should_read_extended_status()
-            status = self.client.read_status(include_extended=include_extended)
+            status = self.client.read_status(
+                include_extended=include_extended,
+                preemptible=True,
+            )
         except NiceBidiConnectionError as err:
             error_code = nice_bidi_error_code(err)
             if error_code not in DMP_STATUS_NHK_FALLBACK_ERROR_CODES:
@@ -301,7 +311,7 @@ class NiceBidiDataUpdateCoordinator(
             except NiceBidiError:
                 raise err from None
             if self._supports_nhk_status():
-                status = self.client.read_nhk_status()
+                status = self.client.read_nhk_status(preemptible=True)
                 self._use_nhk_status = True
                 _LOGGER.info(
                     "Nice DMP status polling is not supported by this device; "
@@ -550,7 +560,7 @@ class NiceBidiDataUpdateCoordinator(
             self._clear_position_simulation()
         if refresh:
             self._schedule_post_command_refresh()
-            await self.async_request_refresh()
+            self._request_refresh_in_background()
 
     async def _async_send_dep_action(self, action: str, *, refresh: bool = True) -> None:
         """Send a low-level DEP action command."""
@@ -597,7 +607,15 @@ class NiceBidiDataUpdateCoordinator(
             self._clear_position_simulation()
         if refresh:
             self._schedule_post_command_refresh()
-            await self.async_request_refresh()
+            self._request_refresh_in_background()
+
+    def _request_refresh_in_background(self) -> None:
+        """Refresh after an acknowledged command without delaying the caller."""
+        self.config_entry.async_create_background_task(
+            self.hass,
+            self.async_request_refresh(),
+            "nice-post-command-refresh",
+        )
 
     def _partial_open_target_position(self, action: str) -> float | None:
         """Return a configured partial-open target as percent when available."""

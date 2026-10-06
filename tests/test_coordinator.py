@@ -25,6 +25,7 @@ from custom_components.nice_bidiwifi.client import (
 )
 from custom_components.nice_bidiwifi.const import DOMAIN
 from custom_components.nice_bidiwifi.coordinator import NiceBidiDataUpdateCoordinator
+from custom_components.nice_bidiwifi.errors import NiceReadPreemptedError
 from tests.conftest import FakeClient, config_entry_data, make_device_info, make_status
 
 
@@ -425,6 +426,61 @@ async def test_update_data_maps_auth_failure(hass: HomeAssistant) -> None:
     assert instance.local_connection_state == "disconnected"
     assert instance.last_error == "denied"
     assert client.closed is True
+
+
+async def test_preempted_poll_keeps_last_status(hass: HomeAssistant) -> None:
+    """A poll that yields to a command must not make entities unavailable."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.async_set_updated_data(await instance._async_update_data())
+    previous = instance.data
+
+    client.read_status_error = NiceReadPreemptedError("yielded")
+    result = await instance._async_update_data()
+
+    assert result is previous
+    assert client.read_status_preemptible[-1] is True
+    assert instance.connection_state == coordinator_module.CONNECTION_STATE_CONNECTED
+    assert instance.last_error is None
+    assert client.closed is False
+
+
+async def test_preempted_first_poll_is_an_update_failure(hass: HomeAssistant) -> None:
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.read_status_error = NiceReadPreemptedError("yielded")
+    instance.client = client
+
+    with pytest.raises(UpdateFailed):
+        await instance._async_update_data()
+
+
+async def test_command_returns_before_post_command_refresh_finishes(
+    hass: HomeAssistant,
+) -> None:
+    """The service call completes as soon as the interface acknowledges."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    release_refresh = asyncio.Event()
+    refresh_started = False
+
+    async def slow_refresh() -> None:
+        nonlocal refresh_started
+        refresh_started = True
+        await release_refresh.wait()
+
+    instance.async_request_refresh = slow_refresh
+
+    await asyncio.wait_for(instance.async_send_action("open"), timeout=1.0)
+
+    assert client.actions == ["open"]
+    assert refresh_started is True
+    release_refresh.set()
+    await hass.async_block_till_done()
+    await instance._async_cancel_position_simulation()
+    await instance._async_cancel_post_command_refresh()
 
 
 async def test_update_data_maps_connection_failure(hass: HomeAssistant) -> None:

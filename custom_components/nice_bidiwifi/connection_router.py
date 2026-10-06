@@ -36,10 +36,13 @@ class NiceConnectionRouter:
         self._health = health
         self._monotonic = monotonic
         self._lock = threading.RLock()
+        self._waiting_commands = 0
+        self._waiting_commands_lock = threading.Lock()
         common = {
             "credentials": config.credentials,
             "device_id": config.device_id,
             "t4_timeout_ms": config.t4_timeout_ms,
+            "should_yield": self._command_waiting,
         }
         local_kwargs: dict[str, Any] = {}
         if config.legacy_local_tls:
@@ -282,9 +285,24 @@ class NiceConnectionRouter:
                         return local_result
             return self._call(NiceConnectionRoute.CLOUD, method, *args, **kwargs)
 
+    def _command_waiting(self) -> bool:
+        """Return whether a command is queued behind the current operation."""
+        return self._waiting_commands > 0
+
+    def _acquire_for_command(self) -> None:
+        """Take the session lock, asking preemptible reads to yield meanwhile."""
+        with self._waiting_commands_lock:
+            self._waiting_commands += 1
+        try:
+            self._lock.acquire()
+        finally:
+            with self._waiting_commands_lock:
+                self._waiting_commands -= 1
+
     def _write(self, method: str, *args, **kwargs) -> None:
         """Execute a command once; an ambiguous failure is never replayed."""
-        with self._lock:
+        self._acquire_for_command()
+        try:
             route = self._selected
             try:
                 self._call(route, method, *args, **kwargs)
@@ -299,12 +317,23 @@ class NiceConnectionRouter:
                         self._monotonic() + self._probe_interval
                     )
                 raise
+        finally:
+            self._lock.release()
 
-    def read_status(self, *, include_extended: bool = False):
-        return self._read("read_status", include_extended=include_extended)
+    def read_status(
+        self,
+        *,
+        include_extended: bool = False,
+        preemptible: bool = False,
+    ):
+        return self._read(
+            "read_status",
+            include_extended=include_extended,
+            preemptible=preemptible,
+        )
 
-    def read_nhk_status(self):
-        return self._read("read_nhk_status")
+    def read_nhk_status(self, *, preemptible: bool = False):
+        return self._read("read_nhk_status", preemptible=preemptible)
 
     def read_info(self):
         return self._read("read_info")

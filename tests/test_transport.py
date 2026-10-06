@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ssl
 import threading
+import time
 from queue import Empty, Queue
 
 import pytest
@@ -111,6 +112,45 @@ def test_dispatcher_is_the_only_reader_and_routes_unsolicited_frames() -> None:
     assert events == [event]
     assert socket.sent == [frame_xml('<Request type="STATUS" id="7"/>')]
     assert socket.recv_calls >= 1
+
+
+def test_interrupt_ends_post_response_window_and_keeps_late_frames_as_events() -> None:
+    """A waiting command cuts the listening window without losing frames."""
+    socket = QueueSocket()
+    dispatcher = ResponseDispatcher(SocketFrameTransport(socket))
+    events: list[bytes] = []
+    dispatcher.add_event_callback(events.append)
+    response = frame_xml('<Response type="STATUS" id="7"/>')
+    late = frame_xml(
+        '<Response type="CHANGE" id="99"><DoorStatus>open</DoorStatus></Response>'
+    )
+    command_waiting = threading.Event()
+    socket.feed(response)
+
+    def request_command() -> None:
+        time.sleep(0.1)
+        command_waiting.set()
+
+    threading.Thread(target=request_command).start()
+    started = time.monotonic()
+    frames = dispatcher.exchange(
+        frame_xml('<Request type="STATUS" id="7"/>'),
+        expected_type="STATUS",
+        expected_id=7,
+        timeout=1.0,
+        post_response_listen_seconds=5.0,
+        interrupt=command_waiting.is_set,
+    )
+    elapsed = time.monotonic() - started
+    socket.feed(late)
+    deadline = time.monotonic() + 1.0
+    while not events and time.monotonic() < deadline:
+        time.sleep(0.01)
+    dispatcher.close()
+
+    assert frames == [response]
+    assert elapsed < 1.0
+    assert events == [late]
 
 
 def test_transport_close_is_idempotent_and_discards_buffers() -> None:

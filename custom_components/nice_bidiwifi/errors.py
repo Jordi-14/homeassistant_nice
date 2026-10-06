@@ -30,6 +30,10 @@ class NiceProtocolError(NiceBidiConnectionError):
     """A protocol response was malformed or unsupported."""
 
 
+class NiceReadPreemptedError(NiceBidiError):
+    """A background read released the session for a pending command."""
+
+
 class NiceUnsupportedError(NiceBidiError):
     """The requested capability is not supported."""
 

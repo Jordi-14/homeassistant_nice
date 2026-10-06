@@ -17,6 +17,7 @@ RawEventCallback = Callable[[bytes], None]
 ReaderFailureCallback = Callable[[Exception], None]
 
 _READER_TIMEOUT_SECONDS = 0.25
+_INTERRUPT_CHECK_SECONDS = 0.05
 _MAX_EXCHANGE_FRAMES = 64
 
 
@@ -207,8 +208,13 @@ class ResponseDispatcher:
         expected_id: int | None,
         timeout: float,
         post_response_listen_seconds: float = 0.0,
+        interrupt: Callable[[], bool] | None = None,
     ) -> list[bytes]:
-        """Send a request and collect its correlated response plus adjacent events."""
+        """Send a request and collect its correlated response plus adjacent events.
+
+        ``interrupt`` ends the post-response listening window early. Frames
+        arriving afterwards are still published as unsolicited events.
+        """
         pending = _PendingExchange(
             expected_type=expected_type,
             expected_id=expected_id,
@@ -236,7 +242,13 @@ class ResponseDispatcher:
                         post_deadline = pending.post_response_deadline
                         if post_deadline is None or now >= post_deadline:
                             return list(pending.frames)
+                        if interrupt is not None and interrupt():
+                            return list(pending.frames)
                         wait_until = post_deadline
+                        if interrupt is not None:
+                            wait_until = min(
+                                wait_until, now + _INTERRUPT_CHECK_SECONDS
+                            )
                     else:
                         if now >= deadline:
                             return list(pending.frames)
