@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from functools import partial
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -15,18 +17,22 @@ from custom_components.nice_bidiwifi import (
     async_setup_entry,
     async_unload_entry,
 )
+from custom_components.nice_bidiwifi import coordinator as coordinator_module
+from custom_components.nice_bidiwifi.connection_router import NiceConnectionRouter
 from custom_components.nice_bidiwifi.const import (
     CONF_CONNECTION_MODE,
     CONF_TARGET_MAC,
     CONFIG_ENTRY_VERSION,
     DOMAIN,
 )
+from custom_components.nice_bidiwifi.errors import NiceBidiAuthError
 from custom_components.nice_bidiwifi.models.config import (
     ConnectionMode,
     NiceEntryConfig,
 )
 from custom_components.nice_bidiwifi.runtime import NiceRuntimeData
 from tests.conftest import config_entry_data
+from tests.test_connection_router import RouteClient
 
 
 class FakeCoordinator:
@@ -77,6 +83,32 @@ async def test_setup_entry_loads_coordinator_and_forwards_platforms(
     assert FakeCoordinator.instances[0].loaded is True
     assert FakeCoordinator.instances[0].refreshed is True
     mock_forward.assert_called_once_with(entry, PLATFORMS)
+
+
+async def test_setup_retries_session_rejection_without_reauth(
+    hass: HomeAssistant,
+) -> None:
+    """A CONNECT session rejection during a reload must not start reauth."""
+    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data())
+    entry.add_to_hass(hass)
+
+    def rejecting_client(**kwargs):
+        client = RouteClient(**kwargs)
+        client.read_results.append(
+            NiceBidiAuthError("<Error><Code>15</Code></Error> (type=CONNECT)")
+        )
+        return client
+
+    with patch.object(
+        coordinator_module,
+        "NiceConnectionRouter",
+        partial(NiceConnectionRouter, client_factory=rejecting_client),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert not list(entry.async_get_active_flows(hass, {SOURCE_REAUTH}))
 
 
 async def test_unload_entry_unloads_platforms_and_shuts_down_coordinator(

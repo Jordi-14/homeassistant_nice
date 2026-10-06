@@ -281,15 +281,45 @@ def test_runtime_connect_error_is_retryable_after_success(
 
 
 @pytest.mark.parametrize("error_code", ["7", "15"])
-def test_connect_error_remains_auth_failure_before_runtime_success(
+def test_connect_error_is_retryable_on_fresh_router(
     error_code: str,
 ) -> None:
-    router, health, clients = _router("local_with_cloud_fallback")
-    local, cloud = clients
+    """A reload or restart must not turn a session rejection into reauth."""
+    router, health, clients = _router("local_only")
+    local = clients[0]
     local.read_results.append(
         NiceBidiAuthError(
             f"<Error><Code>{error_code}</Code></Error> (type=CONNECT)"
         )
+    )
+
+    with pytest.raises(NiceBidiConnectionError) as caught:
+        router.read_status()
+
+    assert isinstance(caught.value.__cause__, NiceBidiAuthError)
+    assert local.close_count == 1
+    assert health.active is NiceConnectionRoute.NONE
+    assert health.local is NiceRouteState.DISCONNECTED
+
+
+def test_fresh_router_falls_back_to_cloud_on_local_session_rejection() -> None:
+    router, health, clients = _router("local_with_cloud_fallback")
+    local, cloud = clients
+    rejection = NiceBidiAuthError("<Error><Code>7</Code></Error> (type=CONNECT)")
+    # A second rejection covers a router that retries the local route.
+    local.read_results.extend([rejection, rejection])
+    cloud.read_results.append("cloud-status")
+
+    assert router.read_status() == "cloud-status"
+    assert router.selected_route == "cloud"
+    assert health.active is NiceConnectionRoute.CLOUD
+
+
+def test_credential_rejection_on_fresh_router_remains_auth_failure() -> None:
+    router, _, clients = _router("local_with_cloud_fallback")
+    local, cloud = clients
+    local.read_results.append(
+        NiceBidiAuthError("<Error><Code>1</Code></Error> (type=CONNECT)")
     )
     cloud.read_results.append("must-not-run")
 
@@ -297,7 +327,6 @@ def test_connect_error_remains_auth_failure_before_runtime_success(
         router.read_status()
 
     assert len(cloud.read_results) == 1
-    assert health.active is NiceConnectionRoute.NONE
 
 
 def test_unobserved_connect_code_remains_auth_failure_after_success() -> None:
