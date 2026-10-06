@@ -1063,6 +1063,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                 {CONF_NAME: discovered.name}
             ),
             description_placeholders={
+                "name": discovered.name,
                 "host": discovered.host,
                 "model": discovered.model or discovered.family.value,
             },
@@ -1101,6 +1102,11 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                 step_id=form_step,
                 data_schema=_discovery_schema(data),
                 description_placeholders={
+                    "name": str(
+                        data.get(CONF_DISCOVERY_NAME)
+                        or data.get(CONF_NAME)
+                        or "Nice"
+                    ),
                     "host": str(data.get(CONF_HOST, "")),
                     "model": str(
                         data.get(CONF_DISCOVERY_MODEL)
