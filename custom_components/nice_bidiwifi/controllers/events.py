@@ -150,7 +150,8 @@ class NiceEventController(OwnerBoundController):
             self.event_battery_level = event.battery_level_code
             self.event_battery_device_type = event.battery_device_type
 
-        status = self.data or _unknown_status()
+        self._note_live_close_endpoint(event)
+        status = self._reported_status_base(self.data or _unknown_status())
         updates: dict[str, object] = {}
         registers = dict(status.registers)
         if event.state is not None:
