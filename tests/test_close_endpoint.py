@@ -253,3 +253,98 @@ async def test_inference_is_logged_at_info_once(
         logging.INFO
     ]
     assert sum("close inferred" in r.getMessage() for r in messages) == 2
+
+
+class _FakeScheduler:
+    """Deterministic stand-in for async_call_later with its own clock."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.pending: list[list] = []
+
+    def call_later(self, _hass, delay, action):
+        entry = [self.now + delay, action, True]
+        self.pending.append(entry)
+
+        def cancel() -> None:
+            entry[2] = False
+
+        return cancel
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+        for entry in [e for e in self.pending if e[2] and e[0] <= self.now]:
+            entry[2] = False
+            entry[1](None)
+
+
+async def test_newer_live_position_above_endpoint_cancels_pending_close(
+    hass: HomeAssistant,
+) -> None:
+    """1% starts the settle timer; a later 12% frame while closing cancels it."""
+    instance = _coordinator(hass)
+    _change(instance, "closing")
+    _live_position(instance, 1.0)
+    _live_position(instance, 12.0)
+    await _wait(hass, SETTLE + 1)
+
+    assert instance.data.state == "closing"
+    assert instance.data.position == 12.0
+
+
+async def test_new_endpoint_frame_restarts_the_quiet_period(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduler = _FakeScheduler()
+    monkeypatch.setattr(position_module, "async_call_later", scheduler.call_later)
+    instance = _coordinator(hass)
+    _change(instance, "closing")
+    _live_position(instance, 1.0)
+
+    scheduler.advance(SETTLE - 2)
+    _live_position(instance, 0.0)
+    scheduler.advance(SETTLE - 2)
+    assert instance.data.state == "closing"
+
+    scheduler.advance(3)
+    assert instance.data.state == "closed"
+
+
+async def test_settling_rechecks_the_latest_live_position(hass: HomeAssistant) -> None:
+    instance = _coordinator(hass)
+    _change(instance, "closing")
+    _live_position(instance, 1.0)
+    _live_position(instance, 12.0)
+
+    instance._latch_close_endpoint(None)
+
+    assert instance.data.state == "closing"
+
+
+async def test_live_movement_after_inferred_close_shows_closing(
+    hass: HomeAssistant,
+) -> None:
+    instance = _coordinator(hass)
+    _observed_close(instance)
+    await _wait(hass, SETTLE + 1)
+    assert instance.data.state == "closed"
+
+    _live_position(instance, 12.0)
+
+    assert instance.data.state == "closing"
+    assert instance.data.position == 12.0
+    assert "NHK/InferredClosedEndpoint" not in instance.data.registers
+
+
+async def test_reported_closed_after_a_command_stays_closed(hass: HomeAssistant) -> None:
+    """Only an inherited inference is cleared; an explicit closed report wins."""
+    instance = _coordinator(hass)
+    _observed_close(instance)
+    await _wait(hass, SETTLE + 1)
+    instance._reset_close_endpoint()
+
+    _change(instance, "closed")
+
+    assert instance.data.state == "closed"
+    assert "NHK/InferredClosedEndpoint" not in instance.data.registers

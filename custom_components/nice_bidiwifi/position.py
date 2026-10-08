@@ -87,6 +87,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         self._close_endpoint_unsub = None
         self._close_endpoint_latched = False
         self._close_endpoint_logged = False
+        self._close_endpoint_live_position: float | None = None
 
     async def _async_cancel_position_target(self) -> None:
         """Cancel a pending target-position watcher."""
@@ -202,6 +203,14 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         registers["NHK/InferredClosedEndpoint"] = "live_endpoint_position"
         return replace(status, state=STATE_CLOSED, position=0.0, registers=registers)
 
+    def _reported_status_base(self, status: NiceBidiStatus) -> NiceBidiStatus:
+        """Return the last status the interface reported, without a cleared inference."""
+        if self._close_endpoint_latched or "NHK/InferredClosedEndpoint" not in status.registers:
+            return status
+        registers = dict(status.registers)
+        registers.pop("NHK/InferredClosedEndpoint")
+        return replace(status, state=STATE_CLOSING, registers=registers)
+
     def _close_endpoint_inference_allowed(self, status: NiceBidiStatus | None) -> bool:
         """Return whether a closing CU_WIFI status may settle to closed."""
         capabilities = self.capabilities
@@ -216,18 +225,24 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         )
 
     def _note_live_close_endpoint(self, event: NiceEvent) -> None:
-        """Start settling after a CU_WIFI live frame reports the closed endpoint."""
+        """Track CU_WIFI live positions and settle on the latest endpoint frame."""
         if (
             event.t4_payload_kind != "04/40"
             or event.t4_position_scale != "percent"
             or event.position is None
-            or event.position > CLOSE_ENDPOINT_POSITION_PERCENT
         ):
             return
-        if self._close_endpoint_latched or self._close_endpoint_unsub is not None:
+        if event.position > CLOSE_ENDPOINT_POSITION_PERCENT:
+            # Live movement away from the endpoint cancels a pending or shown close.
+            self._reset_close_endpoint()
             return
+        self._close_endpoint_live_position = event.position
+        if self._close_endpoint_latched:
+            return
+        self._cancel_close_endpoint_timer()
         if not self._close_endpoint_inference_allowed(self.data):
             return
+        # Every endpoint frame restarts the quiet period.
         self._close_endpoint_unsub = async_call_later(
             self.hass,
             CLOSE_ENDPOINT_SETTLE_SECONDS,
@@ -239,7 +254,12 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         """Show closed once the endpoint report has settled without new movement."""
         self._close_endpoint_unsub = None
         status = self.data
-        if not self._close_endpoint_inference_allowed(status):
+        live_position = self._close_endpoint_live_position
+        if (
+            live_position is None
+            or live_position > CLOSE_ENDPOINT_POSITION_PERCENT
+            or not self._close_endpoint_inference_allowed(status)
+        ):
             return
         self._close_endpoint_latched = True
         if not self._close_endpoint_logged:
@@ -257,6 +277,11 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
     def _reset_close_endpoint(self) -> None:
         """Forget an inferred close after new movement, an obstruction, or a command."""
         self._close_endpoint_latched = False
+        self._close_endpoint_live_position = None
+        self._cancel_close_endpoint_timer()
+
+    def _cancel_close_endpoint_timer(self) -> None:
+        """Cancel a pending endpoint settle timer."""
         unsub = self._close_endpoint_unsub
         self._close_endpoint_unsub = None
         if unsub is not None:
