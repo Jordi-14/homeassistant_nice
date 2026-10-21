@@ -2,6 +2,8 @@
 
 Local Home Assistant control for compatible Nice gates and garage doors.
 
+If Nice is useful to you, you can [support its development on GitHub Sponsors](https://github.com/sponsors/Jordi-14). Thanks for helping keep the project going!
+
 This integration provides a cover entity with open, stop, close, and current
 position, plus helper diagnostic sensors and buttons. It uses compatible local
 NHK/T4 services over TCP 443 and user-supplied credentials extracted from the
