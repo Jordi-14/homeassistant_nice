@@ -22,3 +22,6 @@ cuwifi_status_probe*.json
 imazingapp_extract/
 myniceapp_extract/
 ipa_extract/
+
+# Local TLS discovery captures and temporary certificate material.
+proxy-captures/

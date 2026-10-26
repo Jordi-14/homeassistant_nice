@@ -18,6 +18,10 @@ python3 -m pip install -r requirements_test.txt
 Installing `requirements_test.txt` provides the dependency set used by the
 repository checks, but is not required for the probes themselves.
 
+To record the actual command sent by MyNice Pro for a new feature, see
+[Capture MyNice Pro Commands](proxy_discovery.md). The probes below make their
+own read-only requests; they do not intercept the app's connection.
+
 ## Capability Probe
 
 The capability probe dumps the BiDi-WiFi `INFO` service tree plus the status

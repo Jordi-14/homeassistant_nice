@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.mark.parametrize(
     "script",
-    ["scripts/dump_bidi_capabilities.py", "scripts/probe_cuwifi_status.py"],
+    ["scripts/dump_bidi_capabilities.py", "scripts/probe_cuwifi_status.py", "scripts/nhk_tls_proxy.py"],
 )
 def test_script_help_works_without_site_packages(script: str) -> None:
     """Test protocol scripts do not require Home Assistant or its stubs."""

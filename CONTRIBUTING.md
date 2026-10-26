@@ -503,6 +503,9 @@ Plain frame: 55 0c 00 03 50 91 01 05 c6 01 82 05 64 e2 0c
 
 ### 6. Advanced Plaintext Proxy Workflow
 
+For complete Mac/iPhone setup commands, the proxy tool, action comparisons, and
+instructions for sharing results, see [Capture MyNice Pro Commands](docs/proxy_discovery.md).
+
 The strongest maintainer workflow found so far is to advertise a controlled
 fake BiDi-WiFi endpoint from the Mac, accept MyNice Pro's TLS connection there,
 and forward the plaintext NHK request to the real BiDi-WiFi over a separate TLS
@@ -527,8 +530,10 @@ Response bytes: xx xx xx xx
 Notes: value changed with the app display across repeated captures
 ```
 
-Even with plaintext NHK logs, some inner T4 payloads may still need decoding by
-comparing repeated actions, physical behavior, and controller responses.
+The linked proxy tool decodes outgoing DEP frames into its summary using the
+existing T4 decoder. Interpreting a new command still requires comparing repeated
+actions, physical behavior, and controller responses. Other inner payloads may
+need additional analysis.
 
 ### 7. Decide the Home Assistant Entity Type
 
