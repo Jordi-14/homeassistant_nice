@@ -60,6 +60,22 @@ DIAGNOSTIC_EVENT = frame_xml(
 )
 
 
+def _obstruction_event(value: bool, *, state: str = "closing") -> bytes:
+    return frame_xml(
+        '<Event type="CHANGE"><Devices><Device id="1"><Properties>'
+        f"<DoorStatus>{state}</DoorStatus>"
+        f"<Obstruct>{str(value).lower()}</Obstruct>"
+        "</Properties></Device></Devices></Event>"
+    )
+
+
+def test_obstruction_parser_reports_state_without_claiming_a_new_event() -> None:
+    """Only the stateful coordinator can decide whether a flag is a new event."""
+    event = parse_nhk_event_frame(_obstruction_event(True))[0]
+    assert event.obstruction is True
+    assert event.category is NiceEventCategory.STATE_CHANGE
+
+
 def _live_position_event(
     state_byte: int,
     *,
@@ -315,6 +331,86 @@ async def test_event_controller_updates_existing_status_fields_and_fallback(
     assert coordinator.event_stream_state == "fallback_polling"
     assert coordinator.event_stream_error == "OSError"
     assert refreshes == 1
+    await coordinator.async_shutdown()
+
+
+async def test_obstruction_event_requires_a_new_true_observation(hass) -> None:
+    """A latched true flag does not create another obstruction notification."""
+    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="obstruct-edge")
+    entry.add_to_hass(hass)
+    coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
+    coordinator.client = FakeClient()
+    coordinator.async_set_updated_data(make_status(obstacle=False))
+    controller = coordinator.event_controller
+    controller.ensure_registered()
+    controller.reconcile_polled_obstacle(coordinator.data)
+
+    controller._handle_raw_frame(_obstruction_event(True))
+    assert coordinator.latest_event.category is NiceEventCategory.OBSTRUCTION
+    assert coordinator.data.obstacle is True
+
+    controller._handle_raw_frame(_obstruction_event(True, state="closed"))
+    assert coordinator.latest_event.category is NiceEventCategory.STATE_CHANGE
+    assert coordinator.data.obstacle is True
+
+    controller._handle_raw_frame(_obstruction_event(False))
+    assert coordinator.data.obstacle is False
+    controller._handle_raw_frame(_obstruction_event(True))
+    assert coordinator.latest_event.category is NiceEventCategory.OBSTRUCTION
+    await coordinator.async_shutdown()
+
+
+async def test_unknown_poll_keeps_obstacle_until_reconnect(hass) -> None:
+    """Unknown DMP data cannot erase a fresh live obstacle observation."""
+    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="obstruct-poll")
+    entry.add_to_hass(hass)
+    coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
+    client = FakeClient()
+    coordinator.client = client
+    coordinator.async_set_updated_data(make_status(obstacle=False))
+    coordinator.event_controller.ensure_registered()
+    coordinator.event_controller.reconcile_polled_obstacle(coordinator.data)
+    coordinator.event_controller._handle_raw_frame(_obstruction_event(True))
+
+    client.read_status_result = make_status(obstacle=None)
+    assert (await coordinator._async_update_data()).obstacle is True
+    assert (await coordinator._async_update_data()).obstacle is True
+
+    # DMP 04/D0 is a last-stop reason, not a fresh live Obstruct=false event.
+    client.read_status_result = make_status(obstacle=False)
+    assert (await coordinator._async_update_data()).obstacle is True
+    coordinator.event_controller._handle_raw_frame(_obstruction_event(True))
+    assert coordinator.latest_event.category is NiceEventCategory.STATE_CHANGE
+
+    coordinator.event_controller.mark_reconnecting()
+    client.read_status_result = make_status(obstacle=None)
+    assert (await coordinator._async_update_data()).obstacle is None
+    coordinator.event_controller._handle_raw_frame(_obstruction_event(True))
+    assert coordinator.latest_event.category is NiceEventCategory.STATE_CHANGE
+    coordinator.event_controller._handle_raw_frame(_obstruction_event(False))
+    coordinator.event_controller._handle_raw_frame(_obstruction_event(True))
+    assert coordinator.latest_event.category is NiceEventCategory.OBSTRUCTION
+    await coordinator.async_shutdown()
+
+
+async def test_internal_reconnect_does_not_replay_latched_obstruction(hass) -> None:
+    """A successful client retry still starts a new obstruction baseline."""
+    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="obstruct-retry")
+    entry.add_to_hass(hass)
+    coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
+    client = FakeClient()
+    coordinator.client = client
+    controller = coordinator.event_controller
+    controller.ensure_registered()
+    controller._handle_raw_frame(_obstruction_event(True))
+    assert coordinator.latest_event.category is NiceEventCategory.OBSTRUCTION
+
+    client.reconnect_count += 1
+    controller._handle_raw_frame(_obstruction_event(True))
+    assert coordinator.latest_event.category is NiceEventCategory.STATE_CHANGE
+    controller._handle_raw_frame(_obstruction_event(False))
+    controller._handle_raw_frame(_obstruction_event(True))
+    assert coordinator.latest_event.category is NiceEventCategory.OBSTRUCTION
     await coordinator.async_shutdown()
 
 

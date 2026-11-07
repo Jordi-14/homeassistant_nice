@@ -89,8 +89,6 @@ def _category(
 ) -> NiceEventCategory:
     if bluebus_error is not None:
         return NiceEventCategory.BLUEBUS_ERROR
-    if obstruction is True:
-        return NiceEventCategory.OBSTRUCTION
     if reset_cause is not None:
         return NiceEventCategory.RESET
     if battery_level is not None:
