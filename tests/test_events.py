@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -390,6 +391,30 @@ async def test_unknown_poll_keeps_obstacle_until_reconnect(hass) -> None:
     coordinator.event_controller._handle_raw_frame(_obstruction_event(False))
     coordinator.event_controller._handle_raw_frame(_obstruction_event(True))
     assert coordinator.latest_event.category is NiceEventCategory.OBSTRUCTION
+    await coordinator.async_shutdown()
+
+
+async def test_cached_dmp_obstacle_survives_core_polls_without_live_events(hass) -> None:
+    """A DMP-only device retains its last broad-scan value between scans."""
+    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="obstruct-dmp")
+    entry.add_to_hass(hass)
+    coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
+    client = FakeClient()
+    coordinator.client = client
+    client.read_status_result = replace(
+        make_status(obstacle=False),
+        registers={"04/01": "02", "04/D0": "00"},
+    )
+
+    assert (await coordinator._async_update_data()).obstacle is False
+    client.read_status_result = make_status(obstacle=None)
+    assert (await coordinator._async_update_data()).obstacle is False
+
+    coordinator.event_controller._handle_raw_frame(_obstruction_event(True))
+    assert (await coordinator._async_update_data()).obstacle is True
+
+    coordinator.event_controller.mark_reconnecting()
+    assert (await coordinator._async_update_data()).obstacle is None
     await coordinator.async_shutdown()
 
 

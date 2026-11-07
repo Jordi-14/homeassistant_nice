@@ -61,12 +61,14 @@ class NiceEventController(OwnerBoundController):
         self._remove_event_callback: Callable[[], None] | None = None
         self._remove_failure_callback: Callable[[], None] | None = None
         self._obstruction_state: bool | None = None
+        self._dmp_obstacle_state: bool | None = None
         self._obstruction_reconnect_count: int | None = None
         self._suppress_initial_obstruction = False
 
     def _reset_obstruction_observation(self) -> None:
         """Require a fresh observation after the event stream reconnects."""
         self._obstruction_state = None
+        self._dmp_obstacle_state = None
         self._suppress_initial_obstruction = True
 
     def _sync_obstruction_connection(self) -> None:
@@ -85,8 +87,12 @@ class NiceEventController(OwnerBoundController):
             self._obstruction_state = status.obstacle
             self._suppress_initial_obstruction = False
             return status
+        if status.obstacle is not None and "04/D0" in status.registers:
+            self._dmp_obstacle_state = status.obstacle
         if self._obstruction_state is not None:
             return replace(status, obstacle=self._obstruction_state)
+        if status.obstacle is None and self._dmp_obstacle_state is not None:
+            return replace(status, obstacle=self._dmp_obstacle_state)
         return status
 
     def ensure_registered(self) -> None:
