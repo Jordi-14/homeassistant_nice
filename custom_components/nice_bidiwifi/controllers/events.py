@@ -9,7 +9,7 @@ from datetime import datetime
 import logging
 
 from ..errors import NiceProtocolError
-from ..models.events import NiceEvent, NiceEventKind
+from ..models.events import NiceEvent, NiceEventCategory, NiceEventKind
 from ..models.status import STATE_CLOSING, STATE_OPENING, NiceStatus
 from ..protocol.nhk.events import parse_nhk_event_frame
 from .base import OwnerBoundController
@@ -60,13 +60,45 @@ class NiceEventController(OwnerBoundController):
         self._accept_events = False
         self._remove_event_callback: Callable[[], None] | None = None
         self._remove_failure_callback: Callable[[], None] | None = None
+        self._obstruction_state: bool | None = None
+        self._obstruction_reconnect_count: int | None = None
+        self._suppress_initial_obstruction = False
+
+    def _reset_obstruction_observation(self) -> None:
+        """Require a fresh observation after the event stream reconnects."""
+        self._obstruction_state = None
+        self._suppress_initial_obstruction = True
+
+    def _sync_obstruction_connection(self) -> None:
+        """Notice a client reconnect even when its retry succeeded internally."""
+        reconnect_count = getattr(self.client, "reconnect_count", None)
+        if self._obstruction_reconnect_count is None:
+            self._obstruction_reconnect_count = reconnect_count
+        elif reconnect_count != self._obstruction_reconnect_count:
+            self._obstruction_reconnect_count = reconnect_count
+            self._reset_obstruction_observation()
+
+    def reconcile_polled_obstacle(self, status: NiceStatus) -> NiceStatus:
+        """Keep a live obstacle value when a poll has no current observation."""
+        self._sync_obstruction_connection()
+        if status.obstacle is not None and "NHK/Obstruct" in status.registers:
+            self._obstruction_state = status.obstacle
+            self._suppress_initial_obstruction = False
+            return status
+        if self._obstruction_state is not None:
+            return replace(status, obstacle=self._obstruction_state)
+        return status
 
     def ensure_registered(self) -> None:
         """Install persistent callbacks on the current client exactly once."""
         if self._event_client is self.client:
+            self._sync_obstruction_connection()
             return
+        if self._event_client is not None:
+            self._reset_obstruction_observation()
         self._remove_callbacks()
         self._event_client = self.client
+        self._obstruction_reconnect_count = getattr(self.client, "reconnect_count", None)
         self._accept_events = True
         self._remove_event_callback = self.client.add_event_callback(
             self._receive_raw_frame
@@ -109,6 +141,7 @@ class NiceEventController(OwnerBoundController):
         """Normalize and apply one unsolicited frame on the HA loop."""
         if not self._accept_events:
             return
+        self._sync_obstruction_connection()
         try:
             events = parse_nhk_event_frame(frame, self.entry_config.device_id)
         except NiceProtocolError as err:
@@ -128,6 +161,21 @@ class NiceEventController(OwnerBoundController):
 
     def _apply_event(self, event: NiceEvent) -> None:
         """Update normalized state and event diagnostics."""
+        if event.obstruction is not None:
+            if (
+                event.obstruction is True
+                and event.category is not NiceEventCategory.BLUEBUS_ERROR
+                and (
+                    self._obstruction_state is False
+                    or (
+                        self._obstruction_state is None
+                        and not self._suppress_initial_obstruction
+                    )
+                )
+            ):
+                event = replace(event, category=NiceEventCategory.OBSTRUCTION)
+            self._obstruction_state = event.obstruction
+            self._suppress_initial_obstruction = False
         self.latest_event = event
         self.event_history.append(event)
         self.event_sequence += 1
@@ -207,8 +255,9 @@ class NiceEventController(OwnerBoundController):
             return
         self.event_stream_state = EVENT_STREAM_FALLBACK_POLLING
         self.event_stream_error = error_name[:64]
+        self._reset_obstruction_observation()
         if self.data is not None:
-            self.async_set_updated_data(self.data)
+            self.async_set_updated_data(replace(self.data, obstacle=None))
         self.hass.async_create_task(
             self.async_request_refresh(),
             "nice-event-stream-fallback-refresh",
@@ -218,6 +267,7 @@ class NiceEventController(OwnerBoundController):
         """Expose that polling is carrying state during reconnection."""
         self.event_stream_state = EVENT_STREAM_FALLBACK_POLLING
         self.event_stream_error = None
+        self._reset_obstruction_observation()
 
     def mark_connected(self) -> None:
         """Expose a healthy reader after a successful polled exchange."""
@@ -231,3 +281,4 @@ class NiceEventController(OwnerBoundController):
         self._remove_callbacks()
         self.event_stream_state = EVENT_STREAM_STOPPED
         self.event_stream_error = None
+        self._reset_obstruction_observation()

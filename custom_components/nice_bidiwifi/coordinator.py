@@ -123,7 +123,9 @@ CORE_STATUS_FIELD_NAMES = frozenset(
     }
 )
 EXTENDED_STATUS_FIELD_NAMES = tuple(
-    field.name for field in fields(NiceBidiStatus) if field.name not in CORE_STATUS_FIELD_NAMES
+    field.name
+    for field in fields(NiceBidiStatus)
+    if field.name not in CORE_STATUS_FIELD_NAMES | {"obstacle"}
 )
 
 
@@ -266,18 +268,21 @@ class NiceBidiDataUpdateCoordinator(
             return self.data
         except NiceBidiAuthError as err:
             await self.hass.async_add_executor_job(self.client.close)
+            self.event_controller.mark_reconnecting()
             self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self.last_error = str(err)
             self._clear_position_simulation()
             raise ConfigEntryAuthFailed(str(err)) from err
         except (NiceBidiConnectionError, OSError) as err:
             await self.hass.async_add_executor_job(self.client.close)
+            self.event_controller.mark_reconnecting()
             self._set_connection_state(CONNECTION_STATE_FAILED)
             self.last_error = str(err)
             self.update_interval = ERROR_UPDATE_INTERVAL
             self._clear_position_simulation()
             raise UpdateFailed(str(err)) from err
 
+        status = self.event_controller.reconcile_polled_obstacle(status)
         status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
         self.event_controller.mark_connected()
