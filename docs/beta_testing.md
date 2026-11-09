@@ -11,15 +11,18 @@ visible and the original Nice remote or app is available.
 
 Every GitHub prerelease includes a `nice_bidiwifi.zip` HACS-compatible asset.
 
-### Through HACS
+### Through the Marketplace / HACS
 
-Nice is part of the HACS default repository list, so no custom repository URL
-is required. Open the Nice repository in HACS, enable prerelease/beta updates,
-and use the repository menu to redownload or select the desired version. The
-exact labels can vary between HACS versions. Restart Home Assistant after the
-download and confirm the integration version in the device or issue
-diagnostics. Disable prerelease updates again if the installation should return
-to the stable release channel after testing.
+On HA 2026.11+, find Nice under **Settings > Devices & services > Marketplace**.
+Enable its disabled **Pre-release** switch entity, then turn the switch on.
+Open Nice in **Settings > Marketplace**, choose **Install another version**
+from its menu and select the intended beta. No custom repository is needed.
+
+On older HA versions, open Nice in HACS, enable prerelease/beta updates and
+redownload the desired version. Restart Home Assistant after installing and
+confirm the version in diagnostics. Turn prerelease updates off after testing
+if you want future updates to use the stable channel. Restore your backup if
+you need to roll back. See the [Marketplace documentation](https://www.home-assistant.io/integrations/marketplace/).
 
 ### Manually
 
@@ -99,7 +102,7 @@ The preferred rollback is to restore the full Home Assistant backup created
 immediately before installing the beta. This restores both the integration
 files and its config-entry schema.
 
-Changing only the integration version in HACS, restoring only
+Changing only the integration version in the Marketplace or HACS, restoring only
 `custom_components/nice_bidiwifi`, or restoring only a partial file backup
 cannot reverse a config-entry migration. For example, the `0.8.0` refactor
 migrates Nice entries from schema version 1 to version 2. A `0.7.x` integration
