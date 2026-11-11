@@ -280,6 +280,11 @@ async def async_get_config_entry_diagnostics(
                 "obstacle": status.obstacle if status else None,
                 "diagnostics_io_byte": status.diagnostics_io_byte if status else None,
                 "bluebus_devices": status.bluebus_devices if status else None,
+                "last_maneuvers": (
+                    list(status.last_maneuvers)
+                    if status and status.last_maneuvers is not None
+                    else None
+                ),
                 "diagnostics_parameters": status.diagnostics_parameters
                 if status
                 else None,

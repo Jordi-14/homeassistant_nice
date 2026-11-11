@@ -1447,3 +1447,10 @@ def test_status_from_dmp_registers_decodes_bluebus_devices() -> None:
     status = status_from_dmp_registers(_dmp_registers(rD0=sample))
 
     assert status.bluebus_devices == {"photo": "on"}
+
+
+def test_status_from_dmp_registers_decodes_last_maneuvers() -> None:
+    """Test 04/DA is decoded into 8 maneuver outcomes."""
+    status = status_from_dmp_registers(_dmp_registers(rDA=bytes([0, 3, 0, 0, 0, 0, 0, 0])))
+
+    assert status.last_maneuvers == ("ok", "obstacle_detected") + ("ok",) * 6

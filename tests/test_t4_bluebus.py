@@ -6,6 +6,7 @@ import pytest
 
 from custom_components.nice_bidiwifi.protocol.t4 import enums
 from custom_components.nice_bidiwifi.protocol.t4.bluebus import decode_bluebus_devices
+from custom_components.nice_bidiwifi.protocol.t4.maneuvers import decode_last_maneuvers
 
 SAMPLE = bytes.fromhex("1100810000000000000000" "7f000000000000000100c00000000000")
 
@@ -62,3 +63,13 @@ def test_enum_tables() -> None:
     assert enums.EVT_STATE_CAUSE[17] == "photo_open"
     assert enums.EVT_CHANGE_STATE[129] == "opening_for_photo_intervent"
     assert enums.ADVANCED_DIAGNOSTIC[48] == "motor_disconnected"
+
+
+def test_decode_last_maneuvers() -> None:
+    assert decode_last_maneuvers(bytes([0, 3, 10, 0xFF, 0, 0, 0, 2])) == (
+        "ok", "obstacle_detected", "detected_obstacle_by_encoder", "undefined",
+        "ok", "ok", "ok", "photo_intervention",
+    )
+    assert decode_last_maneuvers(bytes(7)) is None
+    assert decode_last_maneuvers(None) is None
+    assert decode_last_maneuvers(bytes([3] * 8 + [3])) == ("obstacle_detected",) * 8

@@ -12,6 +12,7 @@ from .dmp import (
     dmp_uint,
     status_from_register,
 )
+from .maneuvers import decode_last_maneuvers
 
 
 def status_from_dmp_registers(
@@ -81,6 +82,7 @@ def status_from_dmp_registers(
         limit_closed=bool(io_byte & 0x02) if io_byte is not None else None,
         diagnostics_io_byte=io_byte,
         bluebus_devices=decode_bluebus_devices(dmp_bytes(registers.get("04/D0"))),
+        last_maneuvers=decode_last_maneuvers(dmp_bytes(registers.get("04/DA"))),
         motor_temperature=(
             diagnostic_parameters[15] - 9
             if diagnostic_parameters

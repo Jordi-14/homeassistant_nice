@@ -316,3 +316,19 @@ def test_bluebus_devices_sensor_counts_faults() -> None:
     coordinator.data = make_status(bluebus_devices=None)
     assert sensor.native_value is None
     assert sensor.extra_state_attributes == {}
+
+
+def test_last_maneuvers_sensor() -> None:
+    coordinator = FakeCoordinator()
+    names = (
+        "ok", "ok", "obstacle_detected", "ok", "ok",
+        "photo_intervention", "detected_obstacle_by_encoder", "ok",
+    )
+    coordinator.data = make_status(last_maneuvers=names)
+    sensor = NiceBidiSensor(coordinator, config_entry(), _description("last_maneuvers"))
+    assert sensor.native_value == 3
+    assert sensor.extra_state_attributes == {"maneuvers": list(names), "obstacle_count": 2}
+
+    coordinator.data = make_status(last_maneuvers=None)
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}

@@ -29,7 +29,12 @@ from .entities.factory import (
     build_described_entities,
 )
 from .entity import NiceCoordinatorEntity
-from .protocol.t4.enums import BLUEBUS_DEVICE_STATUS, BLUEBUS_FAULT_STATUSES
+from .protocol.t4.enums import (
+    AUTOMATION_STATUS_DIAGNOSTICS,
+    AUTOMATION_STATUS_OBSTACLE_CODES,
+    BLUEBUS_DEVICE_STATUS,
+    BLUEBUS_FAULT_STATUSES,
+)
 from .runtime import get_coordinator
 
 
@@ -58,6 +63,29 @@ def _bluebus_fault_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | No
         return None
     faults = {BLUEBUS_DEVICE_STATUS[code] for code in BLUEBUS_FAULT_STATUSES}
     return sum(value in faults for value in status.bluebus_devices.values())
+
+
+def _last_maneuvers(coordinator: NiceBidiDataUpdateCoordinator) -> tuple[str, ...] | None:
+    status = _status(coordinator)
+    return status.last_maneuvers if status else None
+
+
+def _last_maneuvers_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
+    names = _last_maneuvers(coordinator)
+    return None if names is None else sum(name != "ok" for name in names)
+
+
+def _last_maneuvers_attributes(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> dict[str, Any]:
+    names = _last_maneuvers(coordinator)
+    if names is None:
+        return {}
+    obstacles = {AUTOMATION_STATUS_DIAGNOSTICS[c] for c in AUTOMATION_STATUS_OBSTACLE_CODES}
+    return {
+        "maneuvers": list(names),
+        "obstacle_count": sum(name in obstacles for name in names),
+    }
 
 
 def _hex_byte(value: int | None) -> str | None:
@@ -451,6 +479,15 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
             if _status(coordinator)
             else {}
         ),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="last_maneuvers",
+        name="Last 8 maneuvers",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
+        icon="mdi:history",
+        value_fn=_last_maneuvers_count,
+        extra_attributes_fn=_last_maneuvers_attributes,
     ),
     NiceBidiSensorEntityDescription(
         key="diagnostics_parameters",
