@@ -218,6 +218,11 @@ Then restart Home Assistant.
    **Settings -> Devices & services**.
 6. Close MyNice/MyNice Pro before submitting the config flow.
 
+For the full set of controller actions, use a MyNice account with administrator
+access to the gate when obtaining credentials. A limited account may allow basic
+control while leaving actions such as Partial Open unavailable. See the
+[account permissions note](docs/setup.md#mynice-account-permissions).
+
 The recommended mode uses the LAN while it is healthy, fails over to the Nice
 relay after bounded connection failures, and returns only after repeated
 successful LAN probes. Fully local never opens a cloud connection. Fully cloud
