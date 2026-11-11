@@ -39,8 +39,6 @@ def status_from_dmp_registers(
         for value in diagnostic_parameters
     ):
         diagnostic_parameters = None
-    total_maneuver_count = dmp_uint(registers.get("04/B3"))
-    alternate_movement_count = dmp_uint(registers.get("04/D4"))
 
     return NiceStatus(
         state=state,
@@ -67,12 +65,7 @@ def status_from_dmp_registers(
         always_close_mode=dmp_uint(registers.get("04/8A")),
         maintenance_threshold=dmp_uint(registers.get("04/B1")),
         maintenance_count=dmp_uint(registers.get("04/B2")),
-        total_maneuver_count=(
-            total_maneuver_count
-            if total_maneuver_count is not None
-            else alternate_movement_count
-        ),
-        alternate_movement_count=alternate_movement_count,
+        total_maneuver_count=dmp_uint(registers.get("04/B3")),
         input_1=dmp_bool(registers.get("04/71")),
         input_2=dmp_bool(registers.get("04/72")),
         input_3=dmp_bool(registers.get("04/73")),

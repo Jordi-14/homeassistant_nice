@@ -289,6 +289,11 @@ def test_status_from_dmp_registers_does_not_derive_obstacle_from_d0() -> None:
     assert status_from_dmp_registers(_dmp_registers(rD0=b"\x01")).obstacle is None
 
 
+def test_status_from_dmp_registers_ignores_d4_for_maneuver_count() -> None:
+    """Test 04/D4 is inverter diagnostics, not a maneuver counter."""
+    assert status_from_dmp_registers(_dmp_registers(rD4=b"\x00\x05")).total_maneuver_count is None
+
+
 @pytest.mark.parametrize("status_byte", [0x10, 0x11, 0x12])
 def test_read_status_decodes_partial_open_variants(status_byte: int) -> None:
     """Test partial-open status variants reported by some controllers."""

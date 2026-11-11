@@ -40,7 +40,6 @@ class NiceStatus:
     maintenance_threshold: int | None = None
     maintenance_count: int | None = None
     total_maneuver_count: int | None = None
-    alternate_movement_count: int | None = None
     input_1: bool | None = None
     input_2: bool | None = None
     input_3: bool | None = None

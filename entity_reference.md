@@ -243,7 +243,7 @@ current device profile.
 | Sensor | Pause time | `pause_time` | BusT4 configured pause time. | Hidden | Enabled | Read-only mirror for an advanced setting. |
 | Sensor | Maintenance threshold | `maintenance_threshold` | BusT4 configured maintenance threshold counter. | Hidden | Enabled | Read-only mirror for an advanced setting. |
 | Sensor | Maintenance count | `maintenance_count` | BusT4 maintenance counter. | Hidden | Enabled | Useful maintenance diagnostic. |
-| Sensor | Total maneuver count | `total_maneuver_count` | BusT4 maneuver counter discovered during community testing. | Hidden | Enabled | Useful maintenance/statistics diagnostic. |
+| Sensor | Total maneuver count | `total_maneuver_count` | BusT4 maneuver counter read from register `04/B3`. | Hidden | Enabled | Useful maintenance/statistics diagnostic. |
 | Sensor | Motor temperature | `motor_temperature` | Decoded internal motor temperature from `04/D2` byte 15 minus 9. | Hidden | Enabled | Confirmed from issue #15 testing on Road 400 and RB1000; hidden because it is diagnostic. |
 | Sensor | Service voltage | `service_voltage` | Decoded service voltage: big-endian 16-bit value at `04/D2` offset 8. | Hidden | Disabled | Confirmed from issue #15 testing; disabled by default because it is advanced diagnostic data. |
 | Sensor | Diagnostics I/O byte | `diagnostics_io_byte` | Raw `04/D1` byte 2, displayed as hex for comparison. Bit 6 (0x40) is the static "Selection direction" installation bit; bits 2-5 are motor-2 limits and unlock inputs. No entity for them. | Hidden | Disabled | Raw developer/debug data; decoded bits are not valid on the tested gate. |
