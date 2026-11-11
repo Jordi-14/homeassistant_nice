@@ -88,6 +88,7 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("sensor", "motor_temperature"),
     _entity("sensor", "service_voltage", False),
     _entity("sensor", "diagnostics_io_byte", False),
+    _entity("sensor", "bluebus_devices"),
     _entity("sensor", "diagnostics_parameters", False),
     _entity("sensor", "oxi_product", False),
     _entity("sensor", "oxi_firmware", False),
@@ -117,4 +118,4 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("binary_sensor", "oxi_detected"),
 )
 
-assert len(PROTECTED_ENTITY_CATALOG) == 89
+assert len(PROTECTED_ENTITY_CATALOG) == 90

@@ -29,6 +29,7 @@ from .entities.factory import (
     build_described_entities,
 )
 from .entity import NiceCoordinatorEntity
+from .protocol.t4.enums import BLUEBUS_DEVICE_STATUS, BLUEBUS_FAULT_STATUSES
 from .runtime import get_coordinator
 
 
@@ -49,6 +50,14 @@ class NiceBidiSensorEntityDescription(
 
 def _status(coordinator: NiceBidiDataUpdateCoordinator) -> NiceBidiStatus | None:
     return coordinator.data
+
+
+def _bluebus_fault_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
+    status = _status(coordinator)
+    if status is None or status.bluebus_devices is None:
+        return None
+    faults = {BLUEBUS_DEVICE_STATUS[code] for code in BLUEBUS_FAULT_STATUSES}
+    return sum(value in faults for value in status.bluebus_devices.values())
 
 
 def _hex_byte(value: int | None) -> str | None:
@@ -428,6 +437,19 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
             _hex_byte(_status(coordinator).diagnostics_io_byte)
             if _status(coordinator)
             else None
+        ),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="bluebus_devices",
+        name="BlueBus device faults",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
+        icon="mdi:lan-check",
+        value_fn=_bluebus_fault_count,
+        extra_attributes_fn=lambda coordinator: (
+            dict(_status(coordinator).bluebus_devices or {})
+            if _status(coordinator)
+            else {}
         ),
     ),
     NiceBidiSensorEntityDescription(

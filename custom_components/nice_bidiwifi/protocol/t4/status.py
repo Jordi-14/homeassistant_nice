@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ...models.status import NiceStatus
+from .bluebus import decode_bluebus_devices
 from .dmp import (
     DmpResponse,
     dmp_ascii,
@@ -79,6 +80,7 @@ def status_from_dmp_registers(
         limit_open=bool(io_byte & 0x01) if io_byte is not None else None,
         limit_closed=bool(io_byte & 0x02) if io_byte is not None else None,
         diagnostics_io_byte=io_byte,
+        bluebus_devices=decode_bluebus_devices(dmp_bytes(registers.get("04/D0"))),
         motor_temperature=(
             diagnostic_parameters[15] - 9
             if diagnostic_parameters

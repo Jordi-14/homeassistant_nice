@@ -302,3 +302,17 @@ async def test_async_setup_entry_adds_all_sensors() -> None:
         + len(ADMINISTRATION_SENSORS)
     )
     assert all(isinstance(entity, NiceBidiSensor) for entity in created)
+
+
+def test_bluebus_devices_sensor_counts_faults() -> None:
+    coordinator = FakeCoordinator()
+    coordinator.data = make_status(
+        bluebus_devices={"photo": "on", "cmd_1": "not_working"}
+    )
+    sensor = NiceBidiSensor(coordinator, config_entry(), _description("bluebus_devices"))
+    assert sensor.native_value == 1
+    assert sensor.extra_state_attributes == {"photo": "on", "cmd_1": "not_working"}
+
+    coordinator.data = make_status(bluebus_devices=None)
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}

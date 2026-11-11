@@ -54,6 +54,7 @@ class NiceStatus:
     limit_open: bool | None = None
     obstacle: bool | None = None
     diagnostics_io_byte: int | None = None
+    bluebus_devices: dict[str, str] | None = None
     motor_temperature: int | None = None
     service_voltage: int | None = None
     diagnostics_parameters: str | None = None

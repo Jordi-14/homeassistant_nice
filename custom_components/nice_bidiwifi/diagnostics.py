@@ -279,6 +279,7 @@ async def async_get_config_entry_diagnostics(
                 "limit_open": status.limit_open if status else None,
                 "obstacle": status.obstacle if status else None,
                 "diagnostics_io_byte": status.diagnostics_io_byte if status else None,
+                "bluebus_devices": status.bluebus_devices if status else None,
                 "diagnostics_parameters": status.diagnostics_parameters
                 if status
                 else None,

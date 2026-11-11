@@ -103,6 +103,7 @@ def make_status(
     | None = "00 00 00 bc 00 bc 00 00 00 20 00 00 00 00 00 33 00 00 00 00 00 00 00 00 00 00 00 00",
     oxi_detected: bool | None = True,
     oxi_product: str | None = "OXI",
+    bluebus_devices: dict[str, str] | None = {"photo": "on"},  # noqa: B006
 ) -> NiceBidiStatus:
     """Create a Nice status object."""
     diagnostic_bytes = (
@@ -151,6 +152,7 @@ def make_status(
         ),
         oxi_detected=oxi_detected,
         oxi_product=oxi_product,
+        bluebus_devices=bluebus_devices,
     )
 
 

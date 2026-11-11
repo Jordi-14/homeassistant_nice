@@ -1439,3 +1439,11 @@ def test_reconnect_count_does_not_wait_for_the_session_lock() -> None:
         release.set()
         holder.join(timeout=2.0)
         reader.join(timeout=2.0)
+
+
+def test_status_from_dmp_registers_decodes_bluebus_devices() -> None:
+    """Test 04/D0 is decoded into installed BlueBus devices."""
+    sample = bytes.fromhex("11008100000000000000007f000000000000000100c00000000000")
+    status = status_from_dmp_registers(_dmp_registers(rD0=sample))
+
+    assert status.bluebus_devices == {"photo": "on"}
