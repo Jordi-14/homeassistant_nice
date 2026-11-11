@@ -53,13 +53,10 @@ class NiceStatus:
     key_lock: bool | None = None
     limit_closed: bool | None = None
     limit_open: bool | None = None
-    photocell: bool | None = None
     obstacle: bool | None = None
     diagnostics_io_byte: int | None = None
     motor_temperature: int | None = None
     service_voltage: int | None = None
-    last_stop_reason: str | None = None
-    last_stop_reason_code: int | None = None
     diagnostics_parameters: str | None = None
     oxi_detected: bool | None = None
     oxi_product: str | None = None

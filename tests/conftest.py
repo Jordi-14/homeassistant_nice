@@ -92,7 +92,6 @@ def make_status(
     total_maneuver_count: int | None = 345,
     limit_closed: bool | None = False,
     limit_open: bool | None = True,
-    photocell: bool | None = False,
     obstacle: bool | None = True,
     auto_close: bool | None = True,
     photo_close: bool | None = False,
@@ -100,7 +99,6 @@ def make_status(
     standby: bool | None = False,
     pre_flash: bool | None = False,
     key_lock: bool | None = False,
-    last_stop_reason: str | None = "obstacle_by_encoder",
     diagnostics_parameters: str
     | None = "00 00 00 bc 00 bc 00 00 00 20 00 00 00 00 00 33 00 00 00 00 00 00 00 00 00 00 00 00",
     oxi_detected: bool | None = True,
@@ -135,7 +133,6 @@ def make_status(
         total_maneuver_count=total_maneuver_count,
         limit_closed=limit_closed,
         limit_open=limit_open,
-        photocell=photocell,
         obstacle=obstacle,
         auto_close=auto_close,
         photo_close=photo_close,
@@ -143,12 +140,15 @@ def make_status(
         standby=standby,
         pre_flash=pre_flash,
         key_lock=key_lock,
-        last_stop_reason=last_stop_reason,
         diagnostics_parameters=diagnostics_parameters,
         motor_temperature=(
             diagnostic_bytes[15] - 9 if len(diagnostic_bytes) > 15 else None
         ),
-        service_voltage=(diagnostic_bytes[9] if len(diagnostic_bytes) > 9 else None),
+        service_voltage=(
+            int.from_bytes(diagnostic_bytes[8:10], "big")
+            if len(diagnostic_bytes) > 9
+            else None
+        ),
         oxi_detected=oxi_detected,
         oxi_product=oxi_product,
     )

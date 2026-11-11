@@ -85,7 +85,6 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("sensor", "maintenance_threshold"),
     _entity("sensor", "maintenance_count"),
     _entity("sensor", "total_maneuver_count"),
-    _entity("sensor", "last_stop_reason"),
     _entity("sensor", "motor_temperature"),
     _entity("sensor", "service_voltage", False),
     _entity("sensor", "diagnostics_io_byte", False),
@@ -104,7 +103,6 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("binary_sensor", "gate_open", visible=True),
     _entity("binary_sensor", "limit_closed", False),
     _entity("binary_sensor", "limit_open", False),
-    _entity("binary_sensor", "photocell", False),
     _entity("binary_sensor", "obstacle"),
     _entity("binary_sensor", "input_1", False),
     _entity("binary_sensor", "input_2", False),
@@ -119,4 +117,4 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("binary_sensor", "oxi_detected"),
 )
 
-assert len(PROTECTED_ENTITY_CATALOG) == 91
+assert len(PROTECTED_ENTITY_CATALOG) == 89

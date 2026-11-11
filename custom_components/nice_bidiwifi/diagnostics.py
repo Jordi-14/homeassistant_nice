@@ -277,12 +277,7 @@ async def async_get_config_entry_diagnostics(
                 "key_lock": status.key_lock if status else None,
                 "limit_closed": status.limit_closed if status else None,
                 "limit_open": status.limit_open if status else None,
-                "photocell": status.photocell if status else None,
                 "obstacle": status.obstacle if status else None,
-                "last_stop_reason": status.last_stop_reason if status else None,
-                "last_stop_reason_code": status.last_stop_reason_code
-                if status
-                else None,
                 "diagnostics_io_byte": status.diagnostics_io_byte if status else None,
                 "diagnostics_parameters": status.diagnostics_parameters
                 if status

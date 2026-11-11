@@ -108,7 +108,6 @@ async def test_update_data_reuses_cached_extended_status_between_broad_reads(
         limit_open=None,
         oxi_detected=None,
         oxi_product=None,
-        last_stop_reason=None,
     )
 
     second = await instance._async_update_data()

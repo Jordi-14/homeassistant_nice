@@ -88,15 +88,6 @@ BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
         value_fn=lambda status: status.limit_open,
     ),
     NiceBidiBinarySensorEntityDescription(
-        key="photocell",
-        name="Photocell",
-        device_class=BinarySensorDeviceClass.SAFETY,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        entity_registry_visible_default=False,
-        value_fn=lambda status: status.photocell,
-    ),
-    NiceBidiBinarySensorEntityDescription(
         key="obstacle",
         name="Obstacle detected",
         device_class=BinarySensorDeviceClass.SAFETY,

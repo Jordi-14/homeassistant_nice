@@ -40,7 +40,6 @@ class TestNiceBidiSensorProperties:
         assert "control_unit_serial" in keys
         assert "opening_speed" in keys
         assert "maintenance_count" in keys
-        assert "last_stop_reason" in keys
         assert "motor_temperature" in keys
         assert "service_voltage" in keys
         assert "oxi_product" in keys
@@ -160,12 +159,6 @@ class TestNiceBidiSensorProperties:
                 coordinator, config_entry(), _description("total_maneuver_count")
             ).native_value
             == 345
-        )
-        assert (
-            NiceBidiSensor(
-                coordinator, config_entry(), _description("last_stop_reason")
-            ).native_value
-            == "obstacle_by_encoder"
         )
         assert (
             NiceBidiSensor(

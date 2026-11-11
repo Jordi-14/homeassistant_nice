@@ -37,7 +37,7 @@ def _protected(platform: str, description) -> ProtectedEntity:
 
 
 def test_protected_catalog_matches_all_current_descriptions() -> None:
-    """The complete 91-definition catalog remains stable."""
+    """The complete 89-definition catalog remains stable."""
     actual = (
         ProtectedEntity("cover", "cover", "cover", True, True),
         ProtectedEntity(
@@ -65,10 +65,10 @@ def test_protected_catalog_matches_all_current_descriptions() -> None:
     )
 
     assert actual == PROTECTED_ENTITY_CATALOG
-    assert len(actual) == 91
+    assert len(actual) == 89
     assert len(
         {(definition.platform, definition.key) for definition in actual}
-    ) == 91
+    ) == 89
 
 
 def test_protected_open_close_entities_survive_explicitly_unsupported_info() -> None:

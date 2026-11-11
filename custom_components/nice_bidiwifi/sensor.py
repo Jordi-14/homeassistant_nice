@@ -393,16 +393,6 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         ),
     ),
     NiceBidiSensorEntityDescription(
-        key="last_stop_reason",
-        name="Last stop reason",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_visible_default=False,
-        icon="mdi:sign-caution",
-        value_fn=lambda coordinator: (
-            _status(coordinator).last_stop_reason if _status(coordinator) else None
-        ),
-    ),
-    NiceBidiSensorEntityDescription(
         key="motor_temperature",
         name="Motor temperature",
         device_class=SensorDeviceClass.TEMPERATURE,

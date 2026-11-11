@@ -34,7 +34,6 @@ class TestNiceBidiBinarySensorProperties:
         assert "gate_open" in keys
         assert "limit_closed" in keys
         assert "limit_open" in keys
-        assert "photocell" in keys
         assert "obstacle" in keys
         assert "auto_close" in keys
         assert "oxi_detected" in keys
@@ -106,7 +105,7 @@ class TestNiceBidiBinarySensorProperties:
     def test_false_binary_sensor_is_available(self) -> None:
         coordinator = FakeCoordinator()
         entity = NiceBidiBinarySensor(
-            coordinator, config_entry(), _description("photocell")
+            coordinator, config_entry(), _description("limit_closed")
         )
 
         assert entity.is_on is False
