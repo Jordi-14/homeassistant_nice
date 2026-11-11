@@ -9,6 +9,10 @@ position, plus helper diagnostic sensors and buttons. It uses compatible local
 NHK/T4 services over TCP 443 and user-supplied credentials extracted from the
 normal MyNice app data.
 
+For the full set of gate actions, use a MyNice account with administrator
+access when obtaining device credentials. Limited accounts may leave actions
+such as Partial Open unavailable even when basic control works.
+
 For normal dashboards, use the cover entity first. Advanced BusT4 diagnostics
 and configuration entities may be hidden or disabled by default: hidden means
 advanced or diagnostic, not unavailable. Writable entities ending in `setting`

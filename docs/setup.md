@@ -49,6 +49,23 @@ stored by **MyNice**.
 Close MyNice/MyNice Pro before adding the integration to Home Assistant. The
 BiDi-WiFi can be sensitive to concurrent local sessions.
 
+### MyNice account permissions
+
+Use a MyNice account with administrator access to the gate if you need the full
+set of controller actions. In [one MC424LR10 report](https://github.com/Jordi-14/homeassistant_nice/issues/40#issuecomment-6771779359),
+basic gate control worked with the original account, but Partial Open 1 and 2
+became available in Home Assistant only after the user set up an administrator
+account and used its credentials. This has not been confirmed for every
+controller.
+
+The integration offers actions advertised to the credentials used for setup; it
+cannot grant missing Nice permissions. If a Partial Open button is unavailable
+even though a physical remote can perform that action, check the MyNice account
+role before assuming the BiDi-WiFi cannot send it. Obtain fresh NHK device
+credentials through the administrator account for manual setup, or use that
+account for the one-time MyNice import. Do not edit the `permission` field in
+extracted data: it is informational, not a setting entered in Home Assistant.
+
 ## Extract Credentials
 
 The integration needs the local NHK credential stored by the normal MyNice app.
