@@ -23,39 +23,38 @@ _SLOTS: tuple[tuple[str, str, int, int, int], ...] = (
     ("cmd_4", "cmd", 4, 0x08, 3),
     ("s_sl", "ms", 5, 0x01, 0),
 )
-_CODES = {name: code for code, name in BLUEBUS_DEVICE_STATUS.items()}
 
 
-def _status_code(b: bytes, kind: str, mask: int, extra: int) -> int:
-    """Return the status code of one installed device."""
+def _status(b: bytes, kind: str, mask: int, extra: int) -> str:
+    """Return the status name of one installed device."""
     if b[1] & 0x10:  # BlueBus line error
-        return _CODES["stand_by"]
+        return "stand_by"
     if kind == "photo":
         if b[6] & mask:
-            return _CODES["not_working"]
+            return "not_working"
         if b[10] & mask and b[0] & 0x08:
-            return _CODES["in_error"]
-        return _CODES["on"] if b[11] & mask and b[19] & mask else _CODES["off"]
+            return "in_error"
+        return "on" if b[11] & mask and b[19] & mask else "off"
     if kind == "ft":
         if b[7] & mask:
-            return _CODES["not_working"]
-        return _CODES["on"] if b[20] & extra else _CODES["off"]
+            return "not_working"
+        return "on" if b[20] & extra else "off"
     if kind == "cmd":
         if b[8] & mask:
-            return _CODES["not_working"]
+            return "not_working"
         v = b[21 + extra]
-        return _CODES["off"] if not v & 0x1F and v < 0x40 else _CODES["on"]
+        return "off" if not v & 0x1F and v < 0x40 else "on"
     if b[9] & mask:
-        return _CODES["not_working"]
-    return _CODES["sl_stopped"] + (b[17] & 0x07)
+        return "not_working"
+    return BLUEBUS_DEVICE_STATUS[6 + (b[17] & 0x07)]
 
 
 def decode_bluebus_devices(data: bytes | None) -> dict[str, str] | None:
     """Return the status of each installed BlueBus device, or None."""
-    if data is None or len(data) <= 24:
+    if data is None or len(data) <= 24 or all(b == 0xFF for b in data):  # all 0xFF = no data
         return None
     return {
-        name: BLUEBUS_DEVICE_STATUS[_status_code(data, kind, mask, extra)]
+        name: _status(data, kind, mask, extra)
         for name, kind, byte, mask, extra in _SLOTS
         if data[byte] & mask
     }

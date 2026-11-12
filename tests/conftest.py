@@ -101,15 +101,14 @@ def make_status(
     key_lock: bool | None = False,
     diagnostics_parameters: str
     | None = "00 00 00 bc 00 bc 00 00 00 20 00 00 00 00 00 33 00 00 00 00 00 00 00 00 00 00 00 00",
+    motor_temperature: int | None = 42,
+    service_voltage: int | None = 32,
     oxi_detected: bool | None = True,
     oxi_product: str | None = "OXI",
     bluebus_devices: dict[str, str] | None = {"photo": "on"},  # noqa: B006
     last_maneuvers: tuple[str, ...] | None = ("ok",) * 8,
 ) -> NiceBidiStatus:
     """Create a Nice status object."""
-    diagnostic_bytes = (
-        bytes.fromhex(diagnostics_parameters) if diagnostics_parameters else b""
-    )
     return NiceBidiStatus(
         state=state,
         position=position,
@@ -143,16 +142,8 @@ def make_status(
         pre_flash=pre_flash,
         key_lock=key_lock,
         diagnostics_parameters=diagnostics_parameters,
-        motor_temperature=(
-            int.from_bytes(diagnostic_bytes[14:16], "big") - 9
-            if len(diagnostic_bytes) > 15
-            else None
-        ),
-        service_voltage=(
-            int.from_bytes(diagnostic_bytes[8:10], "big")
-            if len(diagnostic_bytes) > 9
-            else None
-        ),
+        motor_temperature=motor_temperature,
+        service_voltage=service_voltage,
         oxi_detected=oxi_detected,
         oxi_product=oxi_product,
         bluebus_devices=bluebus_devices,

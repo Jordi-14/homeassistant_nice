@@ -218,7 +218,9 @@ class TestNiceBidiSensorProperties:
 
     def test_issue_15_diagnostics_are_unavailable_without_d2_payload(self) -> None:
         coordinator = FakeCoordinator()
-        coordinator.data = make_status(diagnostics_parameters="00 00 00 00")
+        coordinator.data = make_status(
+            diagnostics_parameters="00 00 00 00", motor_temperature=None, service_voltage=None
+        )
 
         assert (
             NiceBidiSensor(

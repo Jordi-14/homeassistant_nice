@@ -25,6 +25,7 @@ def test_real_sample() -> None:
 def test_short_or_missing() -> None:
     assert decode_bluebus_devices(SAMPLE[:24]) is None
     assert decode_bluebus_devices(None) is None
+    assert decode_bluebus_devices(b"\xff" * 27) is None
 
 
 @pytest.mark.parametrize(
@@ -72,6 +73,9 @@ def test_decode_last_maneuvers() -> None:
         "ok", "ok", "ok", "photo_intervention",
     )
     assert decode_last_maneuvers(bytes(7)) is None
-    assert decode_last_maneuvers(b"\xff" * 8) == ("undefined",) * 8
+    assert decode_last_maneuvers(b"\xff" * 8) is None
+    assert decode_last_maneuvers(b"\x00\xff\x03\x00\x00\x00\x00\x00") == (
+        "ok", "undefined", "obstacle_detected", "ok", "ok", "ok", "ok", "ok",
+    )
     assert decode_last_maneuvers(None) is None
     assert decode_last_maneuvers(bytes([3] * 8 + [3])) == ("obstacle_detected",) * 8
