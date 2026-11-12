@@ -178,6 +178,9 @@ def _parse_device_event(
             live_status.payload_kind if live_status is not None else None
         ),
         t4_event_class=live_status.event_class if live_status is not None else None,
+        t4_payload_hex=(
+            live_status.event_payload_hex if live_status is not None else None
+        ),
         t4_state=live_status.state if live_status is not None else None,
         t4_raw_position=(
             live_status.raw_position if live_status is not None else None

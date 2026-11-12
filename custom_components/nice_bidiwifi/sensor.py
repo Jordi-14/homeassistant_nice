@@ -76,7 +76,9 @@ def _last_maneuvers(coordinator: NiceBidiDataUpdateCoordinator) -> tuple[str, ..
 
 def _last_maneuvers_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
     names = _last_maneuvers(coordinator)
-    return None if names is None else sum(name not in _NOT_FAILED_NAMES for name in names)
+    if names is None or coordinator.data.last_maneuvers_stale:
+        return None
+    return sum(name not in _NOT_FAILED_NAMES for name in names)
 
 
 def _last_maneuvers_attributes(
@@ -85,10 +87,13 @@ def _last_maneuvers_attributes(
     names = _last_maneuvers(coordinator)
     if names is None:
         return {}
-    return {
+    attributes = {
         "maneuvers": list(names),
         "obstacle_count": sum(name in _OBSTACLE_NAMES for name in names),
     }
+    if coordinator.data.last_maneuvers_stale:
+        attributes["stale"] = True
+    return attributes
 
 
 def _hex_byte(value: int | None) -> str | None:

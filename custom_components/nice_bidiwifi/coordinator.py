@@ -188,6 +188,8 @@ class NiceBidiDataUpdateCoordinator(
         self.position_controller._init_position_state()
         self._extended_status_cache: NiceBidiStatus | None = None
         self._extended_status_next_refresh_monotonic = 0.0
+        self._maneuver_log_baseline: tuple[tuple[str, ...], int] | None = None
+        self._nhk_obstacle_probed = False
         self.calibration_controller._init_calibration_state(hass, entry)
         self._capability_service = NiceCapabilityService(
             self.entry_config.device_id
@@ -335,7 +337,7 @@ class NiceBidiDataUpdateCoordinator(
             return _unknown_status()
 
         if include_extended:
-            self._cache_extended_status(status)
+            status = self._cache_extended_status(status)
         else:
             status = self._merge_cached_extended_status(status)
         if self.device_info is None:
@@ -343,6 +345,28 @@ class NiceBidiDataUpdateCoordinator(
                 self._store_device_info(self.client.read_info())
             except NiceBidiError as err:
                 _LOGGER.debug("Could not read Nice INFO metadata: %s", err)
+        if (
+            status.obstacle is None
+            and not self._nhk_obstacle_probed
+            and self.capabilities is not None
+            and self.capabilities.obstruction
+        ):
+            # one read-only NHK STATUS request seeds the obstacle value at startup
+            self._nhk_obstacle_probed = True
+            try:
+                obstacle = self.client.read_nhk_status(preemptible=True).obstacle
+            except NiceBidiError as err:
+                _LOGGER.debug("Could not read initial NHK obstacle state: %s", err)
+            else:
+                if obstacle is not None:
+                    status = replace(
+                        status,
+                        obstacle=obstacle,
+                        registers={
+                            **status.registers,
+                            "NHK/Obstruct": str(obstacle).lower(),
+                        },
+                    )
         return status
 
     def _store_device_info(self, device_info: NiceBidiDeviceInfo) -> None:
@@ -374,10 +398,20 @@ class NiceBidiDataUpdateCoordinator(
             return False
         return time.monotonic() >= self._extended_status_next_refresh_monotonic
 
-    def _cache_extended_status(self, status: NiceBidiStatus) -> None:
-        """Store the latest broad BusT4 scan."""
+    def _cache_extended_status(self, status: NiceBidiStatus) -> NiceBidiStatus:
+        """Store the latest broad BusT4 scan and flag a maneuver log that stopped updating."""
+        log, count = status.last_maneuvers, status.total_maneuver_count
+        if log is not None and count is not None:
+            baseline = self._maneuver_log_baseline
+            if baseline is None or baseline[0] != log:
+                self._maneuver_log_baseline = (log, count)
+                stale = False
+            else:
+                stale = count - baseline[1] >= 2
+            status = replace(status, last_maneuvers_stale=stale)
         self._extended_status_cache = status
         self._extended_status_next_refresh_monotonic = time.monotonic() + EXTENDED_STATUS_REFRESH_SECONDS
+        return status
 
     def _merge_cached_extended_status(self, status: NiceBidiStatus) -> NiceBidiStatus:
         """Merge cached diagnostic fields into a fresh core status read."""

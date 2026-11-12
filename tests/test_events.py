@@ -609,3 +609,14 @@ async def test_event_entity_is_omitted_only_when_explicitly_unsupported() -> Non
     await async_setup_entry(None, entry, lambda entities: created.extend(entities))
 
     assert created == []
+
+
+def test_event_payload_hex_is_kept_for_04_02_and_04_82_only() -> None:
+    """The raw hex of the probe sample passes through; 04/40 adds none."""
+    event = parse_nhk_event_frame(_t4_event("04 02 83 01 64 64"))[0]
+    assert event.t4_payload_hex == "04 02 83 01 64 64"
+    assert event.as_diagnostics()["t4_payload_hex"] == "04 02 83 01 64 64"
+    assert parse_nhk_event_frame(_t4_event("04 82 03 00"))[0].t4_payload_hex == "04 82 03 00"
+    assert parse_nhk_event_frame(_live_position_event(0x00))[0].t4_payload_hex is None
+    merged = parse_nhk_event_frame(_t4_event("04 02 04 00", "04 40 00 00 4c"))[0]
+    assert merged.t4_payload_hex == "04 02 04 00"

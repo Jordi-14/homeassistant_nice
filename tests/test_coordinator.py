@@ -72,7 +72,7 @@ async def test_update_data_reads_status_and_caches_device_info(
 
     result = await instance._async_update_data()
 
-    assert result is client.read_status_result
+    assert result == replace(client.read_status_result, last_maneuvers_stale=False)
     assert instance.device_info is client.read_info_result
     assert instance.connection_state == coordinator_module.CONNECTION_STATE_CONNECTED
     assert instance.active_connection_route == "local"
@@ -131,7 +131,7 @@ async def test_update_data_ignores_device_info_read_errors(
 
     result = await instance._async_update_data()
 
-    assert result is client.read_status_result
+    assert result == replace(client.read_status_result, last_maneuvers_stale=False)
     assert instance.device_info is None
     assert client.info_reads == 1
 
@@ -2254,3 +2254,50 @@ async def test_failed_poll_closes_client_off_the_event_loop(
 
     assert close_threads
     assert close_threads[0] is not threading.main_thread()
+
+
+async def test_stale_maneuver_log_is_flagged_from_total_count(hass: HomeAssistant) -> None:
+    """A 04/DA log that stays unchanged while 04/B3 grows is flagged stale."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    flags = []
+    for total in (7, 8, 9, 10):
+        client.read_status_result = make_status(total_maneuver_count=total)
+        instance._extended_status_next_refresh_monotonic = 0.0
+        flags.append((await instance._async_update_data()).last_maneuvers_stale)
+    assert flags == [False, False, True, True]
+
+    # a changed log starts a new baseline
+    client.read_status_result = make_status(
+        total_maneuver_count=11, last_maneuvers=("ok",) * 7 + ("obstacle_detected",)
+    )
+    instance._extended_status_next_refresh_monotonic = 0.0
+    assert (await instance._async_update_data()).last_maneuvers_stale is False
+    client.read_status_result = make_status(
+        total_maneuver_count=12, last_maneuvers=("ok",) * 7 + ("obstacle_detected",)
+    )
+    instance._extended_status_next_refresh_monotonic = 0.0
+    assert (await instance._async_update_data()).last_maneuvers_stale is False
+
+    # core polls reuse the cached flag
+    client.read_status_result = make_status(
+        last_maneuvers=None, total_maneuver_count=None
+    )
+    assert (await instance._async_update_data()).last_maneuvers_stale is False
+
+
+async def test_startup_obstacle_is_seeded_by_one_nhk_status_read(hass: HomeAssistant) -> None:
+    """A DMP-polled device gets an obstacle value without waiting for an event."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.read_info_result = make_device_info(nhk_status=True)
+    client.read_status_result = make_status(obstacle=None)
+    client.read_nhk_status_result = make_status(obstacle=False)
+    instance.client = client
+
+    first = await instance._async_update_data()
+    assert first.obstacle is False
+    assert first.registers["NHK/Obstruct"] == "false"
+    assert (await instance._async_update_data()).obstacle is False
+    assert client.nhk_status_reads == 1

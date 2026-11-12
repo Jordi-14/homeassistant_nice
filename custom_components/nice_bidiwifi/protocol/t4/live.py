@@ -43,6 +43,7 @@ _EVENT_FIELDS = (
     "command",
     "obstruction",
     "event_class",
+    "event_payload_hex",
 )
 
 
@@ -63,6 +64,7 @@ class CuwifiLiveStatus:
     command: str | None = None
     obstruction: bool | None = None  # from the 0x23 diagnostics block only
     event_class: str | None = None
+    event_payload_hex: str | None = None  # 04/02 and 04/82 only
 
     @property
     def affects_gate_status(self) -> bool:
@@ -180,6 +182,7 @@ def parse_cuwifi_live_status_payload(plain: bytes) -> CuwifiLiveStatus | None:
             payload_hex=payload_hex,
             payload_kind="04/02",
             event_class=LOG_REPLY_STATUS[EVENT_CLASS_STATUS[0x02]],
+            event_payload_hex=payload_hex,
             change_state=EVT_CHANGE_STATE.get(data[0], "undefined"),
             cause=(
                 EVT_STATE_CAUSE.get(data[1], "undefined") if len(data) > 1 else None
@@ -196,6 +199,7 @@ def parse_cuwifi_live_status_payload(plain: bytes) -> CuwifiLiveStatus | None:
             payload_hex=payload_hex,
             payload_kind="04/82",
             event_class=LOG_REPLY_STATUS[EVENT_CLASS_STATUS[0x82]],
+            event_payload_hex=payload_hex,
             command=EVT_MOV_COMMAND.get(message[2], "undefined"),
         )
 

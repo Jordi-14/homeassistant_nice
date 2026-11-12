@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .client import (
     STATE_CLOSED,
@@ -47,6 +48,7 @@ class NiceBidiBinarySensorEntityDescription(
         Callable[[NiceBidiDataUpdateCoordinator], bool | None] | None
     ) = None
     required_capability: NiceCapabilityKey = NiceCapabilityKey.STATUS
+    restore: bool = False
 
 
 def _gate_open(status: NiceBidiStatus) -> bool | None:
@@ -93,6 +95,7 @@ BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
         device_class=BinarySensorDeviceClass.SAFETY,
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_visible_default=False,
+        restore=True,
         value_fn=lambda status: status.obstacle,
     ),
     NiceBidiBinarySensorEntityDescription(
@@ -253,7 +256,7 @@ async def async_setup_entry(
     )
 
 
-class NiceBidiBinarySensor(NiceCoordinatorEntity, BinarySensorEntity):
+class NiceBidiBinarySensor(NiceCoordinatorEntity, BinarySensorEntity, RestoreEntity):
     """Nice BusT4 binary diagnostic sensor."""
 
     _attr_has_entity_name = True
@@ -277,10 +280,26 @@ class NiceBidiBinarySensor(NiceCoordinatorEntity, BinarySensorEntity):
             description=description,
         )
         self.entity_description = description
+        self._restored_value: bool | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last value until a live one arrives."""
+        await super().async_added_to_hass()
+        if self.entity_description.restore and (
+            last_state := await self.async_get_last_state()
+        ):
+            self._restored_value = {"on": True, "off": False}.get(last_state.state)
 
     @property
     def is_on(self) -> bool | None:
-        """Return the binary value."""
+        """Return the live value, or the restored one until a live value exists."""
+        live = self._live_value()
+        if live is not None:
+            self._restored_value = None
+            return live
+        return self._restored_value
+
+    def _live_value(self) -> bool | None:
         if self.entity_description.coordinator_value_fn is not None:
             return self.entity_description.coordinator_value_fn(self.coordinator)
         status = self.coordinator.data

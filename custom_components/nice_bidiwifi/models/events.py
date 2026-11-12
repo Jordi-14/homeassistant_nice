@@ -44,6 +44,7 @@ class NiceEvent:
     position: float | None = None
     t4_payload_kind: str | None = None
     t4_event_class: str | None = None
+    t4_payload_hex: str | None = None
     t4_state: str | None = None
     t4_raw_position: int | None = None
     t4_position_scale: str | None = None
@@ -80,6 +81,7 @@ class NiceEvent:
             ("position", self.position),
             ("t4_payload_kind", self.t4_payload_kind),
             ("t4_event_class", self.t4_event_class),
+            ("t4_payload_hex", self.t4_payload_hex),
             ("t4_state", self.t4_state),
             ("t4_raw_position", self.t4_raw_position),
             ("t4_position_scale", self.t4_position_scale),

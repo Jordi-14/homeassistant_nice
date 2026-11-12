@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfTemperature
 
@@ -362,3 +364,16 @@ def test_last_state_change_cause_sensor() -> None:
         "change_state": "opening_from_command",
         "last_command": "open",
     }
+
+
+def test_last_maneuvers_sensor_is_unknown_when_log_is_stale() -> None:
+    coordinator = FakeCoordinator()
+    coordinator.data = replace(make_status(), last_maneuvers_stale=True)
+    sensor = NiceBidiSensor(coordinator, config_entry(), _description("last_maneuvers"))
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes["stale"] is True
+    assert sensor.extra_state_attributes["maneuvers"] == ["ok"] * 8
+
+    coordinator.data = replace(make_status(), last_maneuvers_stale=False)
+    assert sensor.native_value == 0
+    assert "stale" not in sensor.extra_state_attributes
