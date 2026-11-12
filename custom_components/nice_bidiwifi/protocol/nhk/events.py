@@ -119,6 +119,8 @@ def _parse_device_event(
 ) -> NiceEvent:
     raw_state = _text(device, "DoorStatus")
     obstruction = bool_value(_text(device, "Obstruct"))
+    if obstruction is None and live_status is not None:
+        obstruction = live_status.obstruction
     basic_diagnostic = _text(device, "BasicDiagnostic")
     cause = _text(device, "CauseCode")
     advanced_diagnostic = _text(device, "AdvDiagnostic")
@@ -175,6 +177,15 @@ def _parse_device_event(
         t4_position_scale=(
             live_status.position_scale if live_status is not None else None
         ),
+        t4_change_state=live_status.change_state if live_status is not None else None,
+        t4_cause=live_status.cause if live_status is not None else None,
+        t4_basic_diagnostic=(
+            live_status.basic_diagnostic if live_status is not None else None
+        ),
+        t4_advanced_diagnostic=(
+            live_status.advanced_diagnostic if live_status is not None else None
+        ),
+        t4_command=live_status.command if live_status is not None else None,
         obstruction=obstruction,
         protocol_timestamp=_text(root, "Timestamp"),
         basic_diagnostic_code=basic_diagnostic,
@@ -207,7 +218,13 @@ def parse_nhk_event_frame(
     live_status: CuwifiLiveStatus | None = None
     try:
         for payload in decrypt_t4_payloads_from_frame(frame):
-            if parsed := parse_cuwifi_live_status_payload(payload):
+            parsed = parse_cuwifi_live_status_payload(payload)
+            # an event-only payload must not replace a state or position one
+            if parsed and (
+                live_status is None
+                or parsed.state is not None
+                or parsed.position is not None
+            ):
                 live_status = parsed
     except (ValueError, TypeError):
         pass

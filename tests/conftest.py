@@ -426,6 +426,11 @@ class FakeCoordinator:
         self.malformed_protocol_event_count = 0
         self.last_event_at = None
         self.last_event_cause = None
+        self.last_t4_cause = None
+        self.last_t4_change_state = None
+        self.last_t4_basic_diagnostic = None
+        self.last_t4_advanced_diagnostic = None
+        self.last_t4_command = None
         self.basic_diagnostic_code = None
         self.advanced_diagnostic_code = None
         self.bluebus_error_status = None

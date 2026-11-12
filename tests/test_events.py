@@ -11,6 +11,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.nice_bidiwifi.const import DOMAIN
 from custom_components.nice_bidiwifi.coordinator import NiceBidiDataUpdateCoordinator
+from custom_components.nice_bidiwifi.errors import NiceProtocolError
 from custom_components.nice_bidiwifi.event import (
     NiceProtocolEventEntity,
     async_setup_entry,
@@ -22,6 +23,7 @@ from custom_components.nice_bidiwifi.models.events import (
 )
 from custom_components.nice_bidiwifi.protocol.nhk.codec import frame_xml
 from custom_components.nice_bidiwifi.protocol.nhk.events import parse_nhk_event_frame
+from custom_components.nice_bidiwifi.protocol.nhk.status import parse_nhk_status_frames
 from custom_components.nice_bidiwifi.protocol.t4.codec import xor_sha256
 from tests.conftest import (
     FakeClient,
@@ -103,6 +105,103 @@ def _live_position_event(
         + base64.b64encode(encrypted).decode()
         + "</T4></Interface></Event>"
     )
+
+
+def _t4_event(message: str, *, xml: str = "") -> bytes:
+    """Build one encrypted CU_WIFI T4_EVENT around an inner 04/xx message."""
+    key = b"event-key"
+    inner = bytes.fromhex(message)
+    body = bytes.fromhex("00 ff 00 03 01") + bytes([len(inner) + 1, 0]) + inner + b"\x00"
+    plain = bytes([0x55, len(body)]) + body + bytes([len(body)])
+    return frame_xml(
+        '<Event type="T4_EVENT" id="44">'
+        + xml
+        + '<Interface><T4 key="'
+        + base64.b64encode(key).decode()
+        + '">'
+        + base64.b64encode(xor_sha256(plain, key)).decode()
+        + "</T4></Interface></Event>"
+    )
+
+
+def _obstruct_xml(value: bool) -> str:
+    return (
+        '<Devices><Device id="1"><Properties>'
+        f"<Obstruct>{str(value).lower()}</Obstruct></Properties></Device></Devices>"
+    )
+
+
+def test_event_parser_decodes_t4_state_change_and_command() -> None:
+    """Live 04/02 and 04/82 events expose the decoded vendor names."""
+    event = parse_nhk_event_frame(_t4_event("04 02 04 00 00 00"))[0]
+    assert event.state == "open"
+    assert event.t4_change_state == "stopped_in_opened"
+    assert event.t4_cause == "none"
+    assert event.obstruction is None
+    assert event.t4_basic_diagnostic is None
+
+    event = parse_nhk_event_frame(_t4_event("04 02 83 01 64 64"))[0]
+    assert (event.t4_change_state, event.t4_cause) == ("opening_from_command", "radio")
+
+    event = parse_nhk_event_frame(_t4_event("04 82 03 00"))[0]
+    assert event.t4_payload_kind == "04/82"
+    assert event.t4_command == "open"
+    assert event.state is None
+
+
+def test_event_parser_derives_obstruction_from_t4_diagnostics() -> None:
+    """The 0x23 diagnostics block gives obstruction; XML Obstruct wins."""
+    ok = parse_nhk_event_frame(_t4_event("04 02 04 00 00 00 23 00 00"))[0]
+    assert ok.obstruction is False
+    assert ok.t4_basic_diagnostic == "ok"
+    assert ok.t4_advanced_diagnostic == "no_advanced_diagnostic"
+    basic = parse_nhk_event_frame(_t4_event("04 02 04 00 00 00 23 03 00"))[0]
+    assert basic.obstruction is True
+    assert basic.t4_basic_diagnostic == "obstacle_detected"
+    advanced = parse_nhk_event_frame(_t4_event("04 02 04 00 00 00 23 00 0c"))[0]
+    assert advanced.obstruction is True
+    xml_wins = parse_nhk_event_frame(
+        _t4_event("04 02 04 00 00 00 23 03 00", xml=_obstruct_xml(False))
+    )[0]
+    assert xml_wins.obstruction is False
+
+
+def test_stateless_t4_events_do_not_enter_status_polls() -> None:
+    """Event-only live frames never change the polled gate status."""
+    for message in ("04 82 03 00", "04 02 7e 00 00 00"):
+        frame = _t4_event(message)
+        try:
+            parse_nhk_status_frames([frame])
+        except NiceProtocolError:
+            continue
+        raise AssertionError(message)
+
+
+async def test_t4_diagnostic_obstacle_and_last_cause(hass) -> None:
+    """A T4 obstacle diagnostic raises the obstruction category once."""
+    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="t4-obst")
+    entry.add_to_hass(hass)
+    coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
+    coordinator.client = FakeClient()
+    coordinator.async_set_updated_data(make_status(obstacle=False))
+    controller = coordinator.event_controller
+    controller.ensure_registered()
+    controller.reconcile_polled_obstacle(coordinator.data)
+
+    controller._handle_raw_frame(_t4_event("04 02 04 00 00 00 23 03 00"))
+    assert coordinator.latest_event.category is NiceEventCategory.OBSTRUCTION
+    assert coordinator.last_t4_cause == "none"
+    assert coordinator.last_t4_basic_diagnostic == "obstacle_detected"
+
+    controller._handle_raw_frame(_t4_event("04 82 03 00"))
+    assert coordinator.last_t4_command == "open"
+    assert coordinator.last_t4_basic_diagnostic == "obstacle_detected"
+
+    controller._handle_raw_frame(_t4_event("04 02 83 01 64 64"))
+    assert coordinator.last_t4_change_state == "opening_from_command"
+    assert coordinator.last_t4_cause == "radio"
+    assert coordinator.last_t4_basic_diagnostic is None
+    await coordinator.async_shutdown()
 
 
 def _live_scalar_position_event(raw_position: int) -> bytes:

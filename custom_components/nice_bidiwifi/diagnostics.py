@@ -17,6 +17,7 @@ from .const import (
 )
 from .models.config import ConnectionMode
 from .controllers.administration import ADMINISTRATION_HISTORY_LIMIT
+from .protocol.t4.enums import EVT_ERROR
 from .protocol.nhk.administration import (
     LOG_EVENTS_PER_SCOPE,
     MAX_ADMINISTRATION_XML_BYTES,
@@ -205,6 +206,13 @@ async def async_get_config_entry_diagnostics(
             ),
             "error_code": (
                 command_result.error_code if command_result is not None else None
+            ),
+            "error_name": (
+                EVT_ERROR.get(int(command_result.error_code))
+                if command_result is not None
+                and command_result.error_code is not None
+                and command_result.error_code.isdecimal()
+                else None
             ),
         },
         "event_stream": {

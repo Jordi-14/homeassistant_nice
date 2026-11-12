@@ -755,6 +755,26 @@ EVENT_SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         value_fn=lambda coordinator: coordinator.last_event_cause,
     ),
     NiceBidiSensorEntityDescription(
+        key="last_state_change_cause",
+        name="Last state change cause",
+        protected=False,
+        supported_fn=_event_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
+        icon="mdi:help-rhombus-outline",
+        value_fn=lambda coordinator: coordinator.last_t4_cause,
+        extra_attributes_fn=lambda coordinator: {
+            key: value
+            for key, value in (
+                ("change_state", coordinator.last_t4_change_state),
+                ("basic_diagnostic", coordinator.last_t4_basic_diagnostic),
+                ("advanced_diagnostic", coordinator.last_t4_advanced_diagnostic),
+                ("last_command", coordinator.last_t4_command),
+            )
+            if value is not None
+        },
+    ),
+    NiceBidiSensorEntityDescription(
         key="basic_diagnostic_code",
         name="Basic diagnostic code",
         protected=False,

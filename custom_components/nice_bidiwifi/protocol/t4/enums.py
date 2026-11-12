@@ -209,8 +209,21 @@ EVT_MOV_COMMAND: dict[int, str] = {
     39: "emergency_stop",
 }
 
-# Partial table: only the error codes seen so far.
+# Partial table: names for NHK <Error><Code>; 1-13 and 99 from NHK Error.java (issue #50), 14-39 from EvtError.
 EVT_ERROR: dict[int, str] = {
+    1: "user_unknown",
+    2: "auth_failed",
+    3: "invalid_session",
+    4: "invalid_signature",
+    5: "invalid_command",
+    6: "invalid_value",
+    7: "invalid_protocol",
+    8: "generic_error",
+    9: "no_memory",
+    10: "device_unpaired",
+    11: "user_table_full",
+    12: "is_sole_admin",
+    13: "wifi_join_failed",
     14: "no_answer_timeout",
     15: "device_cannot_execute",
     16: "flash_write_error",
@@ -221,6 +234,7 @@ EVT_ERROR: dict[int, str] = {
     37: "hash_crc_match_error",
     38: "max_subscriptions",
     39: "invalid_subsession",
+    99: "max_number_rules_reached",
 }
 
 LOG_REPLY_STATUS: dict[int, str] = {

@@ -23,6 +23,12 @@ from custom_components.nice_bidiwifi.models.administration import (
     NiceLogEvent,
     NiceLogSnapshot,
 )
+from custom_components.nice_bidiwifi.models.commands import (
+    CommandAcknowledgement,
+    CommandKind,
+    NiceCommand,
+    NiceCommandResult,
+)
 from tests.conftest import FakeCoordinator, config_entry
 
 
@@ -161,3 +167,19 @@ async def test_diagnostics_reports_legacy_local_tls_opt_in(hass) -> None:
         "legacy_compatibility_active": True,
         "cipher_security_level": 0,
     }
+
+
+async def test_diagnostics_names_command_error_code(hass) -> None:
+    """Numeric NHK error codes get an EvtError/Error.java name."""
+    coordinator = FakeCoordinator()
+    for code, name in (("2", "auth_failed"), ("x", None)):
+        coordinator.last_command_result = NiceCommandResult(
+            command=NiceCommand(key="open", kind=CommandKind.DOOR_ACTION),
+            acknowledgement=CommandAcknowledgement.REJECTED,
+            latency_ms=1,
+            error_code=code,
+        )
+        entry = config_entry()
+        entry.runtime_data = coordinator
+        diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+        assert diagnostics["command"]["error_name"] == name

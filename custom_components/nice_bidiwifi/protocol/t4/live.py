@@ -6,6 +6,15 @@ from dataclasses import dataclass
 
 from ...models.status import STATE_CLOSING, STATE_OPENING
 from .dmp import STATUS_BY_BYTE
+from .enums import (
+    ADVANCED_DIAGNOSTIC,
+    ADVANCED_DIAGNOSTIC_OBSTRUCTION_CODES,
+    AUTOMATION_STATUS_DIAGNOSTICS,
+    AUTOMATION_STATUS_OBSTACLE_CODES,
+    EVT_CHANGE_STATE,
+    EVT_MOV_COMMAND,
+    EVT_STATE_CAUSE,
+)
 
 DMP_TARGET_CONTROLLER = (0x00, 0x03)
 LIVE_RAW_POSITION_OPEN = 7000
@@ -21,6 +30,12 @@ class CuwifiLiveStatus:
     payload_kind: str
     raw_position: int | None = None
     position_scale: str | None = None
+    change_state: str | None = None
+    cause: str | None = None
+    basic_diagnostic: str | None = None
+    advanced_diagnostic: str | None = None
+    command: str | None = None
+    obstruction: bool | None = None  # from the 0x23 diagnostics block only
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,14 +118,36 @@ def parse_cuwifi_live_status_payload(plain: bytes) -> CuwifiLiveStatus | None:
         )
 
     if message[1] == 0x02:
-        state = STATUS_BY_BYTE.get(message[2])
-        if state is None:
-            return None
+        data = message[2:]
+        basic = advanced = obstruction = None
+        if len(data) >= 7 and data[4] == 0x23:
+            basic = AUTOMATION_STATUS_DIAGNOSTICS.get(data[5], "undefined")
+            advanced = ADVANCED_DIAGNOSTIC.get(data[6], "undefined")
+            obstruction = (
+                data[5] in AUTOMATION_STATUS_OBSTACLE_CODES
+                or data[6] in ADVANCED_DIAGNOSTIC_OBSTRUCTION_CODES
+            )
         return CuwifiLiveStatus(
-            state=state,
+            state=STATUS_BY_BYTE.get(data[0]),
             position=None,
             payload_hex=payload_hex,
             payload_kind="04/02",
+            change_state=EVT_CHANGE_STATE.get(data[0], "undefined"),
+            cause=(
+                EVT_STATE_CAUSE.get(data[1], "undefined") if len(data) > 1 else None
+            ),
+            basic_diagnostic=basic,
+            advanced_diagnostic=advanced,
+            obstruction=obstruction,
+        )
+
+    if message[1] == 0x82:
+        return CuwifiLiveStatus(
+            state=None,
+            position=None,
+            payload_hex=payload_hex,
+            payload_kind="04/82",
+            command=EVT_MOV_COMMAND.get(message[2], "undefined"),
         )
 
     return None

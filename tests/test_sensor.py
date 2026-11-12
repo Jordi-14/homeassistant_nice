@@ -347,3 +347,18 @@ def test_last_maneuvers_sensor() -> None:
     coordinator.data = make_status(last_maneuvers=None)
     assert sensor.native_value is None
     assert sensor.extra_state_attributes == {}
+
+
+def test_last_state_change_cause_sensor() -> None:
+    coordinator = FakeCoordinator()
+    coordinator.last_t4_cause = "radio"
+    coordinator.last_t4_change_state = "opening_from_command"
+    coordinator.last_t4_command = "open"
+    sensor = NiceBidiSensor(
+        coordinator, config_entry(), _event_description("last_state_change_cause")
+    )
+    assert sensor.native_value == "radio"
+    assert sensor.extra_state_attributes == {
+        "change_state": "opening_from_command",
+        "last_command": "open",
+    }

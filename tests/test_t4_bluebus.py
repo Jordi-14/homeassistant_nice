@@ -62,6 +62,8 @@ def test_enum_tables() -> None:
         enums.BLUEBUS_DEVICE_STATUS,
     ):
         assert len(set(table.values())) == len(table)
+    assert enums.EVT_ERROR[2] == "auth_failed"
+    assert enums.EVT_ERROR[99] == "max_number_rules_reached"
     assert enums.EVT_STATE_CAUSE[17] == "photo_open"
     assert enums.EVT_CHANGE_STATE[129] == "opening_for_photo_intervent"
     assert enums.ADVANCED_DIAGNOSTIC[48] == "motor_disconnected"

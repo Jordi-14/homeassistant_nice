@@ -48,6 +48,11 @@ class NiceEventController(OwnerBoundController):
         self.malformed_protocol_event_count = 0
         self.last_event_at: datetime | None = None
         self.last_event_cause: str | None = None
+        self.last_t4_cause: str | None = None
+        self.last_t4_change_state: str | None = None
+        self.last_t4_basic_diagnostic: str | None = None
+        self.last_t4_advanced_diagnostic: str | None = None
+        self.last_t4_command: str | None = None
         self.basic_diagnostic_code: str | None = None
         self.advanced_diagnostic_code: str | None = None
         self.bluebus_error_status: str | None = None
@@ -183,6 +188,15 @@ class NiceEventController(OwnerBoundController):
         self.last_event_at = event.received_at
         if event.cause_code is not None:
             self.last_event_cause = event.cause_code
+        if event.t4_change_state is not None:
+            # a new state change must not keep the old diagnostics
+            self.last_t4_change_state = event.t4_change_state
+            self.last_t4_basic_diagnostic = event.t4_basic_diagnostic
+            self.last_t4_advanced_diagnostic = event.t4_advanced_diagnostic
+        if event.t4_cause is not None:
+            self.last_t4_cause = event.t4_cause
+        if event.t4_command is not None:
+            self.last_t4_command = event.t4_command
         if event.basic_diagnostic_code is not None:
             self.basic_diagnostic_code = event.basic_diagnostic_code
         if event.advanced_diagnostic_code is not None:
@@ -208,7 +222,9 @@ class NiceEventController(OwnerBoundController):
         if event.position is not None:
             updates["position"] = event.position
             registers["NHK/T4InstantPosition"] = str(round(event.position))
-        if event.t4_payload_kind is not None:
+        if event.t4_payload_kind is not None and (
+            event.t4_state is not None or event.position is not None
+        ):
             registers["NHK/T4PayloadKind"] = event.t4_payload_kind
         if event.t4_state is not None:
             registers["NHK/T4Status"] = event.t4_state
