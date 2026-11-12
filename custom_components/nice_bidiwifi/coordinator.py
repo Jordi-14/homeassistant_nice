@@ -195,8 +195,9 @@ class NiceBidiDataUpdateCoordinator(
         self._extended_status_next_refresh_monotonic = 0.0
         self._last_open_position: int | None = None
         self.controller_limits_changed: dict | None = None
-        self._maneuver_log_baseline: tuple[tuple[str, ...], int] | None = None
+        self._maneuver_log_baseline: tuple[tuple[str, ...], int, int] | None = None
         self._nhk_obstacle_probed = False
+        self.nhk_obstacle_seed: str | None = None
         self.calibration_controller._init_calibration_state(hass, entry)
         self._capability_service = NiceCapabilityService(
             self.entry_config.device_id
@@ -323,6 +324,11 @@ class NiceBidiDataUpdateCoordinator(
                         "current": str(opened),
                     },
                 )
+                self.event_controller.report_abnormal(
+                    "controller_limits_changed",
+                    previous_open_position=baseline,
+                    open_position=opened,
+                )
             self.controller_limits_changed = {
                 "previous_open_position": baseline,
                 "open_position": opened,
@@ -396,12 +402,19 @@ class NiceBidiDataUpdateCoordinator(
         ):
             # one read-only NHK STATUS request seeds the obstacle value at startup
             self._nhk_obstacle_probed = True
+            obstacle = None
             try:
                 obstacle = self.client.read_nhk_status(preemptible=True).obstacle
+            except NiceReadPreemptedError:
+                self._nhk_obstacle_probed = False  # a command won the session: retry
+                self._set_obstacle_seed("preempted")
             except NiceBidiError as err:
-                _LOGGER.debug("Could not read initial NHK obstacle state: %s", err)
+                self._set_obstacle_seed(f"error:{type(err).__name__}")
             else:
-                if obstacle is not None:
+                if obstacle is None:
+                    self._set_obstacle_seed("no_value")
+                else:
+                    self._set_obstacle_seed(f"seeded_{str(obstacle).lower()}")
                     status = replace(
                         status,
                         obstacle=obstacle,
@@ -410,7 +423,19 @@ class NiceBidiDataUpdateCoordinator(
                             "NHK/Obstruct": str(obstacle).lower(),
                         },
                     )
+        elif (
+            status.obstacle is None
+            and not self._nhk_obstacle_probed
+            and self.capabilities is not None
+        ):
+            self._nhk_obstacle_probed = True
+            self._set_obstacle_seed("not_advertised")
         return status
+
+    def _set_obstacle_seed(self, outcome: str) -> None:
+        """Record the NHK obstacle seed outcome for diagnostics."""
+        self.nhk_obstacle_seed = outcome
+        _LOGGER.debug("NHK obstacle seed: %s", outcome)
 
     def _store_device_info(self, device_info: NiceBidiDeviceInfo) -> None:
         """Store INFO metadata and its normalized capability view together."""
@@ -447,10 +472,14 @@ class NiceBidiDataUpdateCoordinator(
         if log is not None and count is not None:
             baseline = self._maneuver_log_baseline
             if baseline is None or baseline[0] != log:
-                self._maneuver_log_baseline = (log, count)
+                self._maneuver_log_baseline = (log, count, self.abnormal_stop_count)
                 stale = False
             else:
-                stale = count - baseline[1] >= 2
+                # a healthy gate keeps an all-ok log, so it needs a sign of failure
+                stale = count - baseline[1] >= 2 and (
+                    any(name != "ok" for name in log)
+                    or self.abnormal_stop_count > baseline[2]
+                )
             status = replace(status, last_maneuvers_stale=stale)
         self._extended_status_cache = status
         self._extended_status_next_refresh_monotonic = time.monotonic() + EXTENDED_STATUS_REFRESH_SECONDS

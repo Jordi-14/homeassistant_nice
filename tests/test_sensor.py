@@ -348,6 +348,7 @@ def test_last_maneuvers_sensor() -> None:
 
     coordinator.data = make_status(last_maneuvers=None)
     assert sensor.native_value is None
+    assert sensor.available is False
     assert sensor.extra_state_attributes == {}
 
 
@@ -371,6 +372,7 @@ def test_last_maneuvers_sensor_is_unknown_when_log_is_stale() -> None:
     coordinator.data = replace(make_status(), last_maneuvers_stale=True)
     sensor = NiceBidiSensor(coordinator, config_entry(), _description("last_maneuvers"))
     assert sensor.native_value is None
+    assert sensor.available is True
     assert sensor.extra_state_attributes["stale"] is True
     assert sensor.extra_state_attributes["maneuvers"] == ["ok"] * 8
 

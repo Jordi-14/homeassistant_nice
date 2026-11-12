@@ -315,6 +315,7 @@ async def async_get_config_entry_diagnostics(
                 "high_level_actions": capabilities.high_level_actions,
                 "readable_status": capabilities.readable_status,
                 "obstruction": capabilities.obstruction,
+                "nhk_obstacle_seed": getattr(coordinator, "nhk_obstacle_seed", None),
                 "t4_allowed_advertised": (capabilities.t4_allowed.advertised),
                 "t4_allowed_valid": capabilities.t4_allowed_valid,
                 "t4_allowed_mask": capabilities.t4_allowed_mask,

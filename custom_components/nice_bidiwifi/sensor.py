@@ -51,6 +51,7 @@ class NiceBidiSensorEntityDescription(
     extra_attributes_fn: (
         Callable[[NiceBidiDataUpdateCoordinator], dict[str, Any]] | None
     ) = None
+    available_fn: Callable[[NiceBidiDataUpdateCoordinator], bool] | None = None
 
 
 def _status(coordinator: NiceBidiDataUpdateCoordinator) -> NiceBidiStatus | None:
@@ -496,6 +497,8 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         icon="mdi:history",
         value_fn=_last_maneuvers_count,
         extra_attributes_fn=_last_maneuvers_attributes,
+        # a stale log keeps its attributes, so it stays available with no value
+        available_fn=lambda coordinator: _last_maneuvers(coordinator) is not None,
     ),
     NiceBidiSensorEntityDescription(
         key="diagnostics_parameters",
@@ -976,6 +979,9 @@ class NiceBidiSensor(NiceCoordinatorEntity, SensorEntity):
     @property
     def available(self) -> bool:
         """Return true if this sensor has a known value."""
+        available_fn = self.entity_description.available_fn
+        if available_fn is not None:
+            return self.coordinator.last_update_success and available_fn(self.coordinator)
         return self.native_value is not None
 
     @property
