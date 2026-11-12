@@ -426,6 +426,8 @@ class FakeCoordinator:
         self.malformed_protocol_event_count = 0
         self.last_event_at = None
         self.last_event_cause = None
+        self.abnormal_stop_count = 0
+        self.last_abnormal_stop = None
         self.last_t4_cause = None
         self.last_t4_change_state = None
         self.last_t4_basic_diagnostic = None

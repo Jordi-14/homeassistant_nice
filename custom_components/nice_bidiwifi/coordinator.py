@@ -181,6 +181,10 @@ class NiceBidiDataUpdateCoordinator(
         self._use_nhk_status = False
         self._rejected_t4_actions: set[str] = set()
         self.last_command: str | None = None
+        self.last_command_monotonic: float | None = None
+        self.abnormal_stop_count = 0
+        self.last_abnormal_stop: dict | None = None
+        self._abnormal_scan_monotonic: float | None = None
         self.last_command_latency_ms: int | None = None
         self.last_command_result: NiceCommandResult | None = None
         self.last_error: str | None = None
@@ -734,6 +738,7 @@ class NiceBidiDataUpdateCoordinator(
         )
         self.last_command_result = result
         self.last_command = command.key
+        self.last_command_monotonic = time.monotonic()
         self.last_command_latency_ms = result.latency_ms
 
     def _store_failed_command(

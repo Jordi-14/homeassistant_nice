@@ -7,11 +7,13 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
 import logging
+import time
 
 from ..errors import NiceProtocolError
 from ..models.events import NiceEvent, NiceEventCategory, NiceEventKind
 from ..models.status import STATE_CLOSING, STATE_OPENING, NiceStatus
 from ..protocol.nhk.events import parse_nhk_event_frame
+from ..protocol.nhk.status import status_value
 from .base import OwnerBoundController
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,6 +23,22 @@ EVENT_STREAM_ACTIVE = "active"
 EVENT_STREAM_FALLBACK_POLLING = "fallback_polling"
 EVENT_STREAM_STOPPED = "stopped"
 EVENT_HISTORY_LIMIT = 32
+ABNORMAL_STOP_EVENT = "nice_bidiwifi_abnormal_stop"
+COMMAND_MOVE_WINDOW_SECONDS = 5.0
+RECENT_COMMAND_SECONDS = 3.0
+ABNORMAL_SCAN_INTERVAL_SECONDS = 30.0
+IMPLAUSIBLE_TRAVEL_POSITION_DELTA = 1000
+# Partial and pause stops are normal travel ends.
+NORMAL_STOPS = frozenset(
+    {
+        "stopped_in_opened",
+        "stopped_in_closed",
+        "stopped_in_pause_time",
+        "stopped_in_partial_1",
+        "stopped_in_partial_2",
+        "stopped_in_partial_3",
+    }
+)
 
 
 def _unknown_status() -> NiceStatus:
@@ -48,6 +66,7 @@ class NiceEventController(OwnerBoundController):
         self.malformed_protocol_event_count = 0
         self.last_event_at: datetime | None = None
         self.last_event_cause: str | None = None
+        self._t4_command_move: tuple[float, str, int | None] | None = None
         self.last_t4_cause: str | None = None
         self.last_t4_change_state: str | None = None
         self.last_t4_basic_diagnostic: str | None = None
@@ -93,6 +112,92 @@ class NiceEventController(OwnerBoundController):
         if self._obstruction_state is not None:
             return replace(status, obstacle=self._obstruction_state)
         return status
+
+    def _check_abnormal_stop(self, event: NiceEvent) -> NiceEvent:
+        """Detect stops that no command explains and travel that cannot be real."""
+        change_state = event.t4_change_state
+        if change_state is None:
+            return event
+        now = time.monotonic()
+        reason = None
+        if change_state in {"closing_from_command", "opening_from_command"}:
+            direction = "closing" if change_state.startswith("closing") else "opening"
+            start = self.data.current_position if self.data else None
+            self._t4_command_move = (now, direction, start)
+        elif change_state in {"stopped_in_closed", "stopped_in_opened"}:
+            move = self._t4_command_move
+            if move is not None and now - move[0] < COMMAND_MOVE_WINDOW_SECONDS:
+                end = None
+                if self.data is not None:
+                    end = (
+                        self.data.closed_position
+                        if change_state == "stopped_in_closed"
+                        else self.data.open_position
+                    )
+                if (
+                    move[2] is not None
+                    and end is not None
+                    and abs(move[2] - end) > IMPLAUSIBLE_TRAVEL_POSITION_DELTA
+                ):
+                    # the 04/02 state is not applied; the NHK XML state still is
+                    event = replace(
+                        event,
+                        t4_implausible=True,
+                        state=status_value(event.raw_state) if event.raw_state else None,
+                    )
+                    reason = "implausible_travel"
+        if (
+            reason is None
+            and change_state.startswith("stopped_")
+            and change_state not in NORMAL_STOPS
+            and self._command_age(now) is None
+            # a stop caused by a remote, key or input is explained
+            and event.t4_cause in {None, "none", "undefined"}
+        ):
+            reason = "unexpected_stop"
+        if change_state.startswith("stopped"):
+            self._t4_command_move = None
+        if reason is not None:
+            self._fire_abnormal_stop(event, reason, now)
+        return event
+
+    def _command_age(self, now: float) -> float | None:
+        """Return seconds since a recent command, or None when none is recent."""
+        started = self.last_command_monotonic
+        if started is None or now - started >= RECENT_COMMAND_SECONDS:
+            return None
+        return now - started
+
+    def _fire_abnormal_stop(self, event: NiceEvent, reason: str, now: float) -> None:
+        """Fire the abnormal-stop bus event and request a diagnostics scan."""
+        since_command = (
+            now - self.last_command_monotonic
+            if self.last_command_monotonic is not None
+            else None
+        )
+        data = {
+            "entry_id": self.config_entry.entry_id,
+            "reason": reason,
+            "change_state": event.t4_change_state,
+            "cause": event.t4_cause,
+            "position": self.data.position if self.data else None,
+            "seconds_since_command": (
+                round(since_command, 1) if since_command is not None else None
+            ),
+        }
+        self.hass.bus.async_fire(ABNORMAL_STOP_EVENT, data)
+        self.abnormal_stop_count += 1
+        self.last_abnormal_stop = {**data, "at": event.received_at.isoformat()}
+        # no scan while a command runs, and at most one per 30 s
+        if self._command_age(now) is not None:
+            return
+        last_scan = self._abnormal_scan_monotonic
+        if last_scan is None or now - last_scan >= ABNORMAL_SCAN_INTERVAL_SECONDS:
+            self._abnormal_scan_monotonic = now
+            self._extended_status_next_refresh_monotonic = 0.0
+            self.config_entry.async_create_background_task(
+                self.hass, self.async_refresh(), "nice-abnormal-stop-scan"
+            )
 
     def ensure_registered(self) -> None:
         """Install persistent callbacks on the current client exactly once."""
@@ -166,6 +271,7 @@ class NiceEventController(OwnerBoundController):
 
     def _apply_event(self, event: NiceEvent) -> None:
         """Update normalized state and event diagnostics."""
+        event = self._check_abnormal_stop(event)
         if event.obstruction is not None:
             if (
                 event.obstruction is True

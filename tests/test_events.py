@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_capture_events,
+)
 
 from custom_components.nice_bidiwifi.const import DOMAIN
 from custom_components.nice_bidiwifi.coordinator import NiceBidiDataUpdateCoordinator
@@ -620,3 +624,121 @@ def test_event_payload_hex_is_kept_for_04_02_and_04_82_only() -> None:
     assert parse_nhk_event_frame(_live_position_event(0x00))[0].t4_payload_hex is None
     merged = parse_nhk_event_frame(_t4_event("04 02 04 00", "04 40 00 00 4c"))[0]
     assert merged.t4_payload_hex == "04 02 04 00"
+
+
+class _Clock:
+    """Controllable monotonic clock for the event controller."""
+
+    def __init__(self, monkeypatch, start: float = 1000.0) -> None:
+        self.now = start
+        monkeypatch.setattr(
+            "custom_components.nice_bidiwifi.controllers.events.time",
+            SimpleNamespace(monotonic=lambda: self.now),
+        )
+
+
+async def _abnormal_coordinator(hass, **status_values):
+    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="abnormal")
+    entry.add_to_hass(hass)
+    coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
+    coordinator.client = FakeClient()
+    coordinator.async_set_updated_data(make_status(**status_values))
+    coordinator.event_controller.ensure_registered()
+    return coordinator
+
+
+async def test_unexpected_stop_without_command_fires_event(hass, monkeypatch) -> None:
+    """Cycle 3: stopped_for_command_arrival with no recent command."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(hass)
+    coordinator.last_command_monotonic = clock.now - 29.0
+
+    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 88 00"))
+    await hass.async_block_till_done()
+
+    assert len(events) == 1
+    assert events[0].data["reason"] == "unexpected_stop"
+    assert events[0].data["change_state"] == "stopped_for_command_arrival"
+    assert events[0].data["seconds_since_command"] == 29.0
+    assert coordinator.abnormal_stop_count == 1
+    assert coordinator.last_abnormal_stop["reason"] == "unexpected_stop"
+    assert coordinator.data.state == "opening"  # 04/02 136 carries no state
+    await coordinator.async_shutdown()
+
+
+async def test_stop_after_recent_command_or_partial_stop_is_normal(hass, monkeypatch) -> None:
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(hass)
+    coordinator.last_command_monotonic = clock.now - 1.0
+    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 88 00"))
+    coordinator.last_command_monotonic = None
+    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 10 00"))
+    # stop by the radio remote (cause 1) with no HA command
+    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 88 01"))
+    await hass.async_block_till_done()
+    assert events == []
+    assert coordinator.abnormal_stop_count == 0
+    await coordinator.async_shutdown()
+
+
+async def test_implausible_travel_is_flagged_and_state_not_applied(hass, monkeypatch) -> None:
+    """Cycle 4: the gate did not move, so stopped_in_closed/opened are not applied."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=5263, closed_position=0, open_position=5263
+    )
+    controller = coordinator.event_controller
+
+    controller._handle_raw_frame(_t4_event("04 02 84 00"))
+    clock.now += 1.23
+    controller._handle_raw_frame(_t4_event("04 02 05 00"))
+    assert coordinator.latest_event.t4_implausible is True
+    assert coordinator.latest_event.as_event_attributes()["t4_implausible"] is True
+    assert coordinator.data.state != "closed"
+
+    coordinator.async_set_updated_data(replace(coordinator.data, current_position=0))
+    clock.now += 10.11
+    controller._handle_raw_frame(_t4_event("04 02 83 00"))
+    clock.now += 1.73
+    controller._handle_raw_frame(_t4_event("04 02 04 00"))
+    await hass.async_block_till_done()
+
+    assert [e.data["reason"] for e in events] == ["implausible_travel"] * 2
+    assert coordinator.abnormal_stop_count == 2
+    await coordinator.async_shutdown()
+
+
+async def test_normal_full_travel_is_applied(hass, monkeypatch) -> None:
+    """Cycle 2: a stop about 16 s after the command is real travel."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="closed", current_position=0, closed_position=0, open_position=5263
+    )
+    controller = coordinator.event_controller
+    controller._handle_raw_frame(_t4_event("04 02 83 00"))
+    clock.now += 16.0
+    controller._handle_raw_frame(_t4_event("04 02 04 00"))
+    await hass.async_block_till_done()
+    assert events == []
+    assert coordinator.latest_event.t4_implausible is None
+    assert coordinator.data.state == "open"
+    await coordinator.async_shutdown()
+
+
+async def test_abnormal_stop_scans_at_most_once_per_30_seconds(hass, monkeypatch) -> None:
+    clock = _Clock(monkeypatch)
+    coordinator = await _abnormal_coordinator(hass, state="open")
+    client = coordinator.client
+    controller = coordinator.event_controller
+
+    for offset in (0.0, 10.0, 31.0):
+        clock.now = 1000.0 + offset
+        controller._handle_raw_frame(_t4_event("04 02 88 00"))
+        await hass.async_block_till_done(wait_background_tasks=True)
+    assert client.read_status_include_extended.count(True) == 2
+    assert coordinator.abnormal_stop_count == 3
+    await coordinator.async_shutdown()

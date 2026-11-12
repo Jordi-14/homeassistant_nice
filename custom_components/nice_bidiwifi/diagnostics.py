@@ -225,6 +225,8 @@ async def async_get_config_entry_diagnostics(
             ),
             "event_count": coordinator.protocol_event_count,
             "malformed_event_count": coordinator.malformed_protocol_event_count,
+            "abnormal_stop_count": coordinator.abnormal_stop_count,
+            "last_abnormal_stop": coordinator.last_abnormal_stop,
             "history_limit": coordinator.event_history.maxlen,
             "history": [event.as_diagnostics() for event in coordinator.event_history],
         },

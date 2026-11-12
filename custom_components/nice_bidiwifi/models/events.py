@@ -53,6 +53,7 @@ class NiceEvent:
     t4_basic_diagnostic: str | None = None
     t4_advanced_diagnostic: str | None = None
     t4_command: str | None = None
+    t4_implausible: bool | None = None
     obstruction: bool | None = None
     obstruction_source: str | None = None
     protocol_timestamp: str | None = None
@@ -90,6 +91,7 @@ class NiceEvent:
             ("t4_basic_diagnostic", self.t4_basic_diagnostic),
             ("t4_advanced_diagnostic", self.t4_advanced_diagnostic),
             ("t4_command", self.t4_command),
+            ("t4_implausible", self.t4_implausible),
             ("obstruction", self.obstruction),
             ("obstruction_source", self.obstruction_source),
             ("protocol_timestamp", self.protocol_timestamp),
