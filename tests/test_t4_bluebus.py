@@ -34,8 +34,7 @@ def test_short_or_missing() -> None:
         (_data(b2=1, b6=1), {"photo": "not_working"}),
         (_data(b2=1, b10=1, b0=0x08), {"photo": "in_error"}),
         (_data(b2=1), {"photo": "off"}),
-        (_data(b4=0x20, b6=0x20, b10=0x20, b0=0x08), {"photo_open": "undefined"}),
-        (_data(b4=0x40, b1=0x10), {"photo_open_ii": "undefined"}),
+        (_data(b4=0x60, b6=0x20, b10=0x20, b0=0x08), {}),  # PHOTO OPEN not listed
         (_data(b4=1, b21=0), {"cmd_1": "off"}),
         (_data(b4=1, b21=1), {"cmd_1": "on"}),
         (_data(b4=1, b21=0x40), {"cmd_1": "on"}),
@@ -73,5 +72,6 @@ def test_decode_last_maneuvers() -> None:
         "ok", "ok", "ok", "photo_intervention",
     )
     assert decode_last_maneuvers(bytes(7)) is None
+    assert decode_last_maneuvers(b"\xff" * 8) == ("undefined",) * 8
     assert decode_last_maneuvers(None) is None
     assert decode_last_maneuvers(bytes([3] * 8 + [3])) == ("obstacle_detected",) * 8

@@ -323,6 +323,14 @@ def test_bluebus_devices_sensor_counts_faults() -> None:
     assert sensor.extra_state_attributes == {}
 
 
+def test_last_maneuvers_sensor_ignores_undefined_slots() -> None:
+    coordinator = FakeCoordinator()
+    coordinator.data = make_status(last_maneuvers=("undefined",) * 8)
+    sensor = NiceBidiSensor(coordinator, config_entry(), _description("last_maneuvers"))
+    assert sensor.native_value == 0
+    assert sensor.extra_state_attributes["obstacle_count"] == 0
+
+
 def test_last_maneuvers_sensor() -> None:
     coordinator = FakeCoordinator()
     names = (
