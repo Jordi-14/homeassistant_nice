@@ -7,6 +7,7 @@ import base64
 from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
@@ -637,11 +638,14 @@ class _Clock:
         )
 
 
-async def _abnormal_coordinator(hass, **status_values):
+async def _abnormal_coordinator(hass, *, real_refresh=False, **status_values):
     entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="abnormal")
     entry.add_to_hass(hass)
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
     coordinator.client = FakeClient()
+    if not real_refresh:
+        # a real scan would replace coordinator.data at a scheduler-dependent time
+        coordinator.async_refresh = AsyncMock()
     coordinator.async_set_updated_data(make_status(**status_values))
     coordinator.event_controller.ensure_registered()
     return coordinator
@@ -724,8 +728,8 @@ async def test_short_fast_enough_travel_is_not_implausible(hass, monkeypatch) ->
     await coordinator.async_shutdown()
 
 
-async def test_implausible_travel_is_flagged_and_state_not_applied(hass, monkeypatch) -> None:
-    """Cycle 4: the gate did not move, so stopped_in_closed/opened are not applied."""
+async def test_implausible_travel_is_flagged_and_state_kept(hass, monkeypatch) -> None:
+    """Cycle 4: the gate did not move; the alert fires and the endpoint state is kept."""
     clock = _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
     coordinator = await _abnormal_coordinator(
@@ -738,7 +742,7 @@ async def test_implausible_travel_is_flagged_and_state_not_applied(hass, monkeyp
     controller._handle_raw_frame(_t4_event("04 02 05 00"))
     assert coordinator.latest_event.t4_implausible is True
     assert coordinator.latest_event.as_event_attributes()["t4_implausible"] is True
-    assert coordinator.data.state != "closed"
+    assert coordinator.data.state == "closed"
 
     coordinator.async_set_updated_data(replace(coordinator.data, current_position=0))
     clock.now += 10.11
@@ -773,14 +777,13 @@ async def test_normal_full_travel_is_applied(hass, monkeypatch) -> None:
 async def test_abnormal_stop_scans_at_most_once_per_30_seconds(hass, monkeypatch) -> None:
     clock = _Clock(monkeypatch)
     coordinator = await _abnormal_coordinator(hass, state="open")
-    client = coordinator.client
     controller = coordinator.event_controller
 
     for offset in (0.0, 10.0, 31.0):
         clock.now = 1000.0 + offset
         controller._handle_raw_frame(_t4_event("04 02 88 00"))
         await hass.async_block_till_done(wait_background_tasks=True)
-    assert client.read_status_include_extended.count(True) == 2
+    assert coordinator.async_refresh.await_count == 2
     assert coordinator.abnormal_stop_count == 3
     await coordinator.async_shutdown()
 
@@ -822,12 +825,11 @@ async def test_cycle_4_open_stop_is_unexpected_even_after_a_command(hass, monkey
 async def test_abnormal_stop_after_command_only_forces_the_next_scan(hass, monkeypatch) -> None:
     clock = _Clock(monkeypatch)
     coordinator = await _abnormal_coordinator(hass, state="open")
-    client = coordinator.client
     coordinator._extended_status_next_refresh_monotonic = 1e9
     coordinator.last_command_monotonic = clock.now - 1.0
     coordinator.event_controller._handle_raw_frame(_t4_event("04 02 88 00"))
     await hass.async_block_till_done(wait_background_tasks=True)
-    assert client.read_status_include_extended == []
+    coordinator.async_refresh.assert_not_called()
     assert coordinator._extended_status_next_refresh_monotonic == 0.0
     await coordinator.async_shutdown()
 

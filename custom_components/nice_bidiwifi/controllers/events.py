@@ -173,8 +173,8 @@ class NiceEventController(OwnerBoundController):
                     move[2], getattr(self.data, f"{end_name}_position"), now - move[0]
                 )
             ):
-                # the 04/02 state is not applied; the NHK XML state still is
-                event = replace(event, t4_implausible=True, state=nhk)
+                # observational only: the endpoint state is still applied
+                event = replace(event, t4_implausible=True)
                 reason = "implausible_travel"
         if (
             reason is None
