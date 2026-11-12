@@ -165,9 +165,7 @@ def parse_nhk_status_frames(frames: list[bytes], device_id: int = 1) -> NiceStat
         for plain in decrypt_t4_payloads_from_frame(frame):
             live_status = parse_cuwifi_live_status_payload(plain)
             # event-only frames (no state or position) must not touch the gate status
-            if live_status is not None and (
-                live_status.state is not None or live_status.position is not None
-            ):
+            if live_status is not None and live_status.affects_gate_status:
                 status = merge_cuwifi_live_status(status, live_status)
     if status is None:
         raise NiceProtocolError(

@@ -241,11 +241,14 @@ LOG_REPLY_STATUS: dict[int, str] = {
     200: "power_on",
     201: "state_changed",
     202: "alarm",
+    203: "tick",
+    204: "timer",
     205: "movement_in_progress",
     206: "radio_channel",
     207: "command_in_execution",
     208: "rele",
     209: "movement_with_man_present",
+    210: "master_slave",
 }
 
 BLUEBUS_DEVICE_STATUS: dict[int, str] = {

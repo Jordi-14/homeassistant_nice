@@ -238,7 +238,8 @@ class NiceEventController(OwnerBoundController):
                 registers["NHK/T4StatusIgnored"] = "04/40_position_only"
         if event.obstruction is not None:
             updates["obstacle"] = event.obstruction
-            registers["NHK/Obstruct"] = str(event.obstruction).lower()
+            key = "NHK/T4Obstruct" if event.obstruction_source == "t4" else "NHK/Obstruct"
+            registers[key] = str(event.obstruction).lower()
         if event.manoeuvre_count is not None:
             updates["maintenance_count"] = event.manoeuvre_count
             updates["total_maneuver_count"] = event.manoeuvre_count

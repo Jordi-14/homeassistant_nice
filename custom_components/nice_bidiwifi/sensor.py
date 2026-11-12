@@ -58,6 +58,7 @@ def _status(coordinator: NiceBidiDataUpdateCoordinator) -> NiceBidiStatus | None
 
 
 _BLUEBUS_FAULT_NAMES = {BLUEBUS_DEVICE_STATUS[c] for c in BLUEBUS_FAULT_STATUSES}
+_NOT_FAILED_NAMES = frozenset({"ok", "undefined"})
 _OBSTACLE_NAMES = {AUTOMATION_STATUS_DIAGNOSTICS[c] for c in AUTOMATION_STATUS_OBSTACLE_CODES}
 
 
@@ -75,7 +76,7 @@ def _last_maneuvers(coordinator: NiceBidiDataUpdateCoordinator) -> tuple[str, ..
 
 def _last_maneuvers_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
     names = _last_maneuvers(coordinator)
-    return None if names is None else sum(name not in {"ok", "undefined"} for name in names)
+    return None if names is None else sum(name not in _NOT_FAILED_NAMES for name in names)
 
 
 def _last_maneuvers_attributes(

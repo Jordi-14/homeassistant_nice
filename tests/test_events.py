@@ -107,20 +107,21 @@ def _live_position_event(
     )
 
 
-def _t4_event(message: str, *, xml: str = "") -> bytes:
-    """Build one encrypted CU_WIFI T4_EVENT around an inner 04/xx message."""
+def _t4_event(*messages: str, xml: str = "", event_type: str = "T4_EVENT") -> bytes:
+    """Build one encrypted CU_WIFI event around one or more inner 04/xx messages."""
     key = b"event-key"
-    inner = bytes.fromhex(message)
-    body = bytes.fromhex("00 ff 00 03 01") + bytes([len(inner) + 1, 0]) + inner + b"\x00"
-    plain = bytes([0x55, len(body)]) + body + bytes([len(body)])
+    elements = ""
+    for message in messages:
+        inner = bytes.fromhex(message)
+        body = bytes.fromhex("00 ff 00 03 01") + bytes([len(inner) + 1, 0]) + inner + b"\x00"
+        plain = bytes([0x55, len(body)]) + body + bytes([len(body)])
+        elements += (
+            f'<T4 key="{base64.b64encode(key).decode()}">'
+            + base64.b64encode(xor_sha256(plain, key)).decode()
+            + "</T4>"
+        )
     return frame_xml(
-        '<Event type="T4_EVENT" id="44">'
-        + xml
-        + '<Interface><T4 key="'
-        + base64.b64encode(key).decode()
-        + '">'
-        + base64.b64encode(xor_sha256(plain, key)).decode()
-        + "</T4></Interface></Event>"
+        f'<Event type="{event_type}" id="44">' + xml + "<Interface>" + elements + "</Interface></Event>"
     )
 
 
@@ -164,6 +165,40 @@ def test_event_parser_derives_obstruction_from_t4_diagnostics() -> None:
         _t4_event("04 02 04 00 00 00 23 03 00", xml=_obstruct_xml(False))
     )[0]
     assert xml_wins.obstruction is False
+    assert xml_wins.obstruction_source == "nhk"
+
+
+def test_event_parser_merges_payloads_in_one_frame() -> None:
+    """Event fields from every payload are kept; the stateful payload is the base."""
+    event = parse_nhk_event_frame(
+        _t4_event("04 02 04 00 00 00 23 03 00", "04 40 00 00 4c")
+    )[0]
+    assert event.position == 76.0
+    assert event.obstruction is True
+    assert event.obstruction_source == "t4"
+    assert event.t4_cause == "none"
+    assert event.t4_event_class == "movement_in_progress"
+
+    event = parse_nhk_event_frame(_t4_event("04 02 04 00", "04 82 03 00"))[0]
+    assert event.state == "open"
+    assert event.t4_command == "open"
+    assert event.t4_event_class == "state_changed"
+
+
+def test_event_only_payload_keeps_xml_event_kind() -> None:
+    """A 04/82 payload does not turn an XML diagnostic into a live status."""
+    event = parse_nhk_event_frame(
+        _t4_event("04 82 03 00", event_type="DIAGNOSTIC", xml='<Devices><Device id="1"><Properties></Properties></Device></Devices>')
+    )[0]
+    assert event.kind is NiceEventKind.DIAGNOSTIC
+    assert event.category is NiceEventCategory.DIAGNOSTIC
+    assert event.t4_command == "open"
+
+
+def test_photo_and_auto_close_movements_map_to_states() -> None:
+    """EvtChangeState 0x81, 0x82 and 0x85 are movements."""
+    for byte, state in (("81", "opening"), ("82", "closing"), ("85", "closing")):
+        assert parse_nhk_event_frame(_t4_event(f"04 02 {byte} 00"))[0].state == state
 
 
 def test_stateless_t4_events_do_not_enter_status_polls() -> None:
@@ -192,6 +227,8 @@ async def test_t4_diagnostic_obstacle_and_last_cause(hass) -> None:
     assert coordinator.latest_event.category is NiceEventCategory.OBSTRUCTION
     assert coordinator.last_t4_cause == "none"
     assert coordinator.last_t4_basic_diagnostic == "obstacle_detected"
+    assert coordinator.data.registers["NHK/T4Obstruct"] == "true"
+    assert coordinator.data.registers.get("NHK/Obstruct") != "true"
 
     controller._handle_raw_frame(_t4_event("04 82 03 00"))
     assert coordinator.last_t4_command == "open"
