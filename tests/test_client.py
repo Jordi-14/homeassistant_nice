@@ -269,6 +269,7 @@ def test_status_from_dmp_registers_decodes_limits(
         ({8: 0x00, 9: 0x20, 15: 0x33}, 32, 42),
         ({8: 0x01, 9: 0x00, 15: 0x33}, 256, 42),
         ({8: 0xFF, 9: 0x01, 14: 0xFF, 15: 0x33}, None, None),
+        ({8: 0x00, 9: 0x20, 14: 0x01, 15: 0x00}, 32, 256 - 9),
     ],
 )
 def test_status_from_dmp_registers_decodes_diagnostic_parameters(

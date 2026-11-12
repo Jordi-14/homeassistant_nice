@@ -84,7 +84,7 @@ def status_from_dmp_registers(
         bluebus_devices=decode_bluebus_devices(dmp_bytes(registers.get("04/D0"))),
         last_maneuvers=decode_last_maneuvers(dmp_bytes(registers.get("04/DA"))),
         motor_temperature=(
-            diagnostic_parameters[15] - 9
+            int.from_bytes(diagnostic_parameters[14:16], "big") - 9
             if diagnostic_parameters
             and len(diagnostic_parameters) > 15
             and diagnostic_parameters[14] < 0x80  # vendor "not available"

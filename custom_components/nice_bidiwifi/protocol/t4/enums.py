@@ -235,6 +235,7 @@ LOG_REPLY_STATUS: dict[int, str] = {
 }
 
 BLUEBUS_DEVICE_STATUS: dict[int, str] = {
+    -1: "undefined",
     0: "not_present",
     1: "stand_by",
     2: "not_working",
@@ -250,4 +251,4 @@ BLUEBUS_DEVICE_STATUS: dict[int, str] = {
     12: "sl_overcurrent",
     13: "sl_anomaly",
 }
-BLUEBUS_FAULT_STATUSES = frozenset({1, 2, 3, 12, 13})
+BLUEBUS_FAULT_STATUSES = frozenset({2, 3, 12, 13})

@@ -75,7 +75,6 @@ EXTENDED_CONTROLLER_PROFILE = DmpRegisterProfile(
         (0x04, 0xD0),
         (0x04, 0xD1),
         (0x04, 0xD2),
-        (0x04, 0xD4),
         (0x04, 0xDA),
     ),
     required=False,

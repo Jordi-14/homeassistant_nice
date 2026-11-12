@@ -57,12 +57,15 @@ def _status(coordinator: NiceBidiDataUpdateCoordinator) -> NiceBidiStatus | None
     return coordinator.data
 
 
+_BLUEBUS_FAULT_NAMES = {BLUEBUS_DEVICE_STATUS[c] for c in BLUEBUS_FAULT_STATUSES}
+_OBSTACLE_NAMES = {AUTOMATION_STATUS_DIAGNOSTICS[c] for c in AUTOMATION_STATUS_OBSTACLE_CODES}
+
+
 def _bluebus_fault_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
     status = _status(coordinator)
     if status is None or status.bluebus_devices is None:
         return None
-    faults = {BLUEBUS_DEVICE_STATUS[code] for code in BLUEBUS_FAULT_STATUSES}
-    return sum(value in faults for value in status.bluebus_devices.values())
+    return sum(value in _BLUEBUS_FAULT_NAMES for value in status.bluebus_devices.values())
 
 
 def _last_maneuvers(coordinator: NiceBidiDataUpdateCoordinator) -> tuple[str, ...] | None:
@@ -72,7 +75,7 @@ def _last_maneuvers(coordinator: NiceBidiDataUpdateCoordinator) -> tuple[str, ..
 
 def _last_maneuvers_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
     names = _last_maneuvers(coordinator)
-    return None if names is None else sum(name != "ok" for name in names)
+    return None if names is None else sum(name not in {"ok", "undefined"} for name in names)
 
 
 def _last_maneuvers_attributes(
@@ -81,10 +84,9 @@ def _last_maneuvers_attributes(
     names = _last_maneuvers(coordinator)
     if names is None:
         return {}
-    obstacles = {AUTOMATION_STATUS_DIAGNOSTICS[c] for c in AUTOMATION_STATUS_OBSTACLE_CODES}
     return {
         "maneuvers": list(names),
-        "obstacle_count": sum(name in obstacles for name in names),
+        "obstacle_count": sum(name in _OBSTACLE_NAMES for name in names),
     }
 
 

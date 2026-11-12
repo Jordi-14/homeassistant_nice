@@ -144,7 +144,9 @@ def make_status(
         key_lock=key_lock,
         diagnostics_parameters=diagnostics_parameters,
         motor_temperature=(
-            diagnostic_bytes[15] - 9 if len(diagnostic_bytes) > 15 else None
+            int.from_bytes(diagnostic_bytes[14:16], "big") - 9
+            if len(diagnostic_bytes) > 15
+            else None
         ),
         service_voltage=(
             int.from_bytes(diagnostic_bytes[8:10], "big")

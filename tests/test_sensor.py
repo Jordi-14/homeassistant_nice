@@ -307,11 +307,16 @@ async def test_async_setup_entry_adds_all_sensors() -> None:
 def test_bluebus_devices_sensor_counts_faults() -> None:
     coordinator = FakeCoordinator()
     coordinator.data = make_status(
-        bluebus_devices={"photo": "on", "cmd_1": "not_working"}
+        bluebus_devices={"photo": "on", "cmd_1": "not_working", "photo_2": "stand_by", "photo_open": "undefined"}
     )
     sensor = NiceBidiSensor(coordinator, config_entry(), _description("bluebus_devices"))
     assert sensor.native_value == 1
-    assert sensor.extra_state_attributes == {"photo": "on", "cmd_1": "not_working"}
+    assert sensor.extra_state_attributes == {
+        "photo": "on",
+        "cmd_1": "not_working",
+        "photo_2": "stand_by",
+        "photo_open": "undefined",
+    }
 
     coordinator.data = make_status(bluebus_devices=None)
     assert sensor.native_value is None
@@ -321,7 +326,7 @@ def test_bluebus_devices_sensor_counts_faults() -> None:
 def test_last_maneuvers_sensor() -> None:
     coordinator = FakeCoordinator()
     names = (
-        "ok", "ok", "obstacle_detected", "ok", "ok",
+        "ok", "ok", "obstacle_detected", "ok", "undefined",
         "photo_intervention", "detected_obstacle_by_encoder", "ok",
     )
     coordinator.data = make_status(last_maneuvers=names)

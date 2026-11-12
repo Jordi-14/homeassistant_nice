@@ -21,9 +21,8 @@ _SLOTS: tuple[tuple[str, str, int, int, int], ...] = (
     ("cmd_2", "cmd", 4, 0x02, 1),
     ("cmd_3", "cmd", 4, 0x04, 2),
     ("cmd_4", "cmd", 4, 0x08, 3),
-    # shortcut: photo_open masks assumed equal to their b[4] bits; confirm with a dump that has PHOTO OPEN installed.
-    ("photo_open", "photo", 4, 0x20, 0),
-    ("photo_open_ii", "photo", 4, 0x40, 0),
+    ("photo_open", "open", 4, 0x20, 0),
+    ("photo_open_ii", "open", 4, 0x40, 0),
     ("s_sl", "ms", 5, 0x01, 0),
 )
 _CODES = {name: code for code, name in BLUEBUS_DEVICE_STATUS.items()}
@@ -31,6 +30,8 @@ _CODES = {name: code for code, name in BLUEBUS_DEVICE_STATUS.items()}
 
 def _status_code(b: bytes, kind: str, mask: int, extra: int) -> int:
     """Return the status code of one installed device."""
+    if kind == "open":  # status bits for PHOTO OPEN are not known yet
+        return -1
     if b[1] & 0x10:  # BlueBus line error
         return _CODES["stand_by"]
     if kind == "photo":

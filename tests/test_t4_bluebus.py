@@ -34,6 +34,8 @@ def test_short_or_missing() -> None:
         (_data(b2=1, b6=1), {"photo": "not_working"}),
         (_data(b2=1, b10=1, b0=0x08), {"photo": "in_error"}),
         (_data(b2=1), {"photo": "off"}),
+        (_data(b4=0x20, b6=0x20, b10=0x20, b0=0x08), {"photo_open": "undefined"}),
+        (_data(b4=0x40, b1=0x10), {"photo_open_ii": "undefined"}),
         (_data(b4=1, b21=0), {"cmd_1": "off"}),
         (_data(b4=1, b21=1), {"cmd_1": "on"}),
         (_data(b4=1, b21=0x40), {"cmd_1": "on"}),
