@@ -670,6 +670,23 @@ async def test_unexpected_stop_without_command_fires_event(hass, monkeypatch) ->
     await coordinator.async_shutdown()
 
 
+# LOCAL-DIAGNOSTIC(pr55): the cause decides whether a stop is explained.
+async def test_stop_for_command_arrival_fires_only_without_a_cause(hass, monkeypatch) -> None:
+    _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(hass)
+
+    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 88 11 00 00"))  # photo_open
+    await hass.async_block_till_done()
+    assert events == []
+
+    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 88 00 00 00"))  # none
+    await hass.async_block_till_done()
+    assert len(events) == 1
+    assert events[0].data["reason"] == "unexpected_stop"
+    await coordinator.async_shutdown()
+
+
 async def test_stop_after_recent_command_or_partial_stop_is_normal(hass, monkeypatch) -> None:
     clock = _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
