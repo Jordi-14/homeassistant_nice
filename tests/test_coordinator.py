@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from itertools import count
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_capture_events,
+    async_fire_time_changed,
 )
 
 from custom_components.nice_bidiwifi import calibration as calibration_module
@@ -2469,3 +2472,91 @@ async def test_small_open_position_change_is_not_flagged(hass: HomeAssistant) ->
         client.read_status_result = make_status(open_position=open_position)
         await instance._async_update_data()
     assert instance.controller_limits_changed is None
+
+
+LIMITS_KEY = f"{DOMAIN}.controller_limits.entry-1"
+
+
+def _stored_limits(hass_storage, value: int) -> None:
+    hass_storage[LIMITS_KEY] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": LIMITS_KEY,
+        "data": {"open_position": value},
+    }
+
+
+async def _limits_poll(instance, open_position: int) -> None:
+    instance.client.read_status_result = make_status(
+        state="open", open_position=open_position
+    )
+    await instance._async_update_data()
+
+
+async def test_stored_baseline_flags_a_drop_on_the_first_poll_after_restart(
+    hass: HomeAssistant, hass_storage
+) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    _stored_limits(hass_storage, 5114)
+    instance = _coordinator(hass)
+    instance.client = FakeClient()
+    instance.async_refresh = AsyncMock()
+    await _limits_poll(instance, 39)
+    assert instance.controller_limits_changed == {
+        "previous_open_position": 5114,
+        "open_position": 39,
+    }
+    assert ir.async_get(hass).async_get_issue(
+        DOMAIN, f"controller_limits_changed_{instance.config_entry.entry_id}"
+    )
+    await instance.async_shutdown()
+
+
+async def test_stored_baseline_is_updated_by_a_normal_first_poll(
+    hass: HomeAssistant, hass_storage
+) -> None:
+    _stored_limits(hass_storage, 5114)
+    instance = _coordinator(hass)
+    instance.client = FakeClient()
+    await _limits_poll(instance, 5024)
+    assert instance.controller_limits_changed is None
+    await _limits_poll(instance, 5024)  # no change: no second save
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=11))
+    await hass.async_block_till_done()
+    assert hass_storage[LIMITS_KEY]["data"] == {"open_position": 5024}
+    await instance.async_shutdown()
+
+
+async def test_missing_stored_baseline_uses_the_first_value(
+    hass: HomeAssistant, hass_storage
+) -> None:
+    instance = _coordinator(hass)
+    instance.client = FakeClient()
+    await _limits_poll(instance, 39)
+    assert instance.controller_limits_changed is None
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=11))
+    await hass.async_block_till_done()
+    assert hass_storage[LIMITS_KEY]["data"] == {"open_position": 39}
+    await instance.async_shutdown()
+
+
+async def test_remove_entry_deletes_the_issue_and_stored_baseline(
+    hass: HomeAssistant, hass_storage
+) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    from custom_components.nice_bidiwifi import async_remove_entry
+
+    _stored_limits(hass_storage, 5114)
+    instance = _coordinator(hass)
+    instance.client = FakeClient()
+    instance.async_refresh = AsyncMock()
+    await _limits_poll(instance, 39)
+    issue_id = f"controller_limits_changed_{instance.config_entry.entry_id}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+
+    await async_remove_entry(hass, instance.config_entry)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+    assert LIMITS_KEY not in hass_storage
+    await instance.async_shutdown()

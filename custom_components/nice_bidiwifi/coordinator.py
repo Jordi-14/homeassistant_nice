@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .calibration import NiceBidiCalibrationController
@@ -142,6 +143,15 @@ def _unknown_status() -> NiceBidiStatus:
     )
 
 
+LIMITS_STORAGE_VERSION = 1
+LIMITS_SAVE_DELAY_SECONDS = 10
+
+
+def controller_limits_store(hass: HomeAssistant, entry_id: str) -> Store:
+    """Return the per-entry store of the last good open position."""
+    return Store(hass, LIMITS_STORAGE_VERSION, f"{DOMAIN}.controller_limits.{entry_id}")
+
+
 class NiceBidiDataUpdateCoordinator(
     DataUpdateCoordinator[NiceBidiStatus],
 ):
@@ -198,6 +208,8 @@ class NiceBidiDataUpdateCoordinator(
         self._extended_status_cache: NiceBidiStatus | None = None
         self._extended_status_next_refresh_monotonic = 0.0
         self._last_open_position: int | None = None
+        self._limits_loaded = False
+        self._limits_store = controller_limits_store(hass, entry.entry_id)
         self.controller_limits_changed: dict | None = None
         # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log baseline; see coordinator.py:_cache_extended_status.
         self._maneuver_log_baseline: tuple[tuple[str, ...], int, int] | None = None
@@ -298,6 +310,7 @@ class NiceBidiDataUpdateCoordinator(
             self._clear_position_simulation()
             raise UpdateFailed(str(err)) from err
 
+        await self._async_load_limits_baseline()
         self._track_controller_limits(status)
         status = self.event_controller.reconcile_polled_obstacle(status)
         status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
@@ -308,6 +321,20 @@ class NiceBidiDataUpdateCoordinator(
     @property
     def _limits_issue_id(self) -> str:
         return f"controller_limits_changed_{self.config_entry.entry_id}"
+
+    async def _async_load_limits_baseline(self) -> None:
+        """Load the stored open-position baseline once, before the first check."""
+        if self._limits_loaded:
+            return
+        self._limits_loaded = True
+        try:
+            stored = await self._limits_store.async_load()
+        except Exception as err:  # noqa: BLE001 - a bad store only loses the baseline
+            _LOGGER.warning("Nice controller limits could not be loaded: %s", err)
+            return
+        value = stored.get("open_position") if isinstance(stored, dict) else None
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            self._last_open_position = value
 
     def _track_controller_limits(self, status: NiceBidiStatus) -> None:
         """Flag a sharp drop of the controller open position (runs on the loop)."""
@@ -341,6 +368,11 @@ class NiceBidiDataUpdateCoordinator(
                 "open_position": opened,
             }
             return
+        if opened != self._last_open_position:
+            self._limits_store.async_delay_save(
+                lambda: {"open_position": self._last_open_position},
+                LIMITS_SAVE_DELAY_SECONDS,
+            )
         self._last_open_position = opened
         if self.controller_limits_changed is not None:
             self.controller_limits_changed = None
@@ -850,7 +882,6 @@ class NiceBidiDataUpdateCoordinator(
 
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
-        ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
         await self._async_cancel_background_tasks(calibration_reason="shutdown")
         self.event_controller.shutdown()
         await self.hass.async_add_executor_job(self.client.close)

@@ -236,7 +236,7 @@
   "issues": {
     "controller_limits_changed": {
       "title": "Gate controller changed its travel limits",
-      "description": "The controller open position dropped from {previous} to {current}. This can happen after an abnormal stop. The position shown in Home Assistant follows the controller. Check the gate with the original app. If the travel is wrong, ask the installer to check the controller positions."
+      "description": "The controller open position dropped from {previous} to {current}. This can happen after an abnormal stop. The position shown in Home Assistant follows the controller. Check the gate with the original app. If the travel is wrong, ask the installer to check the controller positions. If the installer changed the travel on purpose, ignore this repair."
     }
   }
 }
