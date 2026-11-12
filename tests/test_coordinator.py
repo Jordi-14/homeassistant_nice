@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import datetime
 from itertools import count
 from typing import Any
 from unittest.mock import AsyncMock
@@ -13,11 +13,9 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
-from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_capture_events,
-    async_fire_time_changed,
 )
 
 from custom_components.nice_bidiwifi import calibration as calibration_module
@@ -2437,7 +2435,7 @@ async def test_controller_limit_drop_is_one_abnormal_event_with_a_scan(
 
     async def poll(open_position: int) -> None:
         client.read_status_result = make_status(state="open", open_position=open_position)
-        await instance._async_update_data()
+        instance.async_set_updated_data(await instance._async_update_data())
 
     scans = []
 
@@ -2475,6 +2473,7 @@ async def test_small_open_position_change_is_not_flagged(hass: HomeAssistant) ->
 
 
 LIMITS_KEY = f"{DOMAIN}.controller_limits.entry-1"
+LIMITS_ISSUE = "controller_limits_changed_entry-1"
 
 
 def _stored_limits(hass_storage, value: int) -> None:
@@ -2486,77 +2485,157 @@ def _stored_limits(hass_storage, value: int) -> None:
     }
 
 
+async def _limits_coordinator(hass: HomeAssistant) -> NiceBidiDataUpdateCoordinator:
+    """Build a coordinator the way setup does: baseline loaded before the first poll."""
+    instance = _coordinator(hass)
+    instance.client = FakeClient()
+    instance.async_refresh = AsyncMock()
+    await instance.async_load_limits_baseline()
+    return instance
+
+
 async def _limits_poll(instance, open_position: int) -> None:
     instance.client.read_status_result = make_status(
         state="open", open_position=open_position
     )
-    await instance._async_update_data()
+    # the real refresh stores the result; a drop with data present is a live one
+    instance.async_set_updated_data(await instance._async_update_data())
 
 
-async def test_stored_baseline_flags_a_drop_on_the_first_poll_after_restart(
-    hass: HomeAssistant, hass_storage
-) -> None:
+def _issue(hass: HomeAssistant):
     from homeassistant.helpers import issue_registry as ir
 
+    return ir.async_get(hass).async_get_issue(DOMAIN, LIMITS_ISSUE)
+
+
+async def test_restart_with_known_drop_creates_repair_without_a_new_event(
+    hass: HomeAssistant, hass_storage
+) -> None:
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
     _stored_limits(hass_storage, 5114)
-    instance = _coordinator(hass)
-    instance.client = FakeClient()
-    instance.async_refresh = AsyncMock()
+    instance = await _limits_coordinator(hass)
     await _limits_poll(instance, 39)
+    await hass.async_block_till_done()
     assert instance.controller_limits_changed == {
         "previous_open_position": 5114,
         "open_position": 39,
     }
-    assert ir.async_get(hass).async_get_issue(
-        DOMAIN, f"controller_limits_changed_{instance.config_entry.entry_id}"
-    )
+    assert _issue(hass) is not None
+    assert events == []
+    assert instance.abnormal_stop_count == 0
     await instance.async_shutdown()
 
 
-async def test_stored_baseline_is_updated_by_a_normal_first_poll(
+async def test_drop_during_normal_running_creates_repair_and_one_event(
+    hass: HomeAssistant, hass_storage
+) -> None:
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    instance = await _limits_coordinator(hass)
+    await _limits_poll(instance, 5114)
+    await _limits_poll(instance, 39)
+    await _limits_poll(instance, 39)
+    await hass.async_block_till_done()
+    assert _issue(hass) is not None
+    assert [e.data["reason"] for e in events] == ["controller_limits_changed"]
+    await instance.async_shutdown()
+
+
+async def test_reload_after_recovery_leaves_no_repair(
     hass: HomeAssistant, hass_storage
 ) -> None:
     _stored_limits(hass_storage, 5114)
-    instance = _coordinator(hass)
-    instance.client = FakeClient()
-    await _limits_poll(instance, 5024)
+    instance = await _limits_coordinator(hass)
+    await _limits_poll(instance, 39)
+    assert _issue(hass) is not None
+    await instance.async_shutdown()
+    assert _issue(hass) is None
+
+    instance = await _limits_coordinator(hass)
+    await _limits_poll(instance, 5100)
+    assert _issue(hass) is None
     assert instance.controller_limits_changed is None
-    await _limits_poll(instance, 5024)  # no change: no second save
-    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=11))
-    await hass.async_block_till_done()
-    assert hass_storage[LIMITS_KEY]["data"] == {"open_position": 5024}
     await instance.async_shutdown()
 
 
-async def test_missing_stored_baseline_uses_the_first_value(
+async def test_baseline_is_saved_only_when_it_changes(
     hass: HomeAssistant, hass_storage
 ) -> None:
-    instance = _coordinator(hass)
-    instance.client = FakeClient()
-    await _limits_poll(instance, 39)
-    assert instance.controller_limits_changed is None
-    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=11))
+    _stored_limits(hass_storage, 5114)
+    instance = await _limits_coordinator(hass)
+    instance._limits_store.async_save = AsyncMock()
+    await _limits_poll(instance, 5114)  # same as stored: no save
+    await _limits_poll(instance, 5024)
+    await _limits_poll(instance, 5024)
     await hass.async_block_till_done()
+    instance._limits_store.async_save.assert_awaited_once_with({"open_position": 5024})
+    assert instance._last_open_position == 5024
+    await instance.async_shutdown()
+
+
+async def test_first_value_without_stored_data_is_saved(
+    hass: HomeAssistant, hass_storage
+) -> None:
+    instance = await _limits_coordinator(hass)
+    await _limits_poll(instance, 39)
+    await hass.async_block_till_done()
+    assert instance.controller_limits_changed is None
     assert hass_storage[LIMITS_KEY]["data"] == {"open_position": 39}
     await instance.async_shutdown()
+
+
+async def test_fix_flow_accepts_the_new_limits(
+    hass: HomeAssistant, hass_storage
+) -> None:
+    from homeassistant.components.repairs import ConfirmRepairFlow  # noqa: F401
+    from homeassistant.data_entry_flow import FlowResultType
+
+    from custom_components.nice_bidiwifi.repairs import async_create_fix_flow
+
+    _stored_limits(hass_storage, 5114)
+    instance = await _limits_coordinator(hass)
+    instance.config_entry.runtime_data = instance
+    await _limits_poll(instance, 39)
+    assert _issue(hass).is_fixable is True
+
+    flow = await async_create_fix_flow(hass, LIMITS_ISSUE, _issue(hass).data)
+    flow.hass = hass
+    flow.issue_id = LIMITS_ISSUE
+    form = await flow.async_step_confirm(None)
+    assert form["type"] is FlowResultType.FORM
+    result = await flow.async_step_confirm({})
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert instance._last_open_position == 39
+    assert instance.controller_limits_changed is None
+    assert _issue(hass) is None
+    assert hass_storage[LIMITS_KEY]["data"] == {"open_position": 39}
+    await instance.async_shutdown()
+
+
+async def test_fix_flow_aborts_when_the_entry_is_not_loaded(hass: HomeAssistant) -> None:
+    from homeassistant.data_entry_flow import FlowResultType
+
+    from custom_components.nice_bidiwifi.repairs import async_create_fix_flow
+
+    flow = await async_create_fix_flow(hass, LIMITS_ISSUE, {"entry_id": "missing"})
+    flow.hass = hass
+    result = await flow.async_step_confirm({})
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "not_loaded"
 
 
 async def test_remove_entry_deletes_the_issue_and_stored_baseline(
     hass: HomeAssistant, hass_storage
 ) -> None:
-    from homeassistant.helpers import issue_registry as ir
-
     from custom_components.nice_bidiwifi import async_remove_entry
 
     _stored_limits(hass_storage, 5114)
-    instance = _coordinator(hass)
-    instance.client = FakeClient()
-    instance.async_refresh = AsyncMock()
+    instance = await _limits_coordinator(hass)
     await _limits_poll(instance, 39)
-    issue_id = f"controller_limits_changed_{instance.config_entry.entry_id}"
-    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+    assert _issue(hass) is not None
 
     await async_remove_entry(hass, instance.config_entry)
-    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+    assert _issue(hass) is None
     assert LIMITS_KEY not in hass_storage
     await instance.async_shutdown()

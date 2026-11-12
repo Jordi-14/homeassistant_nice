@@ -144,7 +144,6 @@ def _unknown_status() -> NiceBidiStatus:
 
 
 LIMITS_STORAGE_VERSION = 1
-LIMITS_SAVE_DELAY_SECONDS = 10
 
 
 def controller_limits_store(hass: HomeAssistant, entry_id: str) -> Store:
@@ -208,7 +207,6 @@ class NiceBidiDataUpdateCoordinator(
         self._extended_status_cache: NiceBidiStatus | None = None
         self._extended_status_next_refresh_monotonic = 0.0
         self._last_open_position: int | None = None
-        self._limits_loaded = False
         self._limits_store = controller_limits_store(hass, entry.entry_id)
         self.controller_limits_changed: dict | None = None
         # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log baseline; see coordinator.py:_cache_extended_status.
@@ -310,7 +308,6 @@ class NiceBidiDataUpdateCoordinator(
             self._clear_position_simulation()
             raise UpdateFailed(str(err)) from err
 
-        await self._async_load_limits_baseline()
         self._track_controller_limits(status)
         status = self.event_controller.reconcile_polled_obstacle(status)
         status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
@@ -322,11 +319,8 @@ class NiceBidiDataUpdateCoordinator(
     def _limits_issue_id(self) -> str:
         return f"controller_limits_changed_{self.config_entry.entry_id}"
 
-    async def _async_load_limits_baseline(self) -> None:
-        """Load the stored open-position baseline once, before the first check."""
-        if self._limits_loaded:
-            return
-        self._limits_loaded = True
+    async def async_load_limits_baseline(self) -> None:
+        """Load the stored open-position baseline before the first refresh."""
         try:
             stored = await self._limits_store.async_load()
         except Exception as err:  # noqa: BLE001 - a bad store only loses the baseline
@@ -348,8 +342,9 @@ class NiceBidiDataUpdateCoordinator(
                     self.hass,
                     DOMAIN,
                     self._limits_issue_id,
-                    is_fixable=False,
+                    is_fixable=True,
                     is_persistent=False,
+                    data={"entry_id": self.config_entry.entry_id},
                     severity=ir.IssueSeverity.WARNING,
                     translation_key="controller_limits_changed",
                     translation_placeholders={
@@ -357,26 +352,44 @@ class NiceBidiDataUpdateCoordinator(
                         "current": str(opened),
                     },
                 )
-                # LOCAL-DIAGNOSTIC(pr55): limit change as abnormal event; see controllers/events.py:report_abnormal.
-                self.event_controller.report_abnormal(
-                    "controller_limits_changed",
-                    previous_open_position=baseline,
-                    open_position=opened,
-                )
+                # a drop known before the restart must not fire the event and a scan again
+                if self.data is not None:
+                    # LOCAL-DIAGNOSTIC(pr55): limit change as abnormal event; see controllers/events.py:report_abnormal.
+                    self.event_controller.report_abnormal(
+                        "controller_limits_changed",
+                        previous_open_position=baseline,
+                        open_position=opened,
+                    )
             self.controller_limits_changed = {
                 "previous_open_position": baseline,
                 "open_position": opened,
             }
             return
-        if opened != self._last_open_position:
-            self._limits_store.async_delay_save(
-                lambda: {"open_position": self._last_open_position},
-                LIMITS_SAVE_DELAY_SECONDS,
-            )
-        self._last_open_position = opened
+        self._set_limits_baseline(opened)
         if self.controller_limits_changed is not None:
             self.controller_limits_changed = None
             ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
+
+    def _set_limits_baseline(self, value: int) -> None:
+        """Keep the open-position baseline and save it when it changes."""
+        if value == self._last_open_position:
+            return
+        self._last_open_position = value
+        self.config_entry.async_create_background_task(
+            self.hass,
+            self._limits_store.async_save({"open_position": value}),
+            "nice-limits-save",
+        )
+
+    def async_accept_controller_limits(self) -> bool:
+        """Make the current open position the baseline; return false when unknown."""
+        opened = self.data.open_position if self.data else None
+        if opened is None:
+            return False
+        self._set_limits_baseline(opened)
+        self.controller_limits_changed = None
+        ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
+        return True
 
     def _read_status_and_maybe_info(self) -> NiceBidiStatus:
         """Read dynamic status and cache static device info."""
@@ -882,6 +895,8 @@ class NiceBidiDataUpdateCoordinator(
 
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
+        # a still-valid issue is recreated by the first poll after setup
+        ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
         await self._async_cancel_background_tasks(calibration_reason="shutdown")
         self.event_controller.shutdown()
         await self.hass.async_add_executor_job(self.client.close)

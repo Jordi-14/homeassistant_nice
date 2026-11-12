@@ -638,14 +638,13 @@ class _Clock:
         )
 
 
-async def _abnormal_coordinator(hass, *, real_refresh=False, **status_values):
+async def _abnormal_coordinator(hass, **status_values):
     entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="abnormal")
     entry.add_to_hass(hass)
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
     coordinator.client = FakeClient()
-    if not real_refresh:
-        # a real scan would replace coordinator.data at a scheduler-dependent time
-        coordinator.async_refresh = AsyncMock()
+    # a real scan would replace coordinator.data at a scheduler-dependent time
+    coordinator.async_refresh = AsyncMock()
     coordinator.async_set_updated_data(make_status(**status_values))
     coordinator.event_controller.ensure_registered()
     return coordinator
