@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+SAFE_LOG_SOURCES = frozenset({"busT4", "boot"})
+
 
 @dataclass(frozen=True, slots=True)
 class NiceLogEvent:
@@ -17,6 +19,7 @@ class NiceLogEvent:
     t4_action: str | None = None
     door_status: str | None = None
     obstruct: str | None = None
+    source: str | None = None  # raw; client names and MACs are masked in as_dict
 
     def as_dict(self) -> dict[str, str]:
         """Serialize only reviewed, non-identifying protocol fields."""
@@ -28,6 +31,11 @@ class NiceLogEvent:
             "t4_action": self.t4_action,
             "door_status": self.door_status,
             "obstruct": self.obstruct,
+            "source": (
+                self.source
+                if self.source is None or self.source in SAFE_LOG_SOURCES
+                else "client"
+            ),
         }
         return {key: value for key, value in values.items() if value is not None}
 

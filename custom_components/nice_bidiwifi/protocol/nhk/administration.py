@@ -63,6 +63,7 @@ def _event_from_element(element: ET.Element, scope: str) -> NiceLogEvent:
         ),
         door_status=_bounded_text(element.findtext("DoorStatus")),
         obstruct=_bounded_text(element.findtext("Obstruct")),
+        source=_bounded_text(element.get("source")),
     )
 
 
