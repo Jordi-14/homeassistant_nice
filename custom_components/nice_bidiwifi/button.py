@@ -276,7 +276,9 @@ ADMINISTRATION_BUTTONS: tuple[NiceBidiButtonEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         entity_registry_visible_default=False,
         icon="mdi:history",
-        press_fn=lambda coordinator: coordinator.async_refresh_controller_history(),
+        press_fn=lambda coordinator: coordinator.async_refresh_controller_history(
+            raise_errors=True
+        ),
     ),
     NiceBidiButtonEntityDescription(
         key="refresh_access_groups",

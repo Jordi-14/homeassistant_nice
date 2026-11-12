@@ -17,7 +17,9 @@ from .errors import (
     NiceAuthError as NiceBidiAuthError,
     NiceConnectionError as NiceBidiConnectionError,
     NiceError as NiceBidiError,
+    NiceProtocolError,
     NiceReadPreemptedError,
+    NiceUnsupportedError,
     is_unsupported_request_error,
     nice_error_code as nice_bidi_error_code,
 )
@@ -326,9 +328,13 @@ class NiceBidiClient:
     def read_t4_logs(
         self,
         max_rows: int = MAX_T4_LOG_ROWS,
+        *,
+        preemptible: bool = False,
     ) -> tuple[ControllerHistoryRow, ...]:
         """Read one page of the controller event history (read-only)."""
-        return self._run_with_reconnect(lambda: self._read_t4_logs_locked(max_rows))
+        return self._run_with_reconnect(
+            lambda: self._read_t4_logs_locked(max_rows, preemptible=preemptible)
+        )
 
     def read_groups(self) -> NiceGroupSnapshot:
         """Read a bounded, redacted summary of local access groups."""
@@ -814,14 +820,22 @@ class NiceBidiClient:
             raise NiceBidiConnectionError(_response_error_summary(response))
         return parse_logs_xml(_xml_payload(response))
 
-    def _read_t4_logs_locked(self, max_rows: int) -> tuple[ControllerHistoryRow, ...]:
+    def _read_t4_logs_locked(
+        self, max_rows: int, *, preemptible: bool = False
+    ) -> tuple[ControllerHistoryRow, ...]:
+        if preemptible and self._should_yield is not None and self._should_yield():
+            raise NiceReadPreemptedError("history read yielded to a pending command")
         response = self._signed_exchange_locked(
             "T4_LOGS",
             build_t4_logs_body(self.device_id, max_rows),
         )
+        # A rejected or malformed reply must not drop a working session.
         if "<Error>" in _printable(response):
-            raise NiceBidiConnectionError(_response_error_summary(response))
-        return parse_t4_logs_xml(_xml_payload(response))
+            raise NiceUnsupportedError(_response_error_summary(response))
+        try:
+            return parse_t4_logs_xml(_xml_payload(response))
+        except NiceProtocolError as err:
+            raise NiceUnsupportedError(str(err)) from err
 
     def _read_groups_locked(self) -> NiceGroupSnapshot:
         response = self._signed_exchange_locked("GROUPS")

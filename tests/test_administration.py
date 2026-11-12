@@ -12,7 +12,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.nice_bidiwifi.const import DOMAIN
 from custom_components.nice_bidiwifi.coordinator import NiceBidiDataUpdateCoordinator
-from custom_components.nice_bidiwifi.errors import NiceBidiConnectionError
+from custom_components.nice_bidiwifi.errors import (
+    NiceBidiConnectionError,
+    NiceReadPreemptedError,
+    NiceUnsupportedError,
+)
 from custom_components.nice_bidiwifi.models.administration import (
     NiceGroupSnapshot,
     NiceGroupSummary,
@@ -265,13 +269,14 @@ async def test_controller_history_unsupported_family_stores_error(
     assert "not supported" in coordinator.controller_event_history_error
 
 
-async def test_controller_history_is_pulled_once_when_the_event_stream_starts(
+async def test_controller_history_is_pulled_once_per_coordinator(
     hass: HomeAssistant,
 ) -> None:
     coordinator = _coordinator(hass)
     coordinator.client.read_t4_logs_result = _history_rows(2)
     controller = coordinator.event_controller
     controller.ensure_registered()
+    coordinator.client.emit_event(b"frame before the first poll")
 
     controller.mark_connected()
     controller.mark_connected()
@@ -279,9 +284,58 @@ async def test_controller_history_is_pulled_once_when_the_event_stream_starts(
 
     assert [row.id for row in coordinator.controller_event_history] == [2, 1]
     assert coordinator.client.read_t4_logs_calls == 1
+    assert coordinator.client.read_t4_logs_args == (64, True)
 
     controller.mark_reconnecting()
     controller.mark_connected()
     await hass.async_block_till_done(wait_background_tasks=True)
-    assert coordinator.client.read_t4_logs_calls == 2
+    assert coordinator.client.read_t4_logs_calls == 1
     await coordinator.async_shutdown()
+
+
+async def test_controller_history_is_never_pulled_without_logs_capability(
+    hass: HomeAssistant,
+) -> None:
+    coordinator = _coordinator(hass)
+    coordinator._store_device_info(
+        replace(make_device_info(device_product="Unknown"), interface_product="Unknown")
+    )
+    controller = coordinator.event_controller
+    controller.ensure_registered()
+
+    controller.mark_connected()
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    assert coordinator.client.read_t4_logs_calls == 0
+    assert coordinator.controller_event_history_error is None
+    await coordinator.async_shutdown()
+
+
+async def test_preempted_history_read_is_stored_not_raised(hass: HomeAssistant) -> None:
+    coordinator = _coordinator(hass)
+    coordinator.client.read_t4_logs_error = NiceReadPreemptedError("yield")
+
+    await coordinator.async_refresh_controller_history()
+
+    assert coordinator.controller_event_history_error == "preempted"
+
+
+async def test_controller_history_button_path_raises_and_records(
+    hass: HomeAssistant,
+) -> None:
+    coordinator = _coordinator(hass)
+    coordinator.client.read_t4_logs_error = NiceUnsupportedError("Code 34")
+
+    with pytest.raises(HomeAssistantError, match="Code 34"):
+        await coordinator.async_refresh_controller_history(raise_errors=True)
+
+    assert coordinator.controller_event_history_error == "NiceUnsupportedError: Code 34"
+    assert coordinator.last_administration_operation.action == "refresh_controller_history"
+    assert coordinator.last_administration_operation.status == "failed"
+    assert coordinator.connection_state != "failed"
+
+    coordinator.client.read_t4_logs_error = None
+    coordinator.client.read_t4_logs_result = _history_rows(1)
+    await coordinator.async_refresh_controller_history(raise_errors=True)
+    assert len(coordinator.controller_event_history) == 1
+    assert coordinator.last_administration_operation.status == "completed"

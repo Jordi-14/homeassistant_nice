@@ -381,8 +381,8 @@ class NiceConnectionRouter:
     def read_logs(self, event_count: int = LOG_EVENTS_PER_SCOPE):
         return self._read("read_logs", event_count)
 
-    def read_t4_logs(self, max_rows: int = MAX_T4_LOG_ROWS):
-        return self._read("read_t4_logs", max_rows)
+    def read_t4_logs(self, max_rows: int = MAX_T4_LOG_ROWS, *, preemptible: bool = False):
+        return self._read("read_t4_logs", max_rows, preemptible=preemptible)
 
     def read_groups(self):
         return self._read("read_groups")

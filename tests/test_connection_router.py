@@ -61,7 +61,7 @@ class RouteClient:
     def read_logs(self, event_count: int = 32):
         return self.read_status()
 
-    def read_t4_logs(self, max_rows: int = 100):
+    def read_t4_logs(self, max_rows: int = 100, *, preemptible: bool = False):
         return self.read_status()
 
     def read_groups(self):
@@ -538,7 +538,7 @@ def test_administration_reads_and_writes_honor_route_policy() -> None:
     clock = object()
 
     assert router.read_logs(8) == "logs"
-    assert router.read_t4_logs(5) == "history"
+    assert router.read_t4_logs(5, preemptible=True) == "history"
     assert router.read_groups() == "groups"
     router.update_interface_name("Gate")
     router.update_interface_clock(clock)

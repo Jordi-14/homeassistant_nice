@@ -339,9 +339,10 @@ class FakeClient:
             raise self.read_logs_error
         return self.read_logs_result
 
-    def read_t4_logs(self) -> tuple:
+    def read_t4_logs(self, max_rows: int = 100, *, preemptible: bool = False) -> tuple:
         """Return controller history rows or raise a configured error."""
         self.read_t4_logs_calls += 1
+        self.read_t4_logs_args = (max_rows, preemptible)
         if self.read_t4_logs_error is not None:
             raise self.read_t4_logs_error
         return self.read_t4_logs_result
@@ -557,7 +558,7 @@ class FakeCoordinator:
         """Record a bounded log refresh."""
         self.calls.append(("refresh_logs", None))
 
-    async def async_refresh_controller_history(self) -> None:
+    async def async_refresh_controller_history(self, *, raise_errors: bool = False) -> None:
         """Record a controller history refresh."""
         self.calls.append(("refresh_controller_history", None))
 

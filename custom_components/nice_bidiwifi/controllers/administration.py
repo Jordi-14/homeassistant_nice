@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import replace
 from datetime import UTC, datetime
+from functools import partial
 import logging
 import time
 from typing import Any
@@ -21,6 +22,7 @@ from ..errors import (
     NiceBidiAuthError,
     NiceBidiConnectionError,
     NiceBidiError,
+    NiceReadPreemptedError,
     nice_error_code,
 )
 from ..models.administration import (
@@ -201,17 +203,54 @@ class NiceAdministrationController(OwnerBoundController):
         )
         self._notify_entities()
 
-    async def async_refresh_controller_history(self) -> None:
-        """Pull one page of controller history; failures are stored, never raised."""
+    async def async_refresh_controller_history(
+        self, *, raise_errors: bool = False
+    ) -> None:
+        """Pull one page of controller history; failures are stored.
+
+        _async_execute is not used: it closes the session on any NiceBidiError,
+        and a rejected history request leaves the session healthy.
+        """
+        started = time.monotonic()
         try:
             self._require_capability("logs", "controller history")
-            rows = await self.hass.async_add_executor_job(self.client.read_t4_logs)
+            rows = await self.hass.async_add_executor_job(
+                partial(
+                    self.client.read_t4_logs,
+                    CONTROLLER_HISTORY_LIMIT,
+                    preemptible=True,
+                )
+            )
         except Exception as err:  # noqa: BLE001 - best-effort diagnostics read
-            self.controller_event_history_error = f"{type(err).__name__}: {err}"
+            self.controller_event_history_error = (
+                "preempted"
+                if isinstance(err, NiceReadPreemptedError)
+                else f"{type(err).__name__}: {err}"
+            )
             _LOGGER.debug("Nice controller history read failed: %s", err)
+            if raise_errors:
+                self._record_operation(
+                    action="refresh_controller_history",
+                    read_only=True,
+                    started=started,
+                    status="failed",
+                    verification="not_completed",
+                    error=err,
+                )
+                raise HomeAssistantError(
+                    f"Nice controller history refresh failed: {err}"
+                ) from err
         else:
             self.controller_event_history = rows[:CONTROLLER_HISTORY_LIMIT]
             self.controller_event_history_error = None
+            if raise_errors:
+                self._record_operation(
+                    action="refresh_controller_history",
+                    read_only=True,
+                    started=started,
+                    status="completed",
+                    verification="not_required",
+                )
         self._notify_entities()
 
     async def async_refresh_access_groups(self) -> None:
