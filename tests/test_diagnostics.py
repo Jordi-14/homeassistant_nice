@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import UTC, datetime
+from pathlib import Path
 
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 
@@ -28,6 +29,9 @@ from custom_components.nice_bidiwifi.models.commands import (
     CommandKind,
     NiceCommand,
     NiceCommandResult,
+)
+from custom_components.nice_bidiwifi.protocol.nhk.administration import (
+    parse_t4_logs_xml,
 )
 from tests.conftest import FakeCoordinator, config_entry
 
@@ -71,11 +75,23 @@ async def test_diagnostics_redacts_sensitive_data(hass) -> None:
         ),
         maxlen=16,
     )
+    coordinator.controller_event_history = parse_t4_logs_xml(
+        (Path(__file__).parent / "fixtures" / "t4_logs_reply.xml").read_text()
+    )
+    coordinator.controller_event_history_error = "NiceBidiConnectionError: busy"
     entry = config_entry()
     entry.runtime_data = coordinator
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
+    stream = diagnostics["event_stream"]
+    assert stream["controller_event_history_error"] == "NiceBidiConnectionError: busy"
+    assert [row["id"] for row in stream["controller_event_history"]] == [1028, 1027, 1013, 655]
+    assert set(stream["controller_event_history"][0]) == {
+        "id", "time", "dep", "change_state", "cause", "data_hex"
+    }
+    assert "7ndZS2whmyxS8wwgxC" not in str(diagnostics)
+    assert "LTECwFJ40pD" not in str(diagnostics)
     assert diagnostics["entry"][CONF_HOST] == "**REDACTED**"
     assert diagnostics["entry"][CONF_USERNAME] == "**REDACTED**"
     assert diagnostics["entry"][CONF_PASSWORD] == "**REDACTED**"

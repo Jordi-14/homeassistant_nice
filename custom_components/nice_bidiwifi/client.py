@@ -57,12 +57,15 @@ from .protocol.nhk.codec import (
 from .protocol.nhk.info import device_info_supports_nhk_status, parse_info_xml
 from .protocol.nhk.administration import (
     LOG_EVENTS_PER_SCOPE,
+    MAX_T4_LOG_ROWS,
     build_logs_body,
+    build_t4_logs_body,
     build_reboot_body,
     build_update_clock_body,
     build_update_name_body,
     parse_groups_xml,
     parse_logs_xml,
+    parse_t4_logs_xml,
     validate_interface_name,
 )
 from .protocol.nhk.status import parse_nhk_status_frames as _parse_nhk_status_frames
@@ -91,6 +94,7 @@ from .protocol.t4.dmp import (
     DmpResponse,
     parse_dmp_response,
 )
+from .protocol.t4.history import ControllerHistoryRow
 from .protocol.t4.registers import (
     CONTROLLER_TARGET,
     CORE_STATUS_PROFILE,
@@ -318,6 +322,13 @@ class NiceBidiClient:
         return self._run_with_reconnect(
             lambda: self._read_logs_locked(event_count)
         )
+
+    def read_t4_logs(
+        self,
+        max_rows: int = MAX_T4_LOG_ROWS,
+    ) -> tuple[ControllerHistoryRow, ...]:
+        """Read one page of the controller event history (read-only)."""
+        return self._run_with_reconnect(lambda: self._read_t4_logs_locked(max_rows))
 
     def read_groups(self) -> NiceGroupSnapshot:
         """Read a bounded, redacted summary of local access groups."""
@@ -802,6 +813,15 @@ class NiceBidiClient:
         if "<Error>" in _printable(response):
             raise NiceBidiConnectionError(_response_error_summary(response))
         return parse_logs_xml(_xml_payload(response))
+
+    def _read_t4_logs_locked(self, max_rows: int) -> tuple[ControllerHistoryRow, ...]:
+        response = self._signed_exchange_locked(
+            "T4_LOGS",
+            build_t4_logs_body(self.device_id, max_rows),
+        )
+        if "<Error>" in _printable(response):
+            raise NiceBidiConnectionError(_response_error_summary(response))
+        return parse_t4_logs_xml(_xml_payload(response))
 
     def _read_groups_locked(self) -> NiceGroupSnapshot:
         response = self._signed_exchange_locked("GROUPS")

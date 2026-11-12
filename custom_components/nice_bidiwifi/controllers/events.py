@@ -465,6 +465,13 @@ class NiceEventController(OwnerBoundController):
     def mark_connected(self) -> None:
         """Expose a healthy reader after a successful polled exchange."""
         if self.client.event_stream_active:
+            if self.event_stream_state != EVENT_STREAM_ACTIVE:
+                # once per established stream; the read must not delay polling
+                self.config_entry.async_create_background_task(
+                    self.hass,
+                    self.async_refresh_controller_history(),
+                    "nice-controller-history",
+                )
             self.event_stream_state = EVENT_STREAM_ACTIVE
             self.event_stream_error = None
 

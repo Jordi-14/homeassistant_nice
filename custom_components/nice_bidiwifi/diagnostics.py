@@ -230,6 +230,12 @@ async def async_get_config_entry_diagnostics(
             "controller_limits_changed": coordinator.controller_limits_changed,
             # LOCAL-DIAGNOSTIC(pr55): last abnormal-stop data; see controllers/events.py:_check_abnormal_stop.
             "last_abnormal_stop": coordinator.last_abnormal_stop,
+            "controller_event_history": [
+                row.as_dict() for row in coordinator.controller_event_history
+            ],
+            "controller_event_history_error": redact_text(
+                coordinator.controller_event_history_error, secrets
+            ),
             "history_limit": coordinator.event_history.maxlen,
             "history": [event.as_diagnostics() for event in coordinator.event_history],
         },

@@ -28,6 +28,7 @@ from ..models.administration import (
     NiceGroupSnapshot,
     NiceLogSnapshot,
 )
+from ..protocol.t4.history import ControllerHistoryRow
 from ..protocol.nhk.administration import (
     interface_clock_for,
     validate_interface_name,
@@ -37,6 +38,7 @@ from .base import OwnerBoundController
 _LOGGER = logging.getLogger(__name__)
 
 ADMINISTRATION_HISTORY_LIMIT = 16
+CONTROLLER_HISTORY_LIMIT = 64
 NAME_VERIFICATION = "info_name_round_trip"
 TIME_VERIFICATION = "info_clock_round_trip"
 CLOCK_TOLERANCE_SECONDS = 120
@@ -49,6 +51,8 @@ class NiceAdministrationController(OwnerBoundController):
         super().__init__(owner)
         self.interface_log_snapshot: NiceLogSnapshot | None = None
         self.access_group_snapshot: NiceGroupSnapshot | None = None
+        self.controller_event_history: tuple[ControllerHistoryRow, ...] = ()
+        self.controller_event_history_error: str | None = None
         self.administration_history: deque[NiceAdministrationOperation] = deque(
             maxlen=ADMINISTRATION_HISTORY_LIMIT
         )
@@ -195,6 +199,19 @@ class NiceAdministrationController(OwnerBoundController):
             snapshot,
             retrieved_at=datetime.now(UTC),
         )
+        self._notify_entities()
+
+    async def async_refresh_controller_history(self) -> None:
+        """Pull one page of controller history; failures are stored, never raised."""
+        try:
+            self._require_capability("logs", "controller history")
+            rows = await self.hass.async_add_executor_job(self.client.read_t4_logs)
+        except Exception as err:  # noqa: BLE001 - best-effort diagnostics read
+            self.controller_event_history_error = f"{type(err).__name__}: {err}"
+            _LOGGER.debug("Nice controller history read failed: %s", err)
+        else:
+            self.controller_event_history = rows[:CONTROLLER_HISTORY_LIMIT]
+            self.controller_event_history_error = None
         self._notify_entities()
 
     async def async_refresh_access_groups(self) -> None:

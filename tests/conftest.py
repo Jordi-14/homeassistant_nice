@@ -246,6 +246,9 @@ class FakeClient:
         self.write_dmp_register_error: Exception | None = None
         self.read_logs_result = NiceLogSnapshot(events=())
         self.read_groups_result = NiceGroupSnapshot(groups=())
+        self.read_t4_logs_result: tuple = ()
+        self.read_t4_logs_error: Exception | None = None
+        self.read_t4_logs_calls = 0
         self.read_logs_error: Exception | None = None
         self.read_groups_error: Exception | None = None
         self.update_interface_name_error: Exception | None = None
@@ -335,6 +338,13 @@ class FakeClient:
         if self.read_logs_error is not None:
             raise self.read_logs_error
         return self.read_logs_result
+
+    def read_t4_logs(self) -> tuple:
+        """Return controller history rows or raise a configured error."""
+        self.read_t4_logs_calls += 1
+        if self.read_t4_logs_error is not None:
+            raise self.read_t4_logs_error
+        return self.read_t4_logs_result
 
     def read_groups(self) -> NiceGroupSnapshot:
         """Return a group snapshot or raise a configured error."""
@@ -427,6 +437,8 @@ class FakeCoordinator:
         self.last_event_at = None
         self.last_event_cause = None
         self.abnormal_stop_count = 0
+        self.controller_event_history: tuple = ()
+        self.controller_event_history_error: str | None = None
         self.controller_limits_changed = None
         self.last_abnormal_stop = None
         self.last_t4_cause = None
@@ -544,6 +556,10 @@ class FakeCoordinator:
     async def async_refresh_interface_logs(self) -> None:
         """Record a bounded log refresh."""
         self.calls.append(("refresh_logs", None))
+
+    async def async_refresh_controller_history(self) -> None:
+        """Record a controller history refresh."""
+        self.calls.append(("refresh_controller_history", None))
 
     async def async_refresh_access_groups(self) -> None:
         """Record a group refresh."""

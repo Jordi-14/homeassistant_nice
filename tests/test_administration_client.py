@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
@@ -111,3 +112,32 @@ def test_client_mutation_maps_device_error_without_retry() -> None:
 
     assert client.command_runner_calls == 1
     assert len(client.requests) == 1
+
+
+def test_client_reads_t4_logs_with_the_read_only_history_request() -> None:
+    client = AdministrationClient()
+    client.responses["T4_LOGS"] = (
+        STX + Path(__file__).with_name("fixtures").joinpath("t4_logs_reply.xml").read_bytes() + ETX
+    )
+
+    rows = client.read_t4_logs()
+
+    assert [row.id for row in rows] == [1028, 1027, 1013, 655]
+    assert client.requests == [
+        (
+            "T4_LOGS",
+            '<Interface id="2">\r\n<SAddress>00</SAddress>\r\n'
+            '<SEndpoint>03</SEndpoint>\r\n<Start max="100"/>\r\n</Interface>\r\n',
+        )
+    ]
+    assert client.command_runner_calls == 0
+
+
+def test_client_t4_logs_error_reply_raises_connection_error() -> None:
+    client = AdministrationClient()
+    client.responses["T4_LOGS"] = (
+        STX + b'<Response type="T4_LOGS"><Error><Code>1</Code></Error></Response>' + ETX
+    )
+
+    with pytest.raises(NiceBidiConnectionError):
+        client.read_t4_logs()
