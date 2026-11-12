@@ -225,8 +225,10 @@ async def async_get_config_entry_diagnostics(
             ),
             "event_count": coordinator.protocol_event_count,
             "malformed_event_count": coordinator.malformed_protocol_event_count,
+            # LOCAL-DIAGNOSTIC(pr55): abnormal-stop counter; see controllers/events.py:_check_abnormal_stop.
             "abnormal_stop_count": coordinator.abnormal_stop_count,
             "controller_limits_changed": coordinator.controller_limits_changed,
+            # LOCAL-DIAGNOSTIC(pr55): last abnormal-stop data; see controllers/events.py:_check_abnormal_stop.
             "last_abnormal_stop": coordinator.last_abnormal_stop,
             "history_limit": coordinator.event_history.maxlen,
             "history": [event.as_diagnostics() for event in coordinator.event_history],
@@ -315,6 +317,7 @@ async def async_get_config_entry_diagnostics(
                 "high_level_actions": capabilities.high_level_actions,
                 "readable_status": capabilities.readable_status,
                 "obstruction": capabilities.obstruction,
+                # LOCAL-DIAGNOSTIC(pr55): obstacle seed outcome; see coordinator.py:_set_obstacle_seed.
                 "nhk_obstacle_seed": getattr(coordinator, "nhk_obstacle_seed", None),
                 "t4_allowed_advertised": (capabilities.t4_allowed.advertised),
                 "t4_allowed_valid": capabilities.t4_allowed_valid,

@@ -53,6 +53,7 @@ class NiceEvent:
     t4_basic_diagnostic: str | None = None
     t4_advanced_diagnostic: str | None = None
     t4_command: str | None = None
+    # LOCAL-DIAGNOSTIC(pr55): implausible-travel flag; see controllers/events.py:_check_abnormal_stop.
     t4_implausible: bool | None = None
     obstruction: bool | None = None
     obstruction_source: str | None = None

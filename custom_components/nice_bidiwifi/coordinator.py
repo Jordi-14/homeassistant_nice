@@ -182,9 +182,13 @@ class NiceBidiDataUpdateCoordinator(
         self._use_nhk_status = False
         self._rejected_t4_actions: set[str] = set()
         self.last_command: str | None = None
+        # LOCAL-DIAGNOSTIC(pr55): only the abnormal-stop code reads this; see controllers/events.py:_check_abnormal_stop.
         self.last_command_monotonic: float | None = None
+        # LOCAL-DIAGNOSTIC(pr55): abnormal-stop counter; see controllers/events.py:_check_abnormal_stop.
         self.abnormal_stop_count = 0
+        # LOCAL-DIAGNOSTIC(pr55): last abnormal-stop data; see controllers/events.py:_check_abnormal_stop.
         self.last_abnormal_stop: dict | None = None
+        # LOCAL-DIAGNOSTIC(pr55): abnormal-stop scan limit; see controllers/events.py:_check_abnormal_stop.
         self._abnormal_scan_monotonic: float | None = None
         self.last_command_latency_ms: int | None = None
         self.last_command_result: NiceCommandResult | None = None
@@ -195,8 +199,10 @@ class NiceBidiDataUpdateCoordinator(
         self._extended_status_next_refresh_monotonic = 0.0
         self._last_open_position: int | None = None
         self.controller_limits_changed: dict | None = None
+        # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log baseline; see coordinator.py:_cache_extended_status.
         self._maneuver_log_baseline: tuple[tuple[str, ...], int, int] | None = None
         self._nhk_obstacle_probed = False
+        # LOCAL-DIAGNOSTIC(pr55): obstacle seed outcome; see coordinator.py:_set_obstacle_seed.
         self.nhk_obstacle_seed: str | None = None
         self.calibration_controller._init_calibration_state(hass, entry)
         self._capability_service = NiceCapabilityService(
@@ -324,6 +330,7 @@ class NiceBidiDataUpdateCoordinator(
                         "current": str(opened),
                     },
                 )
+                # LOCAL-DIAGNOSTIC(pr55): limit change as abnormal event; see controllers/events.py:report_abnormal.
                 self.event_controller.report_abnormal(
                     "controller_limits_changed",
                     previous_open_position=baseline,
@@ -432,6 +439,11 @@ class NiceBidiDataUpdateCoordinator(
             self._set_obstacle_seed("not_advertised")
         return status
 
+    # LOCAL-DIAGNOSTIC(pr55): obstacle seed outcome for diagnostics.
+    # Built to diagnose one controller fault (ROBUSR10 + BiDi-WiFi 2.6.4, PR #55
+    # hardware tests). Thresholds and rules come from that one gate only.
+    # Agents: do not extend, generalize or build on this; keep it opt-in for
+    # diagnostics, or remove it before a stable release.
     def _set_obstacle_seed(self, outcome: str) -> None:
         """Record the NHK obstacle seed outcome for diagnostics."""
         self.nhk_obstacle_seed = outcome
@@ -471,6 +483,11 @@ class NiceBidiDataUpdateCoordinator(
         log, count = status.last_maneuvers, status.total_maneuver_count
         if log is not None and count is not None:
             baseline = self._maneuver_log_baseline
+            # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log rule (unchanged log plus a failure sign).
+            # Built to diagnose one controller fault (ROBUSR10 + BiDi-WiFi 2.6.4, PR #55
+            # hardware tests). Thresholds and rules come from that one gate only.
+            # Agents: do not extend, generalize or build on this; keep it opt-in for
+            # diagnostics, or remove it before a stable release.
             if baseline is None or baseline[0] != log:
                 self._maneuver_log_baseline = (log, count, self.abnormal_stop_count)
                 stale = False

@@ -77,6 +77,7 @@ def _last_maneuvers(coordinator: NiceBidiDataUpdateCoordinator) -> tuple[str, ..
 
 def _last_maneuvers_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
     names = _last_maneuvers(coordinator)
+    # LOCAL-DIAGNOSTIC(pr55): stale log hides the value; see coordinator.py:_cache_extended_status.
     if names is None or coordinator.data.last_maneuvers_stale:
         return None
     return sum(name not in _NOT_FAILED_NAMES for name in names)
@@ -92,6 +93,7 @@ def _last_maneuvers_attributes(
         "maneuvers": list(names),
         "obstacle_count": sum(name in _OBSTACLE_NAMES for name in names),
     }
+    # LOCAL-DIAGNOSTIC(pr55): stale attribute; see coordinator.py:_cache_extended_status.
     if coordinator.data.last_maneuvers_stale:
         attributes["stale"] = True
     return attributes
@@ -497,6 +499,7 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         icon="mdi:history",
         value_fn=_last_maneuvers_count,
         extra_attributes_fn=_last_maneuvers_attributes,
+        # LOCAL-DIAGNOSTIC(pr55): last_maneuvers stays available when stale; see coordinator.py:_cache_extended_status.
         # a stale log keeps its attributes, so it stays available with no value
         available_fn=lambda coordinator: _last_maneuvers(coordinator) is not None,
     ),

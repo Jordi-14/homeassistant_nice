@@ -684,28 +684,42 @@ async def test_stop_after_recent_command_or_partial_stop_is_normal(hass, monkeyp
     await coordinator.async_shutdown()
 
 
-async def test_command_move_starts_from_the_latest_live_position(hass, monkeypatch) -> None:
-    """A stale polled 04/11 must not make a real short close look implausible."""
+async def test_percent_scale_live_position_does_not_fake_implausible_travel(
+    hass, monkeypatch
+) -> None:
+    """A percent 04/40 value (96) is not an encoder position; only 04/11 is used."""
     clock = _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
     coordinator = await _abnormal_coordinator(
-        hass, state="open", current_position=5263, closed_position=0, open_position=5263
-    )
-    # the last 04/40 showed the gate near closed; the polled 04/11 is still 5263
-    coordinator.async_set_updated_data(
-        replace(
-            coordinator.data,
-            registers={**coordinator.data.registers, "NHK/T4InstantPositionRaw": "120"},
-        )
+        hass, state="open", current_position=4900, closed_position=0, open_position=5114
     )
     controller = coordinator.event_controller
+    controller._handle_raw_frame(_t4_event("04 40 01 00 60"))
+    assert coordinator.data.registers["NHK/T4InstantPositionScale"] == "percent"
+    assert coordinator.data.registers["NHK/T4InstantPositionRaw"] == "96"
 
-    controller._handle_raw_frame(_t4_event("04 02 84 00"))
-    clock.now += 1.0
-    controller._handle_raw_frame(_t4_event("04 02 05 00"))
+    controller._handle_raw_frame(_t4_event("04 02 83 00"))
+    clock.now += 1.5
+    controller._handle_raw_frame(_t4_event("04 02 04 00"))
     await hass.async_block_till_done()
 
     assert coordinator.latest_event.t4_implausible is None
+    assert events == []
+    await coordinator.async_shutdown()
+
+
+async def test_short_fast_enough_travel_is_not_implausible(hass, monkeypatch) -> None:
+    """More than 1000 units in 3.5 s is 1460 units/s: real, so no event."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="closed", current_position=0, closed_position=0, open_position=5114
+    )
+    controller = coordinator.event_controller
+    controller._handle_raw_frame(_t4_event("04 02 83 00", xml=_nhk_xml("opening")))
+    clock.now += 3.5
+    controller._handle_raw_frame(_t4_event("04 02 04 00", xml=_nhk_xml("open")))
+    await hass.async_block_till_done()
     assert events == []
     await coordinator.async_shutdown()
 
@@ -829,16 +843,8 @@ async def test_nhk_implausible_close_without_04_02(hass, monkeypatch) -> None:
         closed_position=0,
         open_position=5114,
     )
-    coordinator.async_set_updated_data(
-        replace(
-            coordinator.data,
-            registers={
-                "NHK/T4InstantPositionRaw": "5114",
-                "NHK/T4InstantPositionScale": "encoder",
-            },
-        )
-    )
     controller = coordinator.event_controller
+    controller._handle_raw_frame(_t4_event("04 40 01 00 60"))  # real percent frame
     controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
     clock.now += 0.96
     controller._handle_raw_frame(frame_xml(_nhk_change("closed")))
@@ -880,4 +886,21 @@ async def test_one_event_when_04_02_and_nhk_both_match(hass, monkeypatch) -> Non
     await hass.async_block_till_done()
     assert [e.data["reason"] for e in events] == ["implausible_travel"]
     assert coordinator.data.state == "closed"  # NHK state still applies
+    await coordinator.async_shutdown()
+
+
+async def test_repeated_door_status_frames_do_not_rearm_the_nhk_move(hass, monkeypatch) -> None:
+    """A normal 30 s open with DoorStatus=opening every second is not implausible."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="closed", current_position=0, closed_position=0, open_position=5114
+    )
+    controller = coordinator.event_controller
+    for _ in range(30):
+        controller._handle_raw_frame(frame_xml(_nhk_change("opening")))
+        clock.now += 1.0
+    controller._handle_raw_frame(frame_xml(_nhk_change("open")))
+    await hass.async_block_till_done()
+    assert events == []
     await coordinator.async_shutdown()
