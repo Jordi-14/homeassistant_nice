@@ -91,7 +91,6 @@ class NiceEventController(OwnerBoundController):
         self.event_battery_level: str | None = None
         self.event_battery_device_type: str | None = None
         self._event_client = None
-        self._controller_history_requested = False
         self._accept_events = False
         self._remove_event_callback: Callable[[], None] | None = None
         self._remove_failure_callback: Callable[[], None] | None = None
@@ -466,14 +465,6 @@ class NiceEventController(OwnerBoundController):
     def mark_connected(self) -> None:
         """Expose a healthy reader after a successful polled exchange."""
         if self.client.event_stream_active:
-            if not self._controller_history_requested and self.administration_capability("logs"):
-                # once per coordinator; the read must not delay polling
-                self._controller_history_requested = True
-                self.config_entry.async_create_background_task(
-                    self.hass,
-                    self.async_refresh_controller_history(),
-                    "nice-controller-history",
-                )
             self.event_stream_state = EVENT_STREAM_ACTIVE
             self.event_stream_error = None
 

@@ -269,37 +269,10 @@ async def test_controller_history_unsupported_family_stores_error(
     assert "not supported" in coordinator.controller_event_history_error
 
 
-async def test_controller_history_is_pulled_once_per_coordinator(
+async def test_mark_connected_does_not_pull_controller_history(
     hass: HomeAssistant,
 ) -> None:
     coordinator = _coordinator(hass)
-    coordinator.client.read_t4_logs_result = _history_rows(2)
-    controller = coordinator.event_controller
-    controller.ensure_registered()
-    coordinator.client.emit_event(b"frame before the first poll")
-
-    controller.mark_connected()
-    controller.mark_connected()
-    await hass.async_block_till_done(wait_background_tasks=True)
-
-    assert [row.id for row in coordinator.controller_event_history] == [2, 1]
-    assert coordinator.client.read_t4_logs_calls == 1
-    assert coordinator.client.read_t4_logs_args == (64, True)
-
-    controller.mark_reconnecting()
-    controller.mark_connected()
-    await hass.async_block_till_done(wait_background_tasks=True)
-    assert coordinator.client.read_t4_logs_calls == 1
-    await coordinator.async_shutdown()
-
-
-async def test_controller_history_is_never_pulled_without_logs_capability(
-    hass: HomeAssistant,
-) -> None:
-    coordinator = _coordinator(hass)
-    coordinator._store_device_info(
-        replace(make_device_info(device_product="Unknown"), interface_product="Unknown")
-    )
     controller = coordinator.event_controller
     controller.ensure_registered()
 
@@ -307,7 +280,6 @@ async def test_controller_history_is_never_pulled_without_logs_capability(
     await hass.async_block_till_done(wait_background_tasks=True)
 
     assert coordinator.client.read_t4_logs_calls == 0
-    assert coordinator.controller_event_history_error is None
     await coordinator.async_shutdown()
 
 
