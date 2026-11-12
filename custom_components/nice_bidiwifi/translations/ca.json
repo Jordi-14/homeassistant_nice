@@ -232,5 +232,11 @@
         "cloud_only": "Completament al núvol"
       }
     }
+  },
+  "issues": {
+    "controller_limits_changed": {
+      "title": "El controlador de la porta ha canviat els seus límits de recorregut",
+      "description": "La posició d'obertura del controlador ha baixat de {previous} a {current}. Això pot passar després d'una aturada anormal. La posició que mostra Home Assistant segueix el controlador. Comproveu la porta amb l'aplicació original. Si el recorregut no és correcte, demaneu a l'instal·lador que comprovi les posicions del controlador."
+    }
   }
 }

@@ -427,6 +427,7 @@ class FakeCoordinator:
         self.last_event_at = None
         self.last_event_cause = None
         self.abnormal_stop_count = 0
+        self.controller_limits_changed = None
         self.last_abnormal_stop = None
         self.last_t4_cause = None
         self.last_t4_change_state = None

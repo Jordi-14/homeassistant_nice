@@ -11,6 +11,7 @@ import time
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .calibration import NiceBidiCalibrationController
@@ -192,6 +193,8 @@ class NiceBidiDataUpdateCoordinator(
         self.position_controller._init_position_state()
         self._extended_status_cache: NiceBidiStatus | None = None
         self._extended_status_next_refresh_monotonic = 0.0
+        self._last_open_position: int | None = None
+        self.controller_limits_changed: dict | None = None
         self._maneuver_log_baseline: tuple[tuple[str, ...], int] | None = None
         self._nhk_obstacle_probed = False
         self.calibration_controller._init_calibration_state(hass, entry)
@@ -288,11 +291,47 @@ class NiceBidiDataUpdateCoordinator(
             self._clear_position_simulation()
             raise UpdateFailed(str(err)) from err
 
+        self._track_controller_limits(status)
         status = self.event_controller.reconcile_polled_obstacle(status)
         status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
         self.event_controller.mark_connected()
         return status
+
+    @property
+    def _limits_issue_id(self) -> str:
+        return f"controller_limits_changed_{self.config_entry.entry_id}"
+
+    def _track_controller_limits(self, status: NiceBidiStatus) -> None:
+        """Flag a sharp drop of the controller open position (runs on the loop)."""
+        opened = status.open_position
+        baseline = self._last_open_position
+        if opened is None:
+            return
+        if baseline is not None and opened < 0.5 * baseline:
+            if self.controller_limits_changed is None:
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    self._limits_issue_id,
+                    is_fixable=False,
+                    is_persistent=False,
+                    severity=ir.IssueSeverity.WARNING,
+                    translation_key="controller_limits_changed",
+                    translation_placeholders={
+                        "previous": str(baseline),
+                        "current": str(opened),
+                    },
+                )
+            self.controller_limits_changed = {
+                "previous_open_position": baseline,
+                "open_position": opened,
+            }
+            return
+        self._last_open_position = opened
+        if self.controller_limits_changed is not None:
+            self.controller_limits_changed = None
+            ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
 
     def _read_status_and_maybe_info(self) -> NiceBidiStatus:
         """Read dynamic status and cache static device info."""
@@ -765,6 +804,7 @@ class NiceBidiDataUpdateCoordinator(
 
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
+        ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
         await self._async_cancel_background_tasks(calibration_reason="shutdown")
         self.event_controller.shutdown()
         await self.hass.async_add_executor_job(self.client.close)

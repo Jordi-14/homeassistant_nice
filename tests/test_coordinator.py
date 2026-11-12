@@ -2301,3 +2301,53 @@ async def test_startup_obstacle_is_seeded_by_one_nhk_status_read(hass: HomeAssis
     assert first.registers["NHK/Obstruct"] == "false"
     assert (await instance._async_update_data()).obstacle is False
     assert client.nhk_status_reads == 1
+
+
+async def test_controller_limit_drop_raises_and_clears_repair_issue(
+    hass: HomeAssistant,
+) -> None:
+    """A sharp open-position drop is flagged; position is not touched."""
+    from homeassistant.helpers import issue_registry as ir
+
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    issue_id = f"controller_limits_changed_{instance.config_entry.entry_id}"
+    registry = ir.async_get(hass)
+
+    async def poll(open_position: int, current: int = 5000):
+        client.read_status_result = make_status(
+            open_position=open_position, current_position=current, position=77.0
+        )
+        return await instance._async_update_data()
+
+    await poll(5263)
+    assert instance.controller_limits_changed is None
+
+    result = await poll(66, current=66)
+    assert result.open_position == 66
+    assert result.position == 77.0  # this code does not rewrite the position
+    assert instance.controller_limits_changed == {
+        "previous_open_position": 5263,
+        "open_position": 66,
+    }
+    issue = registry.async_get_issue(DOMAIN, issue_id)
+    assert issue is not None
+    assert issue.translation_placeholders == {"previous": "5263", "current": "66"}
+
+    await poll(66)  # still flagged, baseline kept
+    assert instance.controller_limits_changed is not None
+
+    await poll(5247)
+    assert instance.controller_limits_changed is None
+    assert registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_small_open_position_change_is_not_flagged(hass: HomeAssistant) -> None:
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    for open_position in (5247, 5263):
+        client.read_status_result = make_status(open_position=open_position)
+        await instance._async_update_data()
+    assert instance.controller_limits_changed is None
