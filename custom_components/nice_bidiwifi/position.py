@@ -26,6 +26,7 @@ from .client import (
 from .connection import CONNECTION_STATE_AUTH_FAILED, CONNECTION_STATE_FAILED
 from .const import DOMAIN, ERROR_UPDATE_INTERVAL, IDLE_UPDATE_INTERVAL, MOVING_UPDATE_INTERVAL
 from .controllers.base import OwnerBoundController
+from .models.events import NiceEvent
 from .models.position import NicePosition, resolve_position
 
 _LOGGER = logging.getLogger(__name__)
@@ -209,33 +210,67 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         return status
 
     def _normalize_live_scalar_status(self, status: NiceBidiStatus) -> NiceBidiStatus:
-        """Normalize raw live-scalar positions using calibration bounds."""
-        profile = self.calibration_profile
-        if not isinstance(profile, dict) or profile.get("mode") != "live_scalar":
-            return status
+        """Normalize a live raw value with calibrated or reported encoder bounds."""
         registers = status.registers
         scale = registers.get("NHK/T4InstantPositionScale")
         if scale is None or not scale.startswith("raw"):
             return status
+        if status.position is None and "NHK/RecentStopOverride" in registers:
+            return status
         raw_text = registers.get("NHK/T4InstantPositionRaw")
         if raw_text is None:
-            return status
-        bounds = profile.get("bounds")
-        if not isinstance(bounds, dict):
-            return status
-        closed_raw = bounds.get("live_scalar_closed_raw")
-        open_raw = bounds.get("live_scalar_open_raw")
-        if not isinstance(closed_raw, int) or not isinstance(open_raw, int) or closed_raw == open_raw:
             return status
         try:
             raw = int(raw_text)
         except (TypeError, ValueError):
             return status
-
-        percent = max(0.0, min(100.0, ((raw - closed_raw) / (open_raw - closed_raw)) * 100.0))
+        normalized = self._normalize_live_scalar_value(raw, status)
+        if normalized is None:
+            return status
+        percent, marker = normalized
         updated_registers = dict(registers)
-        updated_registers["NHK/T4CalibratedPosition"] = str(round(percent, 1))
-        return replace(status, position=round(percent, 1), registers=updated_registers)
+        updated_registers.pop("NHK/T4CalibratedPosition", None)
+        updated_registers.pop("NHK/T4EncoderPosition", None)
+        updated_registers[marker] = str(percent)
+        updated_registers["NHK/T4InstantPosition"] = str(round(percent))
+        return replace(status, position=percent, registers=updated_registers)
+
+    def _normalize_live_position_event(self, event: NiceEvent) -> NiceEvent:
+        """Keep the public event position consistent with the displayed position."""
+        if (
+            event.t4_raw_position is None
+            or event.t4_position_scale is None
+            or not event.t4_position_scale.startswith("raw")
+        ):
+            return event
+        normalized = self._normalize_live_scalar_value(event.t4_raw_position, self.data)
+        return replace(event, position=normalized[0]) if normalized is not None else event
+
+    def _normalize_live_scalar_value(
+        self, raw: int, status: NiceBidiStatus | None
+    ) -> tuple[float, str] | None:
+        """Prefer explicit scalar calibration, then usable 16-bit encoder bounds."""
+        candidates = []
+        profile = self.calibration_profile
+        if isinstance(profile, dict) and profile.get("mode") == "live_scalar":
+            bounds = profile.get("bounds")
+            if isinstance(bounds, dict):
+                candidates.append((
+                    bounds.get("live_scalar_closed_raw"),
+                    bounds.get("live_scalar_open_raw"),
+                    "NHK/T4CalibratedPosition",
+                ))
+        if status is not None:
+            candidates.append((status.closed_position, status.open_position, "NHK/T4EncoderPosition"))
+        for closed_raw, open_raw, marker in candidates:
+            if (
+                not all(isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 0xFFFF for value in (closed_raw, open_raw))
+                or closed_raw == open_raw
+            ):
+                continue
+            percent = max(0.0, min(100.0, ((raw - closed_raw) / (open_raw - closed_raw)) * 100.0))
+            return round(percent, 1), marker
+        return None
 
     @property
     def position_snapshot(self) -> NicePosition | None:

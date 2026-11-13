@@ -340,6 +340,7 @@ class NiceEventController(OwnerBoundController):
 
     def _apply_event(self, event: NiceEvent) -> None:
         """Update normalized state and event diagnostics."""
+        event = self._normalize_live_position_event(event)
         # LOCAL-DIAGNOSTIC(pr55): abnormal-stop detection; see controllers/events.py:_check_abnormal_stop.
         event = self._check_abnormal_stop(event)
         if event.obstruction is not None:
@@ -397,6 +398,8 @@ class NiceEventController(OwnerBoundController):
             registers["NHK/DoorStatus"] = event.raw_state
         if event.position is not None:
             updates["position"] = event.position
+            registers.pop("NHK/T4CalibratedPosition", None)
+            registers.pop("NHK/T4EncoderPosition", None)
             registers["NHK/T4InstantPosition"] = str(round(event.position))
         if event.t4_payload_kind is not None and (
             event.t4_state is not None or event.position is not None

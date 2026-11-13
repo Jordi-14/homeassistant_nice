@@ -66,13 +66,18 @@ and after it stops.
 ### Live Scalar
 
 Some older controllers, such as the RBA4R10 case from issue #14, expose live T4
-`04/40` values as a raw scalar instead of a direct percent. Earlier beta code
-treated those values as a fixed `0..7000` range. The standardized calibration
-now learns the observed closed/open scalar bounds during full travel and stores
-them in the calibration profile.
+`04/40` values as a raw scalar instead of a direct percent. When the controller
+also supplies usable encoder endpoints, live values use those endpoints so they
+agree with polled encoder positions. This works with encoder calibration or
+without a calibration profile; a new calibration is not required for this
+conversion.
 
-After calibration, incoming raw scalar frames are normalized with the learned
-bounds before they are used for display or set-position timing.
+For controllers without usable encoder endpoints, standardized calibration can
+learn the observed closed/open scalar bounds during full travel. An explicit
+`live_scalar` calibration profile takes priority over encoder endpoints. The
+legacy `0..7000` conversion remains a fallback until usable bounds are known.
+Messages that already contain a percentage are not rescaled. Public protocol
+events and the cover use the same normalized live position.
 
 These older controllers may emit their numeric position only while moving.
 After an integration reload, the cover position can therefore remain unknown
