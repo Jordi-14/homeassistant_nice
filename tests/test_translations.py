@@ -48,6 +48,13 @@ def test_translation_files_match_strings_keys() -> None:
         )
 
 
+def test_fixable_issues_have_no_issue_description() -> None:
+    """Hassfest allows an issue description or a fix_flow, not both."""
+    for path in [STRINGS_FILE, *sorted(TRANSLATIONS_DIR.glob("*.json"))]:
+        for key, issue in _load_json(path).get("issues", {}).items():
+            assert not ("description" in issue and "fix_flow" in issue), f"{path.name}: {key}"
+
+
 def test_default_translation_uses_generic_integration_name() -> None:
     """Test that the integration display name is generic."""
     strings = _load_json(STRINGS_FILE)

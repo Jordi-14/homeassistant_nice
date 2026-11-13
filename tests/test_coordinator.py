@@ -2599,9 +2599,12 @@ async def test_fix_flow_accepts_the_new_limits(
 
     flow = await async_create_fix_flow(hass, LIMITS_ISSUE, _issue(hass).data)
     flow.hass = hass
+    flow.handler = DOMAIN
     flow.issue_id = LIMITS_ISSUE
     form = await flow.async_step_confirm(None)
     assert form["type"] is FlowResultType.FORM
+    # the fix flow text carries the explanation, so it needs the issue placeholders
+    assert form["description_placeholders"] == {"previous": "5114", "current": "39"}
     result = await flow.async_step_confirm({})
     await hass.async_block_till_done()
 
