@@ -43,10 +43,20 @@ class NiceEvent:
     raw_state: str | None = None
     position: float | None = None
     t4_payload_kind: str | None = None
+    t4_event_class: str | None = None
+    t4_payload_hex: str | None = None
     t4_state: str | None = None
     t4_raw_position: int | None = None
     t4_position_scale: str | None = None
+    t4_change_state: str | None = None
+    t4_cause: str | None = None
+    t4_basic_diagnostic: str | None = None
+    t4_advanced_diagnostic: str | None = None
+    t4_command: str | None = None
+    # LOCAL-DIAGNOSTIC(pr55): implausible-travel flag; see controllers/events.py:_check_abnormal_stop.
+    t4_implausible: bool | None = None
     obstruction: bool | None = None
+    obstruction_source: str | None = None
     protocol_timestamp: str | None = None
     basic_diagnostic_code: str | None = None
     cause_code: str | None = None
@@ -72,10 +82,19 @@ class NiceEvent:
             ("raw_state", self.raw_state),
             ("position", self.position),
             ("t4_payload_kind", self.t4_payload_kind),
+            ("t4_event_class", self.t4_event_class),
+            ("t4_payload_hex", self.t4_payload_hex),
             ("t4_state", self.t4_state),
             ("t4_raw_position", self.t4_raw_position),
             ("t4_position_scale", self.t4_position_scale),
+            ("t4_change_state", self.t4_change_state),
+            ("t4_cause", self.t4_cause),
+            ("t4_basic_diagnostic", self.t4_basic_diagnostic),
+            ("t4_advanced_diagnostic", self.t4_advanced_diagnostic),
+            ("t4_command", self.t4_command),
+            ("t4_implausible", self.t4_implausible),
             ("obstruction", self.obstruction),
+            ("obstruction_source", self.obstruction_source),
             ("protocol_timestamp", self.protocol_timestamp),
             ("basic_diagnostic_code", self.basic_diagnostic_code),
             ("cause_code", self.cause_code),

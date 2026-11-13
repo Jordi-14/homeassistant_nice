@@ -17,6 +17,7 @@ from .const import (
 )
 from .models.config import ConnectionMode
 from .controllers.administration import ADMINISTRATION_HISTORY_LIMIT
+from .protocol.t4.enums import EVT_ERROR
 from .protocol.nhk.administration import (
     LOG_EVENTS_PER_SCOPE,
     MAX_ADMINISTRATION_XML_BYTES,
@@ -206,6 +207,13 @@ async def async_get_config_entry_diagnostics(
             "error_code": (
                 command_result.error_code if command_result is not None else None
             ),
+            "error_name": (
+                EVT_ERROR.get(int(command_result.error_code))
+                if command_result is not None
+                and command_result.error_code is not None
+                and command_result.error_code.isdecimal()
+                else None
+            ),
         },
         "event_stream": {
             "state": coordinator.event_stream_state,
@@ -217,6 +225,17 @@ async def async_get_config_entry_diagnostics(
             ),
             "event_count": coordinator.protocol_event_count,
             "malformed_event_count": coordinator.malformed_protocol_event_count,
+            # LOCAL-DIAGNOSTIC(pr55): abnormal-stop counter; see controllers/events.py:_check_abnormal_stop.
+            "abnormal_stop_count": coordinator.abnormal_stop_count,
+            "controller_limits_changed": coordinator.controller_limits_changed,
+            # LOCAL-DIAGNOSTIC(pr55): last abnormal-stop data; see controllers/events.py:_check_abnormal_stop.
+            "last_abnormal_stop": coordinator.last_abnormal_stop,
+            "controller_event_history": [
+                row.as_dict() for row in coordinator.controller_event_history
+            ],
+            "controller_event_history_error": redact_text(
+                coordinator.controller_event_history_error, secrets
+            ),
             "history_limit": coordinator.event_history.maxlen,
             "history": [event.as_diagnostics() for event in coordinator.event_history],
         },
@@ -277,13 +296,14 @@ async def async_get_config_entry_diagnostics(
                 "key_lock": status.key_lock if status else None,
                 "limit_closed": status.limit_closed if status else None,
                 "limit_open": status.limit_open if status else None,
-                "photocell": status.photocell if status else None,
                 "obstacle": status.obstacle if status else None,
-                "last_stop_reason": status.last_stop_reason if status else None,
-                "last_stop_reason_code": status.last_stop_reason_code
-                if status
-                else None,
                 "diagnostics_io_byte": status.diagnostics_io_byte if status else None,
+                "bluebus_devices": status.bluebus_devices if status else None,
+                "last_maneuvers": (
+                    list(status.last_maneuvers)
+                    if status and status.last_maneuvers is not None
+                    else None
+                ),
                 "diagnostics_parameters": status.diagnostics_parameters
                 if status
                 else None,
@@ -303,6 +323,8 @@ async def async_get_config_entry_diagnostics(
                 "high_level_actions": capabilities.high_level_actions,
                 "readable_status": capabilities.readable_status,
                 "obstruction": capabilities.obstruction,
+                # LOCAL-DIAGNOSTIC(pr55): obstacle seed outcome; see coordinator.py:_set_obstacle_seed.
+                "nhk_obstacle_seed": getattr(coordinator, "nhk_obstacle_seed", None),
                 "t4_allowed_advertised": (capabilities.t4_allowed.advertised),
                 "t4_allowed_valid": capabilities.t4_allowed_valid,
                 "t4_allowed_mask": capabilities.t4_allowed_mask,

@@ -34,6 +34,8 @@ from custom_components.nice_bidiwifi.client import (
     parse_dmp_response,
     parse_info_xml,
 )
+from custom_components.nice_bidiwifi.protocol.t4.dmp import DmpResponse
+from custom_components.nice_bidiwifi.protocol.t4.status import status_from_dmp_registers
 from tests.conftest import make_device_info, make_status
 
 
@@ -238,8 +240,59 @@ def test_read_status_combines_registers_into_status() -> None:
     assert status.limit_closed is True
     assert status.limit_open is True
     assert status.diagnostics_io_byte == 3
-    assert status.obstacle is True
-    assert status.last_stop_reason == "obstacle_by_encoder"
+    assert status.obstacle is None
+
+
+def _dmp_registers(**values: bytes) -> dict:
+    return {
+        f"04/{key[1:]}": DmpResponse("", 0x04, int(key[1:], 16), value=value)
+        for key, value in values.items()
+    }
+
+
+@pytest.mark.parametrize(
+    ("io_byte", "limit_open", "limit_closed"), [(1, True, False), (2, False, True)]
+)
+def test_status_from_dmp_registers_decodes_limits(
+    io_byte, limit_open, limit_closed
+) -> None:
+    """Test 04/D1 byte 2 bit 0 is open and bit 1 is closed."""
+    status = status_from_dmp_registers(_dmp_registers(rD1=bytes([0, 0, io_byte])))
+
+    assert status.limit_open is limit_open
+    assert status.limit_closed is limit_closed
+
+
+@pytest.mark.parametrize(
+    ("d2_bytes", "voltage", "temperature"),
+    [
+        ({8: 0x00, 9: 0x20, 15: 0x33}, 32, 42),
+        ({8: 0x01, 9: 0x00, 15: 0x33}, 256, 42),
+        ({8: 0xFF, 9: 0x01, 14: 0xFF, 15: 0x33}, None, None),
+        ({8: 0x00, 9: 0x20, 14: 0x01, 15: 0x00}, 32, 256 - 9),
+    ],
+)
+def test_status_from_dmp_registers_decodes_diagnostic_parameters(
+    d2_bytes, voltage, temperature
+) -> None:
+    """Test 04/D2 big-endian voltage and 'not available' markers."""
+    data = bytearray(20)
+    for offset, value in d2_bytes.items():
+        data[offset] = value
+    status = status_from_dmp_registers(_dmp_registers(rD2=bytes(data)))
+
+    assert status.service_voltage == voltage
+    assert status.motor_temperature == temperature
+
+
+def test_status_from_dmp_registers_does_not_derive_obstacle_from_d0() -> None:
+    """Test 04/D0 is a device table, not a stop reason."""
+    assert status_from_dmp_registers(_dmp_registers(rD0=b"\x01")).obstacle is None
+
+
+def test_status_from_dmp_registers_ignores_d4_for_maneuver_count() -> None:
+    """Test 04/D4 is inverter diagnostics, not a maneuver counter."""
+    assert status_from_dmp_registers(_dmp_registers(rD4=b"\x00\x05")).total_maneuver_count is None
 
 
 @pytest.mark.parametrize("status_byte", [0x10, 0x11, 0x12])
@@ -1387,3 +1440,18 @@ def test_reconnect_count_does_not_wait_for_the_session_lock() -> None:
         release.set()
         holder.join(timeout=2.0)
         reader.join(timeout=2.0)
+
+
+def test_status_from_dmp_registers_decodes_bluebus_devices() -> None:
+    """Test 04/D0 is decoded into installed BlueBus devices."""
+    sample = bytes.fromhex("11008100000000000000007f000000000000000100c00000000000")
+    status = status_from_dmp_registers(_dmp_registers(rD0=sample))
+
+    assert status.bluebus_devices == {"photo": "on"}
+
+
+def test_status_from_dmp_registers_decodes_last_maneuvers() -> None:
+    """Test 04/DA is decoded into 8 maneuver outcomes."""
+    status = status_from_dmp_registers(_dmp_registers(rDA=bytes([0, 3, 0, 0, 0, 0, 0, 0])))
+
+    assert status.last_maneuvers == ("ok", "obstacle_detected") + ("ok",) * 6

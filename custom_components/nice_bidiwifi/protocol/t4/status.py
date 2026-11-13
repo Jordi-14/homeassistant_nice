@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ...models.status import NiceStatus
+from .bluebus import decode_bluebus_devices
 from .dmp import (
     DmpResponse,
     dmp_ascii,
@@ -11,18 +12,7 @@ from .dmp import (
     dmp_uint,
     status_from_register,
 )
-
-STOP_REASON_BY_BYTE = {
-    0x00: "normal",
-    0x01: "obstacle_by_encoder",
-    0x02: "obstacle_by_force",
-    0x03: "photo_intervention",
-    0x04: "halt",
-    0x05: "emergency",
-    0x06: "electrical_anomaly",
-    0x07: "blocked",
-    0x08: "timeout",
-}
+from .maneuvers import decode_last_maneuvers
 
 
 def status_from_dmp_registers(
@@ -45,16 +35,12 @@ def status_from_dmp_registers(
         if diagnostics_io
         else None
     )
-    stop_reason_value = dmp_bytes(registers.get("04/D0"))
-    stop_reason_code = stop_reason_value[0] if stop_reason_value else None
     diagnostic_parameters = dmp_bytes(registers.get("04/D2"))
     if diagnostic_parameters and all(
         value in {0x00, 0xFF}
         for value in diagnostic_parameters
     ):
         diagnostic_parameters = None
-    total_maneuver_count = dmp_uint(registers.get("04/B3"))
-    alternate_movement_count = dmp_uint(registers.get("04/D4"))
 
     return NiceStatus(
         state=state,
@@ -81,12 +67,7 @@ def status_from_dmp_registers(
         always_close_mode=dmp_uint(registers.get("04/8A")),
         maintenance_threshold=dmp_uint(registers.get("04/B1")),
         maintenance_count=dmp_uint(registers.get("04/B2")),
-        total_maneuver_count=(
-            total_maneuver_count
-            if total_maneuver_count is not None
-            else alternate_movement_count
-        ),
-        alternate_movement_count=alternate_movement_count,
+        total_maneuver_count=dmp_uint(registers.get("04/B3")),
         input_1=dmp_bool(registers.get("04/71")),
         input_2=dmp_bool(registers.get("04/72")),
         input_3=dmp_bool(registers.get("04/73")),
@@ -97,33 +78,25 @@ def status_from_dmp_registers(
         standby=dmp_bool(registers.get("04/8C")),
         pre_flash=dmp_bool(registers.get("04/94")),
         key_lock=dmp_bool(registers.get("04/9C")),
-        limit_closed=bool(io_byte & 0x01) if io_byte is not None else None,
-        limit_open=bool(io_byte & 0x02) if io_byte is not None else None,
-        photocell=bool(io_byte & 0x04) if io_byte is not None else None,
-        obstacle=(
-            stop_reason_code in {0x01, 0x02}
-            if stop_reason_code is not None
-            else None
-        ),
+        limit_open=bool(io_byte & 0x01) if io_byte is not None else None,
+        limit_closed=bool(io_byte & 0x02) if io_byte is not None else None,
         diagnostics_io_byte=io_byte,
+        bluebus_devices=decode_bluebus_devices(dmp_bytes(registers.get("04/D0"))),
+        last_maneuvers=decode_last_maneuvers(dmp_bytes(registers.get("04/DA"))),
         motor_temperature=(
-            diagnostic_parameters[15] - 9
+            int.from_bytes(diagnostic_parameters[14:16], "big") - 9
             if diagnostic_parameters
             and len(diagnostic_parameters) > 15
+            and diagnostic_parameters[14] < 0x80  # vendor "not available"
             else None
         ),
         service_voltage=(
-            diagnostic_parameters[9]
+            int.from_bytes(diagnostic_parameters[8:10], "big")
             if diagnostic_parameters
             and len(diagnostic_parameters) > 9
+            and diagnostic_parameters[8] < 0x80  # vendor "not available"
             else None
         ),
-        last_stop_reason=(
-            STOP_REASON_BY_BYTE.get(stop_reason_code)
-            if stop_reason_code is not None
-            else None
-        ),
-        last_stop_reason_code=stop_reason_code,
         diagnostics_parameters=(
             diagnostic_parameters.hex(" ")
             if diagnostic_parameters is not None

@@ -197,3 +197,30 @@ def test_administration_parser_rejects_oversized_payload() -> None:
             + ("x" * MAX_ADMINISTRATION_XML_BYTES)
             + "</Response>"
         )
+
+
+def test_logs_source_is_kept_raw_but_serialized_only_when_not_identifying() -> None:
+    snapshot = parse_logs_xml(
+        "<Response><Interface><Events>"
+        '<Service type="a" source="busT4"/>'
+        '<Service type="b" source="boot"/>'
+        '<Service type="c" source="AA:BB:CC:DD:EE:FF"/>'
+        '<Service type="d" source="fake_user"/>'
+        '<Service type="e"/>'
+        "</Events></Interface></Response>"
+    )
+
+    assert [event.source for event in snapshot.events] == [
+        "busT4",
+        "boot",
+        "AA:BB:CC:DD:EE:FF",
+        "fake_user",
+        None,
+    ]
+    assert [event.as_dict().get("source") for event in snapshot.events] == [
+        "busT4",
+        "boot",
+        "client",
+        "client",
+        None,
+    ]

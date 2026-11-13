@@ -11,6 +11,8 @@ import time
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .calibration import NiceBidiCalibrationController
@@ -141,6 +143,14 @@ def _unknown_status() -> NiceBidiStatus:
     )
 
 
+LIMITS_STORAGE_VERSION = 1
+
+
+def controller_limits_store(hass: HomeAssistant, entry_id: str) -> Store:
+    """Return the per-entry store of the last good open position."""
+    return Store(hass, LIMITS_STORAGE_VERSION, f"{DOMAIN}.controller_limits.{entry_id}")
+
+
 class NiceBidiDataUpdateCoordinator(
     DataUpdateCoordinator[NiceBidiStatus],
 ):
@@ -181,6 +191,14 @@ class NiceBidiDataUpdateCoordinator(
         self._use_nhk_status = False
         self._rejected_t4_actions: set[str] = set()
         self.last_command: str | None = None
+        # LOCAL-DIAGNOSTIC(pr55): only the abnormal-stop code reads this; see controllers/events.py:_check_abnormal_stop.
+        self.last_command_monotonic: float | None = None
+        # LOCAL-DIAGNOSTIC(pr55): abnormal-stop counter; see controllers/events.py:_check_abnormal_stop.
+        self.abnormal_stop_count = 0
+        # LOCAL-DIAGNOSTIC(pr55): last abnormal-stop data; see controllers/events.py:_check_abnormal_stop.
+        self.last_abnormal_stop: dict | None = None
+        # LOCAL-DIAGNOSTIC(pr55): abnormal-stop scan limit; see controllers/events.py:_check_abnormal_stop.
+        self._abnormal_scan_monotonic: float | None = None
         self.last_command_latency_ms: int | None = None
         self.last_command_result: NiceCommandResult | None = None
         self.last_error: str | None = None
@@ -188,6 +206,14 @@ class NiceBidiDataUpdateCoordinator(
         self.position_controller._init_position_state()
         self._extended_status_cache: NiceBidiStatus | None = None
         self._extended_status_next_refresh_monotonic = 0.0
+        self._last_open_position: int | None = None
+        self._limits_store = controller_limits_store(hass, entry.entry_id)
+        self.controller_limits_changed: dict | None = None
+        # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log baseline; see coordinator.py:_cache_extended_status.
+        self._maneuver_log_baseline: tuple[tuple[str, ...], int, int] | None = None
+        self._nhk_obstacle_probed = False
+        # LOCAL-DIAGNOSTIC(pr55): obstacle seed outcome; see coordinator.py:_set_obstacle_seed.
+        self.nhk_obstacle_seed: str | None = None
         self.calibration_controller._init_calibration_state(hass, entry)
         self._capability_service = NiceCapabilityService(
             self.entry_config.device_id
@@ -282,11 +308,88 @@ class NiceBidiDataUpdateCoordinator(
             self._clear_position_simulation()
             raise UpdateFailed(str(err)) from err
 
+        self._track_controller_limits(status)
         status = self.event_controller.reconcile_polled_obstacle(status)
         status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
         self.event_controller.mark_connected()
         return status
+
+    @property
+    def _limits_issue_id(self) -> str:
+        return f"controller_limits_changed_{self.config_entry.entry_id}"
+
+    async def async_load_limits_baseline(self) -> None:
+        """Load the stored open-position baseline before the first refresh."""
+        try:
+            stored = await self._limits_store.async_load()
+        except Exception as err:  # noqa: BLE001 - a bad store only loses the baseline
+            _LOGGER.warning("Nice controller limits could not be loaded: %s", err)
+            return
+        value = stored.get("open_position") if isinstance(stored, dict) else None
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            self._last_open_position = value
+
+    def _track_controller_limits(self, status: NiceBidiStatus) -> None:
+        """Flag a sharp drop of the controller open position (runs on the loop)."""
+        opened = status.open_position
+        baseline = self._last_open_position
+        if opened is None:
+            return
+        if baseline is not None and opened < 0.5 * baseline:
+            if self.controller_limits_changed is None:
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    self._limits_issue_id,
+                    is_fixable=True,
+                    is_persistent=False,
+                    data={"entry_id": self.config_entry.entry_id},
+                    severity=ir.IssueSeverity.WARNING,
+                    translation_key="controller_limits_changed",
+                    translation_placeholders={
+                        "previous": str(baseline),
+                        "current": str(opened),
+                    },
+                )
+                # a drop known before the restart must not fire the event and a scan again
+                if self.data is not None:
+                    # LOCAL-DIAGNOSTIC(pr55): limit change as abnormal event; see controllers/events.py:report_abnormal.
+                    self.event_controller.report_abnormal(
+                        "controller_limits_changed",
+                        previous_open_position=baseline,
+                        open_position=opened,
+                    )
+            self.controller_limits_changed = {
+                "previous_open_position": baseline,
+                "open_position": opened,
+            }
+            return
+        self._set_limits_baseline(opened)
+        if self.controller_limits_changed is not None:
+            self.controller_limits_changed = None
+            ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
+
+    def _set_limits_baseline(self, value: int) -> None:
+        """Keep the open-position baseline and save it when it changes."""
+        if value == self._last_open_position:
+            return
+        self._last_open_position = value
+        self.config_entry.async_create_background_task(
+            self.hass,
+            self._limits_store.async_save({"open_position": value}),
+            "nice-limits-save",
+        )
+
+    def async_accept_controller_limits(self) -> bool:
+        """Make the current open position the baseline; return false when unknown."""
+        opened = self.data.open_position if self.data else None
+        if opened is None:
+            return False
+        self._set_limits_baseline(opened)
+        self.controller_limits_changed = None
+        ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
+        return True
 
     def _read_status_and_maybe_info(self) -> NiceBidiStatus:
         """Read dynamic status and cache static device info."""
@@ -335,7 +438,7 @@ class NiceBidiDataUpdateCoordinator(
             return _unknown_status()
 
         if include_extended:
-            self._cache_extended_status(status)
+            status = self._cache_extended_status(status)
         else:
             status = self._merge_cached_extended_status(status)
         if self.device_info is None:
@@ -343,7 +446,53 @@ class NiceBidiDataUpdateCoordinator(
                 self._store_device_info(self.client.read_info())
             except NiceBidiError as err:
                 _LOGGER.debug("Could not read Nice INFO metadata: %s", err)
+        if (
+            status.obstacle is None
+            and not self._nhk_obstacle_probed
+            and self.capabilities is not None
+            and self.capabilities.obstruction
+        ):
+            # one read-only NHK STATUS request seeds the obstacle value at startup
+            self._nhk_obstacle_probed = True
+            obstacle = None
+            try:
+                obstacle = self.client.read_nhk_status(preemptible=True).obstacle
+            except NiceReadPreemptedError:
+                self._nhk_obstacle_probed = False  # a command won the session: retry
+                self._set_obstacle_seed("preempted")
+            except NiceBidiError as err:
+                self._set_obstacle_seed(f"error:{type(err).__name__}")
+            else:
+                if obstacle is None:
+                    self._set_obstacle_seed("no_value")
+                else:
+                    self._set_obstacle_seed(f"seeded_{str(obstacle).lower()}")
+                    status = replace(
+                        status,
+                        obstacle=obstacle,
+                        registers={
+                            **status.registers,
+                            "NHK/Obstruct": str(obstacle).lower(),
+                        },
+                    )
+        elif (
+            status.obstacle is None
+            and not self._nhk_obstacle_probed
+            and self.capabilities is not None
+        ):
+            self._nhk_obstacle_probed = True
+            self._set_obstacle_seed("not_advertised")
         return status
+
+    # LOCAL-DIAGNOSTIC(pr55): obstacle seed outcome for diagnostics.
+    # Built to diagnose one controller fault (ROBUSR10 + BiDi-WiFi 2.6.4, PR #55
+    # hardware tests). Thresholds and rules come from that one gate only.
+    # Agents: do not extend, generalize or build on this; keep it opt-in for
+    # diagnostics, or remove it before a stable release.
+    def _set_obstacle_seed(self, outcome: str) -> None:
+        """Record the NHK obstacle seed outcome for diagnostics."""
+        self.nhk_obstacle_seed = outcome
+        _LOGGER.debug("NHK obstacle seed: %s", outcome)
 
     def _store_device_info(self, device_info: NiceBidiDeviceInfo) -> None:
         """Store INFO metadata and its normalized capability view together."""
@@ -374,10 +523,29 @@ class NiceBidiDataUpdateCoordinator(
             return False
         return time.monotonic() >= self._extended_status_next_refresh_monotonic
 
-    def _cache_extended_status(self, status: NiceBidiStatus) -> None:
-        """Store the latest broad BusT4 scan."""
+    def _cache_extended_status(self, status: NiceBidiStatus) -> NiceBidiStatus:
+        """Store the latest broad BusT4 scan and flag a maneuver log that stopped updating."""
+        log, count = status.last_maneuvers, status.total_maneuver_count
+        if log is not None and count is not None:
+            baseline = self._maneuver_log_baseline
+            # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log rule (unchanged log plus a failure sign).
+            # Built to diagnose one controller fault (ROBUSR10 + BiDi-WiFi 2.6.4, PR #55
+            # hardware tests). Thresholds and rules come from that one gate only.
+            # Agents: do not extend, generalize or build on this; keep it opt-in for
+            # diagnostics, or remove it before a stable release.
+            if baseline is None or baseline[0] != log:
+                self._maneuver_log_baseline = (log, count, self.abnormal_stop_count)
+                stale = False
+            else:
+                # a healthy gate keeps an all-ok log, so it needs a sign of failure
+                stale = count - baseline[1] >= 2 and (
+                    any(name != "ok" for name in log)
+                    or self.abnormal_stop_count > baseline[2]
+                )
+            status = replace(status, last_maneuvers_stale=stale)
         self._extended_status_cache = status
         self._extended_status_next_refresh_monotonic = time.monotonic() + EXTENDED_STATUS_REFRESH_SECONDS
+        return status
 
     def _merge_cached_extended_status(self, status: NiceBidiStatus) -> NiceBidiStatus:
         """Merge cached diagnostic fields into a fresh core status read."""
@@ -700,6 +868,7 @@ class NiceBidiDataUpdateCoordinator(
         )
         self.last_command_result = result
         self.last_command = command.key
+        self.last_command_monotonic = time.monotonic()
         self.last_command_latency_ms = result.latency_ms
 
     def _store_failed_command(
@@ -726,6 +895,8 @@ class NiceBidiDataUpdateCoordinator(
 
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
+        # a still-valid issue is recreated by the first poll after setup
+        ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
         await self._async_cancel_background_tasks(calibration_reason="shutdown")
         self.event_controller.shutdown()
         await self.hass.async_add_executor_job(self.client.close)

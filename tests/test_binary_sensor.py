@@ -34,7 +34,6 @@ class TestNiceBidiBinarySensorProperties:
         assert "gate_open" in keys
         assert "limit_closed" in keys
         assert "limit_open" in keys
-        assert "photocell" in keys
         assert "obstacle" in keys
         assert "auto_close" in keys
         assert "oxi_detected" in keys
@@ -106,7 +105,7 @@ class TestNiceBidiBinarySensorProperties:
     def test_false_binary_sensor_is_available(self) -> None:
         coordinator = FakeCoordinator()
         entity = NiceBidiBinarySensor(
-            coordinator, config_entry(), _description("photocell")
+            coordinator, config_entry(), _description("limit_closed")
         )
 
         assert entity.is_on is False
@@ -145,3 +144,41 @@ async def test_async_setup_entry_adds_all_binary_sensors() -> None:
 
     assert len(created) == len(BINARY_SENSORS) + len(EVENT_BINARY_SENSORS)
     assert all(isinstance(entity, NiceBidiBinarySensor) for entity in created)
+
+
+async def test_obstacle_uses_restored_value_until_live_value_arrives() -> None:
+    coordinator = FakeCoordinator()
+    coordinator.data = make_status(obstacle=None)
+    sensor = NiceBidiBinarySensor(coordinator, config_entry(), _description("obstacle"))
+    assert _description("obstacle").restore is True
+    assert _description("gate_open").restore is False
+
+    sensor._restored_value = False
+    assert sensor.is_on is False
+    assert sensor.available
+
+    coordinator.data = make_status(obstacle=True)
+    assert sensor.is_on is True
+    coordinator.data = make_status(obstacle=None)
+    assert sensor.is_on is None  # restored value is dropped after a live one
+
+
+async def test_obstacle_restores_last_state_on_add(monkeypatch) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from homeassistant.helpers.restore_state import RestoreEntity
+
+    sensor = NiceBidiBinarySensor(
+        FakeCoordinator(), config_entry(), _description("obstacle")
+    )
+    monkeypatch.setattr(
+        NiceBidiBinarySensor, "async_get_last_state", AsyncMock(return_value=SimpleNamespace(state="on"))
+    )
+    monkeypatch.setattr(
+        "custom_components.nice_bidiwifi.binary_sensor.NiceCoordinatorEntity.async_added_to_hass",
+        AsyncMock(),
+    )
+    assert isinstance(sensor, RestoreEntity)
+    await sensor.async_added_to_hass()
+    assert sensor._restored_value is True

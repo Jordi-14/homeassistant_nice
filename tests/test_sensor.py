@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfTemperature
 
@@ -40,7 +42,6 @@ class TestNiceBidiSensorProperties:
         assert "control_unit_serial" in keys
         assert "opening_speed" in keys
         assert "maintenance_count" in keys
-        assert "last_stop_reason" in keys
         assert "motor_temperature" in keys
         assert "service_voltage" in keys
         assert "oxi_product" in keys
@@ -163,12 +164,6 @@ class TestNiceBidiSensorProperties:
         )
         assert (
             NiceBidiSensor(
-                coordinator, config_entry(), _description("last_stop_reason")
-            ).native_value
-            == "obstacle_by_encoder"
-        )
-        assert (
-            NiceBidiSensor(
                 coordinator, config_entry(), _description("oxi_product")
             ).native_value
             == "OXI"
@@ -225,7 +220,9 @@ class TestNiceBidiSensorProperties:
 
     def test_issue_15_diagnostics_are_unavailable_without_d2_payload(self) -> None:
         coordinator = FakeCoordinator()
-        coordinator.data = make_status(diagnostics_parameters="00 00 00 00")
+        coordinator.data = make_status(
+            diagnostics_parameters="00 00 00 00", motor_temperature=None, service_voltage=None
+        )
 
         assert (
             NiceBidiSensor(
@@ -309,3 +306,76 @@ async def test_async_setup_entry_adds_all_sensors() -> None:
         + len(ADMINISTRATION_SENSORS)
     )
     assert all(isinstance(entity, NiceBidiSensor) for entity in created)
+
+
+def test_bluebus_devices_sensor_counts_faults() -> None:
+    coordinator = FakeCoordinator()
+    coordinator.data = make_status(
+        bluebus_devices={"photo": "on", "cmd_1": "not_working", "photo_2": "stand_by", "photo_open": "undefined"}
+    )
+    sensor = NiceBidiSensor(coordinator, config_entry(), _description("bluebus_devices"))
+    assert sensor.native_value == 1
+    assert sensor.extra_state_attributes == {
+        "photo": "on",
+        "cmd_1": "not_working",
+        "photo_2": "stand_by",
+        "photo_open": "undefined",
+    }
+
+    coordinator.data = make_status(bluebus_devices=None)
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_last_maneuvers_sensor_ignores_undefined_slots() -> None:
+    coordinator = FakeCoordinator()
+    coordinator.data = make_status(last_maneuvers=("undefined",) * 8)
+    sensor = NiceBidiSensor(coordinator, config_entry(), _description("last_maneuvers"))
+    assert sensor.native_value == 0
+    assert sensor.extra_state_attributes["obstacle_count"] == 0
+
+
+def test_last_maneuvers_sensor() -> None:
+    coordinator = FakeCoordinator()
+    names = (
+        "ok", "ok", "obstacle_detected", "ok", "undefined",
+        "photo_intervention", "detected_obstacle_by_encoder", "ok",
+    )
+    coordinator.data = make_status(last_maneuvers=names)
+    sensor = NiceBidiSensor(coordinator, config_entry(), _description("last_maneuvers"))
+    assert sensor.native_value == 3
+    assert sensor.extra_state_attributes == {"maneuvers": list(names), "obstacle_count": 2}
+
+    coordinator.data = make_status(last_maneuvers=None)
+    assert sensor.native_value is None
+    assert sensor.available is False
+    assert sensor.extra_state_attributes == {}
+
+
+def test_last_state_change_cause_sensor() -> None:
+    coordinator = FakeCoordinator()
+    coordinator.last_t4_cause = "radio"
+    coordinator.last_t4_change_state = "opening_from_command"
+    coordinator.last_t4_command = "open"
+    sensor = NiceBidiSensor(
+        coordinator, config_entry(), _event_description("last_state_change_cause")
+    )
+    assert sensor.native_value == "radio"
+    assert sensor.extra_state_attributes == {
+        "change_state": "opening_from_command",
+        "last_command": "open",
+    }
+
+
+def test_last_maneuvers_sensor_is_unknown_when_log_is_stale() -> None:
+    coordinator = FakeCoordinator()
+    coordinator.data = replace(make_status(), last_maneuvers_stale=True)
+    sensor = NiceBidiSensor(coordinator, config_entry(), _description("last_maneuvers"))
+    assert sensor.native_value is None
+    assert sensor.available is True
+    assert sensor.extra_state_attributes["stale"] is True
+    assert sensor.extra_state_attributes["maneuvers"] == ["ok"] * 8
+
+    coordinator.data = replace(make_status(), last_maneuvers_stale=False)
+    assert sensor.native_value == 0
+    assert "stale" not in sensor.extra_state_attributes

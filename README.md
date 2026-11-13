@@ -92,7 +92,7 @@ broader BusT4/OXI register map seen in
 and community testing.
 
 The integration can expose controller configuration/status sensors for partial
-open positions, speed, force, pause time, maintenance counters, stop reasons,
+open positions, speed, force, pause time, maintenance counters,
 raw diagnostics, OXI/radio metadata, and several BusT4 settings. Writable
 BusT4 entities are advanced controls: only change values while the gate is
 visible and you can recover the original settings.

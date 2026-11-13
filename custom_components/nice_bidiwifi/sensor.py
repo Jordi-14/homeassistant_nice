@@ -29,6 +29,12 @@ from .entities.factory import (
     build_described_entities,
 )
 from .entity import NiceCoordinatorEntity
+from .protocol.t4.enums import (
+    AUTOMATION_STATUS_DIAGNOSTICS,
+    AUTOMATION_STATUS_OBSTACLE_CODES,
+    BLUEBUS_DEVICE_STATUS,
+    BLUEBUS_FAULT_STATUSES,
+)
 from .runtime import get_coordinator
 
 
@@ -45,10 +51,52 @@ class NiceBidiSensorEntityDescription(
     extra_attributes_fn: (
         Callable[[NiceBidiDataUpdateCoordinator], dict[str, Any]] | None
     ) = None
+    available_fn: Callable[[NiceBidiDataUpdateCoordinator], bool] | None = None
 
 
 def _status(coordinator: NiceBidiDataUpdateCoordinator) -> NiceBidiStatus | None:
     return coordinator.data
+
+
+_BLUEBUS_FAULT_NAMES = {BLUEBUS_DEVICE_STATUS[c] for c in BLUEBUS_FAULT_STATUSES}
+_NOT_FAILED_NAMES = frozenset({"ok", "undefined"})
+_OBSTACLE_NAMES = {AUTOMATION_STATUS_DIAGNOSTICS[c] for c in AUTOMATION_STATUS_OBSTACLE_CODES}
+
+
+def _bluebus_fault_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
+    status = _status(coordinator)
+    if status is None or status.bluebus_devices is None:
+        return None
+    return sum(value in _BLUEBUS_FAULT_NAMES for value in status.bluebus_devices.values())
+
+
+def _last_maneuvers(coordinator: NiceBidiDataUpdateCoordinator) -> tuple[str, ...] | None:
+    status = _status(coordinator)
+    return status.last_maneuvers if status else None
+
+
+def _last_maneuvers_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
+    names = _last_maneuvers(coordinator)
+    # LOCAL-DIAGNOSTIC(pr55): stale log hides the value; see coordinator.py:_cache_extended_status.
+    if names is None or coordinator.data.last_maneuvers_stale:
+        return None
+    return sum(name not in _NOT_FAILED_NAMES for name in names)
+
+
+def _last_maneuvers_attributes(
+    coordinator: NiceBidiDataUpdateCoordinator,
+) -> dict[str, Any]:
+    names = _last_maneuvers(coordinator)
+    if names is None:
+        return {}
+    attributes = {
+        "maneuvers": list(names),
+        "obstacle_count": sum(name in _OBSTACLE_NAMES for name in names),
+    }
+    # LOCAL-DIAGNOSTIC(pr55): stale attribute; see coordinator.py:_cache_extended_status.
+    if coordinator.data.last_maneuvers_stale:
+        attributes["stale"] = True
+    return attributes
 
 
 def _hex_byte(value: int | None) -> str | None:
@@ -393,16 +441,6 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         ),
     ),
     NiceBidiSensorEntityDescription(
-        key="last_stop_reason",
-        name="Last stop reason",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_visible_default=False,
-        icon="mdi:sign-caution",
-        value_fn=lambda coordinator: (
-            _status(coordinator).last_stop_reason if _status(coordinator) else None
-        ),
-    ),
-    NiceBidiSensorEntityDescription(
         key="motor_temperature",
         name="Motor temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -439,6 +477,31 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
             if _status(coordinator)
             else None
         ),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="bluebus_devices",
+        name="BlueBus device faults",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
+        icon="mdi:lan-check",
+        value_fn=_bluebus_fault_count,
+        extra_attributes_fn=lambda coordinator: (
+            dict(_status(coordinator).bluebus_devices or {})
+            if _status(coordinator)
+            else {}
+        ),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="last_maneuvers",
+        name="Last 8 maneuvers",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
+        icon="mdi:history",
+        value_fn=_last_maneuvers_count,
+        extra_attributes_fn=_last_maneuvers_attributes,
+        # LOCAL-DIAGNOSTIC(pr55): last_maneuvers stays available when stale; see coordinator.py:_cache_extended_status.
+        # a stale log keeps its attributes, so it stays available with no value
+        available_fn=lambda coordinator: _last_maneuvers(coordinator) is not None,
     ),
     NiceBidiSensorEntityDescription(
         key="diagnostics_parameters",
@@ -704,6 +767,26 @@ EVENT_SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         value_fn=lambda coordinator: coordinator.last_event_cause,
     ),
     NiceBidiSensorEntityDescription(
+        key="last_state_change_cause",
+        name="Last state change cause",
+        protected=False,
+        supported_fn=_event_supported,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_visible_default=False,
+        icon="mdi:help-rhombus-outline",
+        value_fn=lambda coordinator: coordinator.last_t4_cause,
+        extra_attributes_fn=lambda coordinator: {
+            key: value
+            for key, value in (
+                ("change_state", coordinator.last_t4_change_state),
+                ("basic_diagnostic", coordinator.last_t4_basic_diagnostic),
+                ("advanced_diagnostic", coordinator.last_t4_advanced_diagnostic),
+                ("last_command", coordinator.last_t4_command),
+            )
+            if value is not None
+        },
+    ),
+    NiceBidiSensorEntityDescription(
         key="basic_diagnostic_code",
         name="Basic diagnostic code",
         protected=False,
@@ -899,6 +982,9 @@ class NiceBidiSensor(NiceCoordinatorEntity, SensorEntity):
     @property
     def available(self) -> bool:
         """Return true if this sensor has a known value."""
+        available_fn = self.entity_description.available_fn
+        if available_fn is not None:
+            return self.coordinator.last_update_success and available_fn(self.coordinator)
         return self.native_value is not None
 
     @property

@@ -61,6 +61,9 @@ class RouteClient:
     def read_logs(self, event_count: int = 32):
         return self.read_status()
 
+    def read_t4_logs(self, max_rows: int = 100, *, preemptible: bool = False):
+        return self.read_status()
+
     def read_groups(self):
         return self.read_status()
 
@@ -531,10 +534,11 @@ def test_cloud_only_uses_relay_without_lan() -> None:
 def test_administration_reads_and_writes_honor_route_policy() -> None:
     router, health, clients = _router("cloud_only")
     cloud = clients[0]
-    cloud.read_results.extend(["logs", "groups"])
+    cloud.read_results.extend(["logs", "history", "groups"])
     clock = object()
 
     assert router.read_logs(8) == "logs"
+    assert router.read_t4_logs(5, preemptible=True) == "history"
     assert router.read_groups() == "groups"
     router.update_interface_name("Gate")
     router.update_interface_clock(clock)

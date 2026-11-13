@@ -92,7 +92,6 @@ def make_status(
     total_maneuver_count: int | None = 345,
     limit_closed: bool | None = False,
     limit_open: bool | None = True,
-    photocell: bool | None = False,
     obstacle: bool | None = True,
     auto_close: bool | None = True,
     photo_close: bool | None = False,
@@ -100,16 +99,16 @@ def make_status(
     standby: bool | None = False,
     pre_flash: bool | None = False,
     key_lock: bool | None = False,
-    last_stop_reason: str | None = "obstacle_by_encoder",
     diagnostics_parameters: str
     | None = "00 00 00 bc 00 bc 00 00 00 20 00 00 00 00 00 33 00 00 00 00 00 00 00 00 00 00 00 00",
+    motor_temperature: int | None = 42,
+    service_voltage: int | None = 32,
     oxi_detected: bool | None = True,
     oxi_product: str | None = "OXI",
+    bluebus_devices: dict[str, str] | None = {"photo": "on"},  # noqa: B006
+    last_maneuvers: tuple[str, ...] | None = ("ok",) * 8,
 ) -> NiceBidiStatus:
     """Create a Nice status object."""
-    diagnostic_bytes = (
-        bytes.fromhex(diagnostics_parameters) if diagnostics_parameters else b""
-    )
     return NiceBidiStatus(
         state=state,
         position=position,
@@ -135,7 +134,6 @@ def make_status(
         total_maneuver_count=total_maneuver_count,
         limit_closed=limit_closed,
         limit_open=limit_open,
-        photocell=photocell,
         obstacle=obstacle,
         auto_close=auto_close,
         photo_close=photo_close,
@@ -143,14 +141,13 @@ def make_status(
         standby=standby,
         pre_flash=pre_flash,
         key_lock=key_lock,
-        last_stop_reason=last_stop_reason,
         diagnostics_parameters=diagnostics_parameters,
-        motor_temperature=(
-            diagnostic_bytes[15] - 9 if len(diagnostic_bytes) > 15 else None
-        ),
-        service_voltage=(diagnostic_bytes[9] if len(diagnostic_bytes) > 9 else None),
+        motor_temperature=motor_temperature,
+        service_voltage=service_voltage,
         oxi_detected=oxi_detected,
         oxi_product=oxi_product,
+        bluebus_devices=bluebus_devices,
+        last_maneuvers=last_maneuvers,
     )
 
 
@@ -249,6 +246,9 @@ class FakeClient:
         self.write_dmp_register_error: Exception | None = None
         self.read_logs_result = NiceLogSnapshot(events=())
         self.read_groups_result = NiceGroupSnapshot(groups=())
+        self.read_t4_logs_result: tuple = ()
+        self.read_t4_logs_error: Exception | None = None
+        self.read_t4_logs_calls = 0
         self.read_logs_error: Exception | None = None
         self.read_groups_error: Exception | None = None
         self.update_interface_name_error: Exception | None = None
@@ -338,6 +338,14 @@ class FakeClient:
         if self.read_logs_error is not None:
             raise self.read_logs_error
         return self.read_logs_result
+
+    def read_t4_logs(self, max_rows: int = 100, *, preemptible: bool = False) -> tuple:
+        """Return controller history rows or raise a configured error."""
+        self.read_t4_logs_calls += 1
+        self.read_t4_logs_args = (max_rows, preemptible)
+        if self.read_t4_logs_error is not None:
+            raise self.read_t4_logs_error
+        return self.read_t4_logs_result
 
     def read_groups(self) -> NiceGroupSnapshot:
         """Return a group snapshot or raise a configured error."""
@@ -429,6 +437,16 @@ class FakeCoordinator:
         self.malformed_protocol_event_count = 0
         self.last_event_at = None
         self.last_event_cause = None
+        self.abnormal_stop_count = 0
+        self.controller_event_history: tuple = ()
+        self.controller_event_history_error: str | None = None
+        self.controller_limits_changed = None
+        self.last_abnormal_stop = None
+        self.last_t4_cause = None
+        self.last_t4_change_state = None
+        self.last_t4_basic_diagnostic = None
+        self.last_t4_advanced_diagnostic = None
+        self.last_t4_command = None
         self.basic_diagnostic_code = None
         self.advanced_diagnostic_code = None
         self.bluebus_error_status = None
@@ -539,6 +557,10 @@ class FakeCoordinator:
     async def async_refresh_interface_logs(self) -> None:
         """Record a bounded log refresh."""
         self.calls.append(("refresh_logs", None))
+
+    async def async_refresh_controller_history(self, *, raise_errors: bool = False) -> None:
+        """Record a controller history refresh."""
+        self.calls.append(("refresh_controller_history", None))
 
     async def async_refresh_access_groups(self) -> None:
         """Record a group refresh."""

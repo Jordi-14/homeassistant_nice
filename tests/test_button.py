@@ -49,6 +49,7 @@ async def test_buttons_delegate_to_expected_coordinator_methods() -> None:
     assert ("refresh", None) in coordinator.calls
     assert ("reconnect", None) in coordinator.calls
     assert ("calibrate", None) in coordinator.calls
+    assert ("refresh_controller_history", None) in coordinator.calls
 
 
 def test_button_unique_ids() -> None:

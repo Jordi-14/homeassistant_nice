@@ -114,18 +114,6 @@ T4_AUTO_STATUS = {
     0x84: "closing",
 }
 
-T4_STOP_REASONS = {
-    0x00: "normal",
-    0x01: "obstacle by encoder",
-    0x02: "obstacle by force",
-    0x03: "photo intervention",
-    0x04: "halt",
-    0x05: "emergency",
-    0x06: "electrical anomaly",
-    0x07: "blocked",
-    0x08: "timeout",
-}
-
 T4_MENUS = {
     0x01: "control",
     0x02: "current maneuver",
@@ -189,10 +177,12 @@ KNOWN_DMP_LABELS = {
     (0x04, 0xB1): "maintenance threshold",
     (0x04, 0xB2): "maintenance count",
     (0x04, 0xB3): "total maneuver count",
-    (0x04, 0xD0): "diagnostics blackbox / stop reason",
+    (0x04, 0xD0): "BlueBus devices diagnostics",
     (0x04, 0xD1): "diagnostics I/O",
     (0x04, 0xD2): "diagnostics parameters",
-    (0x04, 0xD4): "alternate movement counter",
+    (0x04, 0xD4): "inverter diagnostics",
+    (0x04, 0xDA): "log last 8 maneuvers",
+    (0x04, 0xDB): "advanced diagnostics log",
     (0x0A, 0x04): "OXI/radio WHO",
     (0x0A, 0x09): "OXI/radio product",
     (0x0A, 0x0A): "OXI/radio hardware version",
@@ -663,17 +653,11 @@ def _decode_dmp_value(device_type: int, register_id: int, data: bytes) -> dict[s
     if register_id in {0x11, 0x12, 0x18, 0x19, 0x21, 0x22, 0x23}:
         decoded["position"] = _decode_position_data(data)
 
-    if register_id == 0xD0:
-        decoded["stop_reason"] = T4_STOP_REASONS.get(data[0])
-        decoded["stop_reason_byte"] = _hex_byte(data[0])
-        decoded["obstacle"] = data[0] in {0x01, 0x02}
-
     if register_id == 0xD1:
         io_byte = data[2] if len(data) >= 3 else data[0]
         decoded["io_byte"] = _hex_byte(io_byte)
-        decoded["limit_closed"] = bool(io_byte & 0x01)
-        decoded["limit_open"] = bool(io_byte & 0x02)
-        decoded["photocell"] = bool(io_byte & 0x04)
+        decoded["limit_open"] = bool(io_byte & 0x01)
+        decoded["limit_closed"] = bool(io_byte & 0x02)
 
     if register_id in {0x71, 0x72, 0x73, 0x74, 0x80, 0x84, 0x88, 0x8C, 0x94, 0x9C}:
         decoded["enabled"] = data[0] != 0
@@ -1515,7 +1499,6 @@ def _summarize_results(report: dict[str, Any]) -> dict[str, Any]:
     bus_t4_to_roles = Counter()
     bus_t4_message_types = Counter()
     bus_t4_positions = Counter()
-    bus_t4_stop_reasons = Counter()
     bus_t4_diag_io = Counter()
     bus_t4_radio_related = 0
     for parsed in bus_t4_parses:
@@ -1535,9 +1518,7 @@ def _summarize_results(report: dict[str, Any]) -> dict[str, Any]:
         if isinstance(position, dict) and position.get("position") is not None:
             position_label = inf.get("register_label") or inf.get("register") or "unknown register"
             bus_t4_positions[f"{position_label}: {position['position']}"] += 1
-        if value_decode.get("stop_reason"):
-            bus_t4_stop_reasons[str(value_decode["stop_reason"])] += 1
-        for key in ("limit_closed", "limit_open", "photocell"):
+        for key in ("limit_closed", "limit_open"):
             if value_decode.get(key):
                 bus_t4_diag_io[key] += 1
         if value_decode.get("radio_related"):
@@ -1551,7 +1532,7 @@ def _summarize_results(report: dict[str, Any]) -> dict[str, Any]:
         observations.append("Decoded BusT4 payloads included gate status values.")
     if bus_t4_positions:
         observations.append("Decoded BusT4 payloads included possible position values.")
-    if bus_t4_stop_reasons or bus_t4_diag_io:
+    if bus_t4_diag_io:
         observations.append("Decoded BusT4 payloads included diagnostic values.")
     if bus_t4_from_roles.get("possible OXI/radio") or bus_t4_to_roles.get("possible OXI/radio"):
         observations.append("Decoded BusT4 payloads included possible OXI/radio traffic.")
@@ -1593,7 +1574,6 @@ def _summarize_results(report: dict[str, Any]) -> dict[str, Any]:
             "decoded_bus_t4_registers": dict(sorted(bus_t4_registers.items())),
             "decoded_bus_t4_statuses": dict(sorted(bus_t4_statuses.items())),
             "decoded_bus_t4_positions": dict(sorted(bus_t4_positions.items())),
-            "decoded_bus_t4_stop_reasons": dict(sorted(bus_t4_stop_reasons.items())),
             "decoded_bus_t4_diag_io": dict(sorted(bus_t4_diag_io.items())),
             "decoded_bus_t4_radio_related": bus_t4_radio_related,
             "nhk_read_probes": len(nhk_results),

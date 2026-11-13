@@ -40,7 +40,6 @@ class NiceStatus:
     maintenance_threshold: int | None = None
     maintenance_count: int | None = None
     total_maneuver_count: int | None = None
-    alternate_movement_count: int | None = None
     input_1: bool | None = None
     input_2: bool | None = None
     input_3: bool | None = None
@@ -53,13 +52,14 @@ class NiceStatus:
     key_lock: bool | None = None
     limit_closed: bool | None = None
     limit_open: bool | None = None
-    photocell: bool | None = None
     obstacle: bool | None = None
     diagnostics_io_byte: int | None = None
+    bluebus_devices: dict[str, str] | None = None
+    last_maneuvers: tuple[str, ...] | None = None
+    # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log flag; see coordinator.py:_cache_extended_status.
+    last_maneuvers_stale: bool | None = None
     motor_temperature: int | None = None
     service_voltage: int | None = None
-    last_stop_reason: str | None = None
-    last_stop_reason_code: int | None = None
     diagnostics_parameters: str | None = None
     oxi_detected: bool | None = None
     oxi_product: str | None = None

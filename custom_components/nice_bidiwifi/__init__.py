@@ -8,9 +8,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.util import slugify
 
-from .coordinator import NiceBidiDataUpdateCoordinator
+from .coordinator import NiceBidiDataUpdateCoordinator, controller_limits_store
 from .const import (
     CONFIG_ENTRY_VERSION,
     CONF_CONNECTION_MODE,
@@ -117,6 +118,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
     await coordinator.async_load_calibration()
+    await coordinator.async_load_limits_baseline()
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = NiceRuntimeData(
@@ -137,3 +139,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_shutdown()
     entry.runtime_data = None
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Drop the controller-limits repair and its stored baseline."""
+    ir.async_delete_issue(hass, DOMAIN, f"controller_limits_changed_{entry.entry_id}")
+    await controller_limits_store(hass, entry.entry_id).async_remove()

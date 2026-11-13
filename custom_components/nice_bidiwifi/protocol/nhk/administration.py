@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from datetime import UTC, datetime, timedelta
 import re
 import xml.etree.ElementTree as ET
@@ -15,10 +16,13 @@ from ...models.administration import (
     NiceLogEvent,
     NiceLogSnapshot,
 )
+from ..t4.codec import xor_sha256
+from ..t4.history import ControllerHistoryRow, decode_history_row
 from .codec import xml_escape
 
 LOG_EVENTS_PER_SCOPE = 32
 MAX_LOG_EVENTS = LOG_EVENTS_PER_SCOPE * 2
+MAX_T4_LOG_ROWS = 100
 MAX_GROUPS = 32
 MAX_GROUP_DEVICES = 32
 MAX_GROUP_RULES = 128
@@ -63,6 +67,7 @@ def _event_from_element(element: ET.Element, scope: str) -> NiceLogEvent:
         ),
         door_status=_bounded_text(element.findtext("DoorStatus")),
         obstruct=_bounded_text(element.findtext("Obstruct")),
+        source=_bounded_text(element.get("source")),
     )
 
 
@@ -84,6 +89,30 @@ def parse_logs_xml(logs_xml: str) -> NiceLogSnapshot:
             break
 
     return NiceLogSnapshot(events=tuple(events))
+
+
+def parse_t4_logs_xml(xml: str) -> tuple[ControllerHistoryRow, ...]:
+    """Decode a T4_LOGS reply, newest first; malformed rows are skipped."""
+    root = _parse_xml(xml, "T4_LOGS")
+    rows: list[ControllerHistoryRow] = []
+    elements = [node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "T4"]
+    for element in elements[:MAX_T4_LOG_ROWS]:
+        try:
+            plain = xor_sha256(
+                base64.b64decode((element.text or "").strip(), validate=True),
+                base64.b64decode(element.get("key", ""), validate=True),
+            )
+            row = decode_history_row(
+                int(element.get("id", "")),
+                _bounded_text(element.get("time")),
+                element.get("protocol", ""),
+                plain,
+            )
+        except ValueError:
+            continue
+        if row is not None:
+            rows.append(row)
+    return tuple(sorted(rows, key=lambda row: row.id, reverse=True))
 
 
 def parse_groups_xml(groups_xml: str) -> NiceGroupSnapshot:
@@ -123,6 +152,21 @@ def build_logs_body(device_id: int, event_count: int = LOG_EVENTS_PER_SCOPE) -> 
     return (
         f'<Interface events="{event_count}" />\r\n'
         f'<Device id="{device_id}" events="{event_count}" />\r\n'
+    )
+
+
+def build_t4_logs_body(device_id: int, max_rows: int = MAX_T4_LOG_ROWS) -> str:
+    """Build the read-only T4_LOGS selector for one page of controller history."""
+    if device_id < 1:
+        raise ValueError("device_id must be at least 1")
+    if not 1 <= max_rows <= MAX_T4_LOG_ROWS:
+        raise ValueError(f"max_rows must be between 1 and {MAX_T4_LOG_ROWS}")
+    return (
+        f'<Interface id="{device_id}">\r\n'
+        "<SAddress>00</SAddress>\r\n"
+        "<SEndpoint>03</SEndpoint>\r\n"
+        f'<Start max="{max_rows}"/>\r\n'
+        "</Interface>\r\n"
     )
 
 
