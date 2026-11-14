@@ -75,6 +75,31 @@ async def test_setting_info_is_read_once_per_setting(hass: HomeAssistant) -> Non
     assert instance.setting_info == {"photo_close_mode": client.dmp_info[(0x04, 0x86)]}
 
 
+async def test_setting_info_yields_to_a_command_and_resumes(hass: HomeAssistant) -> None:
+    """Review of #58: INFO reads yield to a pending command and the next load reads only what is missing."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    info = decode_dmp_info(bytes.fromhex("0100f561021011"))
+    client.dmp_info = {(0x04, 0x86): info}
+    client.dmp_info_preempt_at = (0x04, 0x86)
+    instance.client = client
+    instance._setting_info_task = object()
+
+    await instance._async_load_setting_info()
+
+    assert instance.setting_info == {}
+    assert instance._setting_info_task is None  # the next successful poll restarts the load
+    first = list(client.dmp_info_reads)
+    assert all(preemptible for *_, preemptible in first)
+
+    await instance._async_load_setting_info()
+
+    assert instance.setting_info == {"photo_close_mode": info}
+    second = client.dmp_info_reads[len(first):]
+    done_before = {(g, p) for g, p, _ in first[:-1]}
+    assert not done_before & {(g, p) for g, p, _ in second if (g, p) in client.dmp_info}
+
+
 async def test_setting_info_failure_keeps_static_limits(hass: HomeAssistant) -> None:
     """Test a route without INFO support leaves the INFO map empty."""
     instance = _coordinator(hass)

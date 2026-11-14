@@ -43,6 +43,9 @@ def decode_dmp_info(data: bytes | None) -> DmpInfo | None:
             return info
         count = data[offset]
         options = tuple(data[offset + 1 : offset + 1 + count])
+        if len(options) != count:
+            # truncated list: never restrict a control with incomplete metadata
+            return None
         return replace(info, options=options or None)
     if size < 1 or len(data) < offset + 3 * size:
         return info

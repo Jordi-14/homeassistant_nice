@@ -1280,6 +1280,29 @@ def test_nhk_status_read_yields_only_when_preemptible(preemptible: bool) -> None
         assert interrupts == [None]
 
 
+def test_dmp_info_read_yields_before_sending() -> None:
+    """Review of #58: a preemptible INFO read sends nothing while a command waits."""
+    sent = []
+
+    class InfoClient(NiceBidiClient):
+        def _t4_request_locked(self, *args, **kwargs):
+            sent.append(args)
+            return b"", []
+
+    client = InfoClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+        should_yield=lambda: True,
+    )
+
+    with pytest.raises(NiceReadPreemptedError):
+        client._read_dmp_info_locked(0x04, 0x86, preemptible=True)
+    assert sent == []
+    assert client._read_dmp_info_locked(0x04, 0x86) is None
+    assert len(sent) == 1
+
+
 def test_send_action_rejects_invalid_action() -> None:
     """Test action validation."""
     with pytest.raises(ValueError, match="action must be open"):

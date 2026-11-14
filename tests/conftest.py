@@ -21,6 +21,7 @@ from custom_components.nice_bidiwifi.client import (
     NiceBidiDeviceInfo,
     NiceBidiServiceCapability,
     NiceBidiStatus,
+    NiceReadPreemptedError,
 )
 from custom_components.nice_bidiwifi.const import (
     CONF_DEVICE_ID,
@@ -320,8 +321,12 @@ class FakeClient:
             raise self.read_nhk_status_error
         return self.read_nhk_status_result
 
-    def read_dmp_info(self, group: int, parameter: int):
-        """Return no INFO unless a test sets one."""
+    def read_dmp_info(self, group: int, parameter: int, *, preemptible: bool = False):
+        """Return no INFO unless a test sets one; yield once per queued preemption."""
+        self.dmp_info_reads = getattr(self, "dmp_info_reads", []) + [(group, parameter, preemptible)]
+        if preemptible and getattr(self, "dmp_info_preempt_at", None) == (group, parameter):
+            self.dmp_info_preempt_at = None
+            raise NiceReadPreemptedError("INFO read yielded to a pending command")
         return getattr(self, "dmp_info", {}).get((group, parameter))
 
     def read_info(self) -> NiceBidiDeviceInfo:

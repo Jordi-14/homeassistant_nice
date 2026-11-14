@@ -313,10 +313,15 @@ class NiceBidiClient:
         """Read static BiDi-WiFi and control-unit metadata."""
         return self._run_with_reconnect(self._read_info_locked)
 
-    def read_dmp_info(self, group: int, parameter: int) -> DmpInfo | None:
-        """Read the value format (DMP INFO) of one controller register."""
+    def read_dmp_info(
+        self, group: int, parameter: int, *, preemptible: bool = False
+    ) -> DmpInfo | None:
+        """Read the value format (DMP INFO) of one controller register.
+
+        A preemptible read yields to a pending gate command before it is sent.
+        """
         return self._run_with_reconnect(
-            lambda: self._read_dmp_info_locked(group, parameter)
+            lambda: self._read_dmp_info_locked(group, parameter, preemptible=preemptible)
         )
 
     def read_info_xml(self) -> str:
@@ -703,7 +708,11 @@ class NiceBidiClient:
         if "<Error>" in _printable(response):
             raise NiceBidiConnectionError(_response_error_summary(response))
 
-    def _read_dmp_info_locked(self, group: int, parameter: int) -> DmpInfo | None:
+    def _read_dmp_info_locked(
+        self, group: int, parameter: int, *, preemptible: bool = False
+    ) -> DmpInfo | None:
+        if preemptible and self._should_yield is not None and self._should_yield():
+            raise NiceReadPreemptedError("INFO read yielded to a pending command")
         response, plains = self._t4_request_locked(
             "DMP",
             build_dmp_read_frame(

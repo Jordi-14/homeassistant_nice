@@ -37,6 +37,12 @@ def test_decode_dmp_info_robusr10_replies(hex_data, expected) -> None:
     assert decode_dmp_info(bytes.fromhex(hex_data.replace(" ", ""))) == expected
 
 
+def test_decode_dmp_info_rejects_a_truncated_option_list() -> None:
+    """Review of #58: a list that declares 3 options but carries 2 is not used."""
+    assert decode_dmp_info(bytes.fromhex("0100f561031011")) is None
+    assert decode_dmp_info(bytes.fromhex("0100f56103101112")).options == (0x10, 0x11, 0x12)
+
+
 def test_decode_dmp_info_rejects_short_data() -> None:
     """Test a reply without the 4-byte header."""
     assert decode_dmp_info(b"\x01\x00") is None

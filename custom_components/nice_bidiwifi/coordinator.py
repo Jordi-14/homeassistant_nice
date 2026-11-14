@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio  # noqa: F401 - re-exported for compatibility with existing tests.
+from functools import partial
 from dataclasses import fields, replace
 from datetime import UTC, datetime
 import logging
@@ -332,12 +333,27 @@ class NiceBidiDataUpdateCoordinator(
         return status
 
     async def _async_load_setting_info(self) -> None:
-        """Read the controller's range or option list of each writable setting once."""
+        """Read the controller's range or option list of each writable setting once.
+
+        The reads yield to gate commands: on a pending command the load stops and the next
+        successful poll resumes it with the settings that are still missing.
+        """
         for setting in SETTINGS.values():
+            if setting.key in self.setting_info:
+                continue
             try:
                 info = await self.hass.async_add_executor_job(
-                    self.client.read_dmp_info, setting.group, setting.parameter
+                    partial(
+                        self.client.read_dmp_info,
+                        setting.group,
+                        setting.parameter,
+                        preemptible=True,
+                    )
                 )
+            except NiceReadPreemptedError:
+                _LOGGER.debug("Nice setting INFO read yielded to a command; resuming later")
+                self._setting_info_task = None
+                return
             except Exception as err:  # noqa: BLE001 - optional metadata, static limits stay in use
                 _LOGGER.debug("Nice setting INFO not available: %r", err)
                 return
