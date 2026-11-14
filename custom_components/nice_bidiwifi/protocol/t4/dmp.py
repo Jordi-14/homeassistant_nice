@@ -63,9 +63,11 @@ def build_dmp_read_frame(
     group: int,
     parameter: int,
     index: int | None = None,
+    *,
+    flags: int = 0x99,
 ) -> bytes:
-    """Build a DMP register read frame."""
-    args = [group, parameter, 0x99, 0x00]
+    """Build a DMP register read frame (flags 0x99 = GET, 0x89 = INFO)."""
+    args = [group, parameter, flags, 0x00]
     if index is None:
         args.append(0x00)
     else:
@@ -130,7 +132,7 @@ def decode_dmp_response(plain: bytes) -> DmpResponse:
     group = plain[9]
     parameter = plain[10]
     operation = plain[11]
-    if plain[11] == 0x19 and len(plain) >= 15:
+    if plain[11] in (0x19, 0x09) and len(plain) >= 15:  # GET or INFO reply
         value_len = plain[12]
         value_type = plain[13]
         value = plain[14 : 14 + value_len]

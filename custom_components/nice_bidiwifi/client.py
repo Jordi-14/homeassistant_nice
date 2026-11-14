@@ -97,6 +97,7 @@ from .protocol.t4.dmp import (
     parse_dmp_response,
 )
 from .protocol.t4.history import ControllerHistoryRow
+from .protocol.t4.info import DMP_INFO_FLAGS, DmpInfo, decode_dmp_info
 from .protocol.t4.registers import (
     CONTROLLER_TARGET,
     CORE_STATUS_PROFILE,
@@ -311,6 +312,12 @@ class NiceBidiClient:
     def read_info(self) -> NiceBidiDeviceInfo:
         """Read static BiDi-WiFi and control-unit metadata."""
         return self._run_with_reconnect(self._read_info_locked)
+
+    def read_dmp_info(self, group: int, parameter: int) -> DmpInfo | None:
+        """Read the value format (DMP INFO) of one controller register."""
+        return self._run_with_reconnect(
+            lambda: self._read_dmp_info_locked(group, parameter)
+        )
 
     def read_info_xml(self) -> str:
         """Read raw INFO XML from the BiDi-WiFi."""
@@ -695,6 +702,23 @@ class NiceBidiClient:
         )
         if "<Error>" in _printable(response):
             raise NiceBidiConnectionError(_response_error_summary(response))
+
+    def _read_dmp_info_locked(self, group: int, parameter: int) -> DmpInfo | None:
+        response, plains = self._t4_request_locked(
+            "DMP",
+            build_dmp_read_frame(
+                *CONTROLLER_TARGET.as_tuple(), group, parameter, flags=DMP_INFO_FLAGS
+            ),
+            *CONTROLLER_TARGET.as_tuple(),
+            self.t4_timeout_ms,
+        )
+        if "<Error>" in _printable(response):
+            return None
+        for plain in plains:
+            parsed = decode_dmp_response(plain)
+            if (parsed.group, parsed.parameter, parsed.operation) == (group, parameter, 0x09):
+                return decode_dmp_info(parsed.value)
+        return None
 
     def _write_dmp_register_locked(
         self,

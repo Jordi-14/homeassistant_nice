@@ -320,6 +320,10 @@ class FakeClient:
             raise self.read_nhk_status_error
         return self.read_nhk_status_result
 
+    def read_dmp_info(self, group: int, parameter: int):
+        """Return no INFO unless a test sets one."""
+        return getattr(self, "dmp_info", {}).get((group, parameter))
+
     def read_info(self) -> NiceBidiDeviceInfo:
         """Return device info or raise a configured error."""
         self.info_reads += 1
@@ -406,6 +410,7 @@ class FakeCoordinator:
     def __init__(self) -> None:
         self.data = make_status()
         self.device_info = make_device_info()
+        self.setting_info = {}
         self.capabilities = None
         self.status_polling_supported = True
         self.last_update_success = True

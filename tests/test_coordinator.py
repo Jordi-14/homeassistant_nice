@@ -30,6 +30,7 @@ from custom_components.nice_bidiwifi.client import (
 from custom_components.nice_bidiwifi.const import DOMAIN
 from custom_components.nice_bidiwifi.coordinator import NiceBidiDataUpdateCoordinator
 from custom_components.nice_bidiwifi.errors import NiceReadPreemptedError
+from custom_components.nice_bidiwifi.protocol.t4.info import decode_dmp_info
 from tests.conftest import FakeClient, config_entry_data, make_device_info, make_status
 
 
@@ -60,6 +61,34 @@ def _coordinator(
     entry = MockConfigEntry(domain=DOMAIN, data=data or config_entry_data(), entry_id="entry-1")
     entry.add_to_hass(hass)
     return NiceBidiDataUpdateCoordinator(hass, entry)
+
+
+async def test_setting_info_is_read_once_per_setting(hass: HomeAssistant) -> None:
+    """Test the INFO of each writable setting is stored by its key."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.dmp_info = {(0x04, 0x86): decode_dmp_info(bytes.fromhex("0100f561021011"))}
+    instance.client = client
+
+    await instance._async_load_setting_info()
+
+    assert instance.setting_info == {"photo_close_mode": client.dmp_info[(0x04, 0x86)]}
+
+
+async def test_setting_info_failure_keeps_static_limits(hass: HomeAssistant) -> None:
+    """Test a route without INFO support leaves the INFO map empty."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+
+    def fail(group: int, parameter: int):
+        raise AttributeError("cloud client has no DMP INFO")
+
+    client.read_dmp_info = fail
+    instance.client = client
+
+    await instance._async_load_setting_info()
+
+    assert instance.setting_info == {}
 
 
 async def test_update_data_reads_status_and_caches_device_info(

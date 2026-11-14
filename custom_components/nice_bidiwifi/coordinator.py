@@ -95,7 +95,8 @@ from .models.commands import (
     NiceCommandResult,
 )
 from .models.config import NiceEntryConfig
-from .protocol.t4.settings import DmpSetting
+from .protocol.t4.info import DmpInfo
+from .protocol.t4.settings import SETTINGS, DmpSetting
 from .protocol.t4.actions import T4_ACTION_BY_KEY
 from .write_policy import dmp_write_block_reason
 
@@ -207,6 +208,9 @@ class NiceBidiDataUpdateCoordinator(
         self.last_successful_update: datetime | None = None
         self.position_controller._init_position_state()
         self._extended_status_cache: NiceBidiStatus | None = None
+        # Value format (DMP INFO) of each writable setting, read once from the controller.
+        self.setting_info: dict[str, DmpInfo] = {}
+        self._setting_info_task: asyncio.Task | None = None
         self._extended_status_next_refresh_monotonic = 0.0
         self._extended_scan_requests = 0
         self._last_open_position: int | None = None
@@ -321,7 +325,26 @@ class NiceBidiDataUpdateCoordinator(
         status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
         self.event_controller.mark_connected()
+        if self._setting_info_task is None:
+            self._setting_info_task = self.config_entry.async_create_background_task(
+                self.hass, self._async_load_setting_info(), "nice-setting-info"
+            )
         return status
+
+    async def _async_load_setting_info(self) -> None:
+        """Read the controller's range or option list of each writable setting once."""
+        for setting in SETTINGS.values():
+            try:
+                info = await self.hass.async_add_executor_job(
+                    self.client.read_dmp_info, setting.group, setting.parameter
+                )
+            except Exception as err:  # noqa: BLE001 - optional metadata, static limits stay in use
+                _LOGGER.debug("Nice setting INFO not available: %r", err)
+                return
+            if info is not None:
+                self.setting_info[setting.key] = info
+        _LOGGER.debug("Nice setting INFO read for %d settings", len(self.setting_info))
+        self.async_update_listeners()
 
     @property
     def _limits_issue_id(self) -> str:
