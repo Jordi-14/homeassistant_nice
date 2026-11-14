@@ -11,6 +11,7 @@ from custom_components.nice_bidiwifi.protocol.t4.info import (
     DmpInfo,
     decode_dmp_info,
     scaled_value,
+    decode_version_entry,
 )
 
 
@@ -30,7 +31,7 @@ from custom_components.nice_bidiwifi.protocol.t4.info import (
         # 04/D1: list without bit 5 is a mask, not options
         ("0181e1410e 0f074300 0dffffff ff3c1fff 0100", DmpInfo(1, 0x81, 0xE1, 0x41)),
         # 04/03: indexed (bit 7), too short for min/max
-        ("0903078103", DmpInfo(9, 0x03, 0x07, 0x81)),
+        ("0903078103", DmpInfo(9, 0x03, 0x07, 0x81, array_size=3)),
     ],
 )
 def test_decode_dmp_info_robusr10_replies(hex_data, expected) -> None:
@@ -42,6 +43,20 @@ def test_decode_dmp_info_rejects_a_truncated_option_list() -> None:
     """Review of #58: a list that declares 3 options but carries 2 is not used."""
     assert decode_dmp_info(bytes.fromhex("0100f561031011")) is None
     assert decode_dmp_info(bytes.fromhex("0100f56103101112")).options == (0x10, 0x11, 0x12)
+
+
+@pytest.mark.parametrize(
+    ("hex_value", "expected"),
+    [
+        ("01524241335231300000", "RBA3R10"),  # 04/03 index 1 on a ROBUSR10
+        ("025242363030000000", "RB600"),  # index 2
+        ("01", None),
+        ("010000", None),
+    ],
+)
+def test_decode_version_entry(hex_value, expected) -> None:
+    """Test 04/03 elements: index byte, then zero-terminated ASCII."""
+    assert decode_version_entry(bytes.fromhex(hex_value)) == expected
 
 
 def test_decode_dmp_info_rejects_short_data() -> None:

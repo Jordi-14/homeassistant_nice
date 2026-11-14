@@ -111,6 +111,20 @@ async def test_register_info_is_read_for_scaled_registers(hass: HomeAssistant) -
     assert instance.register_info == {"04/5A": info, "04/91": info}
 
 
+async def test_controller_configuration_read_like_the_app(hass: HomeAssistant) -> None:
+    """04/03 INFO array size 3 -> elements at index 1 and 2, joined (ROBUSR10 replies)."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.dmp_info = {(0x04, 0x03): decode_dmp_info(bytes.fromhex("0903078103"))}
+    values = {1: bytes.fromhex("01524241335231300000"), 2: bytes.fromhex("025242363030000000")}
+    client.read_dmp_indexed = lambda group, parameter, index, preemptible=False: values.get(index)
+    instance.client = client
+
+    await instance._async_load_setting_info()
+
+    assert instance.controller_configuration == "RBA3R10, RB600"
+
+
 async def test_setting_info_failure_keeps_static_limits(hass: HomeAssistant) -> None:
     """Test a route without INFO support leaves the INFO map empty."""
     instance = _coordinator(hass)

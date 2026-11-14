@@ -324,6 +324,14 @@ class NiceBidiClient:
             lambda: self._read_dmp_info_locked(group, parameter, preemptible=preemptible)
         )
 
+    def read_dmp_indexed(
+        self, group: int, parameter: int, index: int, *, preemptible: bool = False
+    ) -> bytes | None:
+        """Read one element of an indexed (array) controller register."""
+        return self._run_with_reconnect(
+            lambda: self._read_dmp_indexed_locked(group, parameter, index, preemptible=preemptible)
+        )
+
     def read_info_xml(self) -> str:
         """Read raw INFO XML from the BiDi-WiFi."""
         return self._run_with_reconnect(self._read_info_xml_locked)
@@ -727,6 +735,25 @@ class NiceBidiClient:
             parsed = decode_dmp_response(plain)
             if (parsed.group, parsed.parameter, parsed.operation) == (group, parameter, 0x09):
                 return decode_dmp_info(parsed.value)
+        return None
+
+    def _read_dmp_indexed_locked(
+        self, group: int, parameter: int, index: int, *, preemptible: bool = False
+    ) -> bytes | None:
+        if preemptible and self._should_yield is not None and self._should_yield():
+            raise NiceReadPreemptedError("indexed read yielded to a pending command")
+        response, plains = self._t4_request_locked(
+            "DMP",
+            build_dmp_read_frame(*CONTROLLER_TARGET.as_tuple(), group, parameter, index),
+            *CONTROLLER_TARGET.as_tuple(),
+            self.t4_timeout_ms,
+        )
+        if "<Error>" in _printable(response):
+            return None
+        for plain in plains:
+            parsed = decode_dmp_response(plain)
+            if (parsed.group, parsed.parameter, parsed.operation) == (group, parameter, 0x19):
+                return parsed.value
         return None
 
     def _write_dmp_register_locked(

@@ -113,6 +113,9 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("sensor", "electric_lock_time", False),
     _entity("sensor", "suction_cup_time", False),
     _entity("sensor", "starting_torque_time", False),
+    _entity("sensor", "controller_configuration", False),
+    _entity("sensor", "transformation_ratio", False),
+    _entity("sensor", "min_closing_position", False),
     _entity("sensor", "maintenance_threshold"),
     _entity("sensor", "maintenance_count"),
     _entity("sensor", "total_maneuver_count"),
@@ -155,4 +158,4 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("binary_sensor", "oxi_detected"),
 )
 
-assert len(PROTECTED_ENTITY_CATALOG) == 127
+assert len(PROTECTED_ENTITY_CATALOG) == 130
