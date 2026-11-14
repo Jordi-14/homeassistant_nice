@@ -99,6 +99,20 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("sensor", "input_2_function", False),
     _entity("sensor", "input_3_function", False),
     _entity("sensor", "input_4_function", False),
+    _entity("sensor", "partial_open_mode", False),
+    _entity("sensor", "open_mode", False),
+    _entity("sensor", "close_mode", False),
+    _entity("sensor", "stop_mode", False),
+    _entity("sensor", "photo_closing_reaction", False),
+    _entity("sensor", "photo_opening_reaction", False),
+    _entity("sensor", "photo_3_reaction", False),
+    _entity("sensor", "alt_opening_reaction", False),
+    _entity("sensor", "alt_closing_reaction", False),
+    _entity("sensor", "obstacle_opening_reaction", False),
+    _entity("sensor", "obstacle_closing_reaction", False),
+    _entity("sensor", "electric_lock_time", False),
+    _entity("sensor", "suction_cup_time", False),
+    _entity("sensor", "starting_torque_time", False),
     _entity("sensor", "maintenance_threshold"),
     _entity("sensor", "maintenance_count"),
     _entity("sensor", "total_maneuver_count"),
@@ -126,6 +140,8 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("binary_sensor", "obstacle"),
     _entity("binary_sensor", "automation_blocked", False),
     _entity("binary_sensor", "slowdown", False),
+    _entity("binary_sensor", "starting_torque", False),
+    _entity("binary_sensor", "slave_mode", False),
     _entity("binary_sensor", "input_1", False),
     _entity("binary_sensor", "input_2", False),
     _entity("binary_sensor", "input_3", False),
@@ -139,4 +155,4 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("binary_sensor", "oxi_detected"),
 )
 
-assert len(PROTECTED_ENTITY_CATALOG) == 111
+assert len(PROTECTED_ENTITY_CATALOG) == 127

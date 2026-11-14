@@ -150,6 +150,8 @@ def _unknown_status() -> NiceBidiStatus:
 LIMITS_STORAGE_VERSION = 1
 # normal open positions vary by ~5 % (5024-5271); the fault left 39, 66 and 3018 (-42 %)
 LIMITS_DROP_RATIO = 0.75
+# Read-only registers shown with the scale from their INFO (electric lock, suction cup, starting torque time).
+SCALED_REGISTERS = ((0x04, 0x5A), (0x04, 0x5C), (0x04, 0x91))
 
 
 def controller_limits_store(hass: HomeAssistant, entry_id: str) -> Store:
@@ -213,6 +215,8 @@ class NiceBidiDataUpdateCoordinator(
         self._extended_status_cache: NiceBidiStatus | None = None
         # Value format (DMP INFO) of each writable setting, read once from the controller.
         self.setting_info: dict[str, DmpInfo] = {}
+        # INFO of read-only registers whose value needs the controller's scale, keyed "GG/PP".
+        self.register_info: dict[str, DmpInfo] = {}
         self._setting_info_task: asyncio.Task | None = None
         self._setting_info_attempts = 0
         self._extended_status_next_refresh_monotonic = 0.0
@@ -363,6 +367,22 @@ class NiceBidiDataUpdateCoordinator(
                 break
             if info is not None:
                 self.setting_info[setting.key] = info
+        for group, parameter in SCALED_REGISTERS:
+            if f"{group:02X}/{parameter:02X}" in self.register_info:
+                continue
+            try:
+                info = await self.hass.async_add_executor_job(
+                    partial(self.client.read_dmp_info, group, parameter, preemptible=True)
+                )
+            except NiceReadPreemptedError:
+                _LOGGER.debug("Nice register INFO read yielded to a command; resuming later")
+                self._setting_info_task = None
+                return
+            except Exception as err:  # noqa: BLE001 - optional metadata
+                _LOGGER.debug("Nice register INFO not available: %r", err)
+                return
+            if info is not None:
+                self.register_info[f"{group:02X}/{parameter:02X}"] = info
         _LOGGER.debug("Nice setting INFO read for %d settings", len(self.setting_info))
         self._setting_info_attempts += 1
         if (

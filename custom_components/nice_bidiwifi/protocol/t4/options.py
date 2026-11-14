@@ -82,8 +82,9 @@ INPUT_FUNCTIONS = {
     0x30: "testing_step_by_step",
 }
 
-# 04/61 step-by-step mode (ListCommand wire values 1-7).
-STEP_STEP_MODES = {
+# 04/61-04/6C, 04/78, 04/79 command modes (ListCommand wire values; T4Value_init table @0x7ee4).
+COMMAND_MODES = {
+    0: "none",
     1: "open_stop_close_stop",
     2: "open_stop_close_open",
     3: "open_close_open_close",
@@ -91,7 +92,30 @@ STEP_STEP_MODES = {
     5: "condominium_2",
     6: "step_step_2",
     7: "hold_to_run",
+    8: "open_semi_automatic_close_hold_to_run",
+    9: "open_stop_open",
+    10: "open_condominium_1",
+    11: "open_condominium_2",
+    12: "open_2",
+    13: "open_hold_to_run",
+    14: "close_stop_close",
+    15: "close_condominium_1",
+    16: "close_condominium_2",
+    17: "close_2",
+    18: "close_hold_to_run",
+    19: "reverse",
+    20: "stop_movement",
+    21: "stop",
+    22: "stop_and_short_reverse",
+    23: "alt",
+    24: "alt_and_short_reverse",
+    25: "alt_and_reverse",
+    26: "intervene_closing_and_opening",
+    27: "intervene_closing",
+    28: "stop_and_reverse_when_closing",
+    29: "condominium_block",
 }
+STEP_STEP_MODES = COMMAND_MODES
 
 # 04/8E standby mode (ListFunctionsMode wire values).
 STANDBY_MODES = {48: "bluebus", 49: "safety_devices", 50: "all"}

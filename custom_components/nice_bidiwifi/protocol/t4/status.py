@@ -19,6 +19,7 @@ from .options import (
     MAINTENANCE_MODES,
     OUTPUT_FUNCTIONS,
     STANDBY_MODES,
+    COMMAND_MODES,
     STEP_STEP_MODES,
     option_name,
 )
@@ -161,6 +162,22 @@ def status_from_dmp_registers(
         pre_flash_close_time=dmp_uint(registers.get("04/99")),
         automation_blocked=dmp_bool(registers.get("04/9A")),
         slowdown=dmp_bool(registers.get("04/A2")),
+        partial_open_mode=option_name(COMMAND_MODES, dmp_uint(registers.get("04/62"))),
+        open_mode=option_name(COMMAND_MODES, dmp_uint(registers.get("04/63"))),
+        close_mode=option_name(COMMAND_MODES, dmp_uint(registers.get("04/64"))),
+        stop_mode=option_name(COMMAND_MODES, dmp_uint(registers.get("04/65"))),
+        photo_closing_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/68"))),
+        photo_opening_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/69"))),
+        photo_3_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/6A"))),
+        alt_opening_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/6B"))),
+        alt_closing_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/6C"))),
+        obstacle_opening_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/78"))),
+        obstacle_closing_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/79"))),
+        electric_lock_time=dmp_uint(registers.get("04/5A")),  # raw, scaled with INFO
+        suction_cup_time=dmp_uint(registers.get("04/5C")),  # raw, scaled with INFO
+        starting_torque_time=dmp_uint(registers.get("04/91")),  # raw, scaled with INFO
+        starting_torque=dmp_bool(registers.get("04/90")),
+        slave_mode=dmp_bool(registers.get("04/98")),
         maintenance_mode=option_name(MAINTENANCE_MODES, dmp_uint(registers.get("04/B0"))),
         last_maneuvers=decode_last_maneuvers(dmp_bytes(registers.get("04/DA"))),
         motor_temperature=_motor_temperature(diagnostic_parameters),

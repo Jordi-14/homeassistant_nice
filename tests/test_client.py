@@ -1541,11 +1541,31 @@ def test_status_from_dmp_registers_decodes_input_functions_of_robusr10() -> None
     assert (status.input_1, status.input_4) == (True, True)
 
 
+def test_status_from_dmp_registers_decodes_command_modes_of_robusr10() -> None:
+    """Test the command modes, raw times and flags read from a ROBUSR10."""
+    status = status_from_dmp_registers(
+        _dmp_registers(
+            r62=b"\x02", r63=b"\x09", r64=b"\x0e", r65=b"\x15", r68=b"\x13", r69=b"\x13",
+            r6A=b"\x14", r6B=b"\x18", r6C=b"\x18", r78=b"\x19", r79=b"\x19",
+            r5A=b"\x14", r5C=b"\x14", r90=b"\x00", r91=b"\x14", r98=b"\x00",
+        )
+    )
+
+    assert status.partial_open_mode == "open_stop_close_open"
+    assert (status.open_mode, status.close_mode, status.stop_mode) == ("open_stop_open", "close_stop_close", "stop")
+    assert (status.photo_closing_reaction, status.photo_opening_reaction) == ("reverse", "reverse")
+    assert status.photo_3_reaction == "stop_movement"
+    assert (status.alt_opening_reaction, status.alt_closing_reaction) == ("alt_and_short_reverse",) * 2
+    assert (status.obstacle_opening_reaction, status.obstacle_closing_reaction) == ("alt_and_reverse",) * 2
+    assert (status.electric_lock_time, status.suction_cup_time, status.starting_torque_time) == (20, 20, 20)
+    assert (status.starting_torque, status.slave_mode) == (False, False)
+
+
 def test_status_from_dmp_registers_names_unknown_option_codes() -> None:
     """Test an option code missing from the app enums stays visible."""
-    status = status_from_dmp_registers(_dmp_registers(r61=b"\x08"))
+    status = status_from_dmp_registers(_dmp_registers(r61=b"\x40"))
 
-    assert status.step_step_mode == "code_8"
+    assert status.step_step_mode == "code_64"
     assert status.output_1_function is None
 
 

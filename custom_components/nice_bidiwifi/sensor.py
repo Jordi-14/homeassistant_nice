@@ -34,6 +34,7 @@ from .entities.factory import (
     build_described_entities,
 )
 from .entity import NiceCoordinatorEntity
+from .protocol.t4.info import scaled_value
 from .protocol.t4.enums import (
     AUTOMATION_STATUS_DIAGNOSTICS,
     AUTOMATION_STATUS_OBSTACLE_CODES,
@@ -78,6 +79,13 @@ def _bluebus_fault_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | No
 def _status_field(name: str, coordinator: NiceBidiDataUpdateCoordinator) -> Any:
     status = _status(coordinator)
     return getattr(status, name) if status else None
+
+
+def _scaled_field(
+    name: str, register: str, coordinator: NiceBidiDataUpdateCoordinator
+) -> float | int | None:
+    """Return a raw setting scaled with its INFO (None until the controller's INFO is known)."""
+    return scaled_value(_status_field(name, coordinator), coordinator.register_info.get(register))
 
 
 def _controller_error_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
@@ -590,6 +598,138 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:import",
         value_fn=partial(_status_field, "input_4_function"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="partial_open_mode",
+        name="Partial open command mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "partial_open_mode"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="open_mode",
+        name="Open command mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "open_mode"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="close_mode",
+        name="Close command mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "close_mode"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="stop_mode",
+        name="Stop command mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "stop_mode"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="photo_closing_reaction",
+        name="Photo reaction while closing",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "photo_closing_reaction"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="photo_opening_reaction",
+        name="Photo reaction while opening",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "photo_opening_reaction"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="photo_3_reaction",
+        name="Photo 3 reaction",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "photo_3_reaction"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="alt_opening_reaction",
+        name="Alt reaction while opening",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "alt_opening_reaction"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="alt_closing_reaction",
+        name="Alt reaction while closing",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "alt_closing_reaction"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="obstacle_opening_reaction",
+        name="Obstacle reaction while opening",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "obstacle_opening_reaction"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="obstacle_closing_reaction",
+        name="Obstacle reaction while closing",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "obstacle_closing_reaction"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="electric_lock_time",
+        name="Electric lock time",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:timer-outline",
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=partial(_scaled_field, "electric_lock_time", "04/5A"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="suction_cup_time",
+        name="Suction cup time",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:timer-outline",
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=partial(_scaled_field, "suction_cup_time", "04/5C"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="starting_torque_time",
+        name="Starting torque time",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:timer-outline",
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=partial(_scaled_field, "starting_torque_time", "04/91"),
     ),
     NiceBidiSensorEntityDescription(
         key="maintenance_threshold",

@@ -98,6 +98,17 @@ async def test_setting_info_yields_to_a_command_and_resumes(hass: HomeAssistant)
     second = client.dmp_info_reads[len(first):]
     done_before = {(g, p) for g, p, _ in first[:-1]}
     assert not done_before & {(g, p) for g, p, _ in second if (g, p) in client.dmp_info}
+async def test_register_info_is_read_for_scaled_registers(hass: HomeAssistant) -> None:
+    """Test the INFO of the scaled time registers is stored by register."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    info = decode_dmp_info(bytes.fromhex("01001111016401000a"))
+    client.dmp_info = {(0x04, 0x5A): info, (0x04, 0x91): info}
+    instance.client = client
+
+    await instance._async_load_setting_info()
+
+    assert instance.register_info == {"04/5A": info, "04/91": info}
 
 
 async def test_setting_info_failure_keeps_static_limits(hass: HomeAssistant) -> None:

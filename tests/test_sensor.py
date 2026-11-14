@@ -379,3 +379,16 @@ def test_last_maneuvers_sensor_is_unknown_when_log_is_stale() -> None:
     coordinator.data = replace(make_status(), last_maneuvers_stale=False)
     assert sensor.native_value == 0
     assert "stale" not in sensor.extra_state_attributes
+
+
+def test_scaled_time_sensor_uses_controller_info() -> None:
+    """Test 04/5A raw 20 with INFO divide/scale 10 (ROBUSR10) shows 2.0 s, and nothing without INFO."""
+    from custom_components.nice_bidiwifi.protocol.t4.info import decode_dmp_info
+
+    coordinator = FakeCoordinator()
+    coordinator.data = replace(make_status(), electric_lock_time=20)
+    entity = NiceBidiSensor(coordinator, config_entry(), _description("electric_lock_time"))
+
+    assert entity.native_value is None
+    coordinator.register_info = {"04/5A": decode_dmp_info(bytes.fromhex("010011110164 01000a".replace(" ", "")))}
+    assert entity.native_value == 2.0
