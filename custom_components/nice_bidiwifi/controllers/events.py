@@ -198,7 +198,7 @@ class NiceEventController(OwnerBoundController):
                 # on ROBUSR10 a photocell reversal also reports cause none, so
                 # a photocell set to "stop" would fire here
                 event.t4_cause in {None, "none", "undefined"}
-                or self._open_close_read_as_stop(change_state, event.t4_cause)
+                or self._open_close_read_as_stop(change_state, event.t4_cause, now)
             )
         ):
             reason = "unexpected_stop"
@@ -207,7 +207,7 @@ class NiceEventController(OwnerBoundController):
             and nhk == "stopped"
             and self._nhk_move is not None
             and now - self._nhk_move[0] < COMMAND_MOVE_WINDOW_SECONDS
-            and self.last_command != "stop"
+            and self._recent_command(now) != "stop"
         ):
             # shortcut: a remote stop in the first 5 s of a move is reported too
             reason = "unexpected_stop"
@@ -234,16 +234,18 @@ class NiceEventController(OwnerBoundController):
             self._nhk_move = None
         return event
 
-    def _open_close_read_as_stop(self, change_state: str, cause: str | None) -> bool:
-        """Return true when the controller stopped on an open or close command.
+    def _open_close_read_as_stop(
+        self, change_state: str, cause: str | None, now: float
+    ) -> bool:
+        """Return true when the controller stopped on a recent open or close command.
 
         On hardware an HA close sent to an open, idle gate came back as
-        stopped_for_command_arrival with cause oview and no motion.
+        stopped_for_command_arrival with cause oview and no motion (2.5 s later).
         """
         return (
             change_state == "stopped_for_command_arrival"
             and cause == "oview"
-            and self.last_command in {"open", "close"}
+            and self._recent_command(now) in {"open", "close"}
             and self.data is not None
             and not self.data.is_moving
         )
@@ -255,6 +257,10 @@ class NiceEventController(OwnerBoundController):
         if started is None or now - started >= RECENT_COMMAND_SECONDS:
             return None
         return now - started
+
+    def _recent_command(self, now: float) -> str | None:
+        """Return the last HA command only while it is recent enough to explain an event."""
+        return self.last_command if self._command_age(now) is not None else None
 
     # LOCAL-DIAGNOSTIC(pr55): abnormal-stop bus event data.
     def _fire_abnormal_stop(self, event: NiceEvent, reason: str, now: float) -> None:

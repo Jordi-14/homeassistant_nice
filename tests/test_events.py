@@ -1016,10 +1016,46 @@ async def test_nhk_stop_soon_after_start_without_04_02(hass, monkeypatch) -> Non
     controller = coordinator.event_controller
     for command in ("stop", "close"):
         coordinator.last_command = command
+        coordinator.last_command_monotonic = clock.now
         controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
         clock.now += 2.0
         controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
         clock.now += 10.0
+    await hass.async_block_till_done()
+    assert [e.data["reason"] for e in events] == ["unexpected_stop"]
+    await coordinator.async_shutdown()
+
+
+async def test_old_close_does_not_explain_a_later_oview_stop(hass, monkeypatch) -> None:
+    """A Close from an hour ago must not make a new oview stop (e.g. from the app) abnormal."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=5239, closed_position=0, open_position=5239
+    )
+    coordinator.last_command = "close"
+    coordinator.last_command_monotonic = clock.now
+    clock.now += 3600.0
+    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 88 19 00 00"))
+    await hass.async_block_till_done()
+    assert events == []
+    await coordinator.async_shutdown()
+
+
+async def test_old_stop_does_not_hide_a_short_nhk_stop(hass, monkeypatch) -> None:
+    """A Stop from an hour ago must not suppress the short NHK stop alert."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=3018, closed_position=0, open_position=3018
+    )
+    controller = coordinator.event_controller
+    coordinator.last_command = "stop"
+    coordinator.last_command_monotonic = clock.now
+    clock.now += 3600.0
+    controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
+    clock.now += 2.0
+    controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
     await hass.async_block_till_done()
     assert [e.data["reason"] for e in events] == ["unexpected_stop"]
     await coordinator.async_shutdown()
