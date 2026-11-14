@@ -95,6 +95,10 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("sensor", "step_step_mode", False),
     _entity("sensor", "standby_mode", False),
     _entity("sensor", "maintenance_mode", False),
+    _entity("sensor", "input_1_function", False),
+    _entity("sensor", "input_2_function", False),
+    _entity("sensor", "input_3_function", False),
+    _entity("sensor", "input_4_function", False),
     _entity("sensor", "maintenance_threshold"),
     _entity("sensor", "maintenance_count"),
     _entity("sensor", "total_maneuver_count"),
@@ -135,4 +139,4 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("binary_sensor", "oxi_detected"),
 )
 
-assert len(PROTECTED_ENTITY_CATALOG) == 107
+assert len(PROTECTED_ENTITY_CATALOG) == 111

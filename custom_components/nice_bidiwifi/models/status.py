@@ -71,6 +71,10 @@ class NiceStatus:
     automation_blocked: bool | None = None
     slowdown: bool | None = None
     maintenance_mode: str | None = None
+    input_1_function: str | None = None
+    input_2_function: str | None = None
+    input_3_function: str | None = None
+    input_4_function: str | None = None
     last_maneuvers: tuple[str, ...] | None = None
     # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log flag; see coordinator.py:_cache_extended_status.
     last_maneuvers_stale: bool | None = None
