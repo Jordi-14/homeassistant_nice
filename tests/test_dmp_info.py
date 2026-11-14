@@ -11,6 +11,7 @@ from custom_components.nice_bidiwifi.protocol.t4.info import (
     DmpInfo,
     decode_dmp_info,
     decode_version_entry,
+    is_array_setting,
     scaled_value,
 )
 
@@ -57,6 +58,14 @@ def test_decode_dmp_info_rejects_a_truncated_option_list() -> None:
 def test_decode_version_entry(hex_value, expected) -> None:
     """Test 04/03 elements: index byte, then zero-terminated ASCII."""
     assert decode_version_entry(bytes.fromhex(hex_value)) == expected
+
+
+def test_is_array_setting() -> None:
+    """Array only with the index flag and more than one element."""
+    assert is_array_setting(decode_dmp_info(bytes.fromhex("01000a8102010801")))
+    assert not is_array_setting(decode_dmp_info(bytes.fromhex("01000a01006401")))
+    assert not is_array_setting(decode_dmp_info(bytes.fromhex("0903078101")))
+    assert not is_array_setting(None)
 
 
 def test_decode_dmp_info_rejects_short_data() -> None:

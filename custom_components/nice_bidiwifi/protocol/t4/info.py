@@ -87,3 +87,12 @@ def decode_version_entry(value: bytes | None) -> str | None:
         return None
     text = value[1:].split(b"\x00", 1)[0].decode("ascii", errors="ignore").strip()
     return text or None
+
+
+def is_array_setting(info: DmpInfo | None) -> bool:
+    """Return true when INFO marks the value as an array (e.g. one element per motor).
+
+    MyNice Pro reads and writes such values element by element with an index
+    (RxJavaT4Manager.getValue: indexes 0 .. array_size - 1); a plain one-value write is not valid for them.
+    """
+    return bool(info and info.flags & 0x80 and (info.array_size or 0) > 1)
