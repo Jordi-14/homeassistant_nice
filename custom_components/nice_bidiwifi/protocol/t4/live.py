@@ -162,8 +162,8 @@ def parse_cuwifi_live_status_payload(plain: bytes) -> CuwifiLiveStatus | None:
             payload_hex=payload_hex,
             payload_kind="04/40",
             event_class=LOG_REPLY_STATUS[EVENT_CLASS_STATUS[0x40]],
-            raw_position=position_value if position is not None else None,
-            position_scale=position_scale if position is not None else None,
+            raw_position=position_value if position is not None or position_scale is not None else None,
+            position_scale=position_scale,
         )
 
     if message[1] == 0x02:
