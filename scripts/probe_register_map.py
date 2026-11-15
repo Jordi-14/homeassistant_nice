@@ -61,15 +61,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def is_read_frame(frame: bytes) -> bool:
+    """Return true only for a DMP request (50 91 08) whose flags byte is INFO or GET, never SET (0xA9)."""
+    return len(frame) > 11 and frame[0] == 0x55 and frame[4:7] == b"\x50\x91\x08" and frame[11] in (INFO, GET)
+
+
 def _read(client: Any, target: tuple[int, int], group: int, parameter: int, flags: int) -> dict[str, Any]:
     """Send one DMP read and return the status and data of the matching reply."""
     expected = 0x09 if flags == INFO else 0x19
-    _, plains = client._t4_request_locked(
-        "DMP",
-        build_dmp_read_frame(*target, group, parameter, flags=flags),
-        *target,
-        client.t4_timeout_ms,
-    )
+    frame = build_dmp_read_frame(*target, group, parameter, flags=flags)
+    if not is_read_frame(frame):
+        raise SystemExit(f"refusing to send a frame that is not a DMP read: {frame.hex(' ')}")
+    _, plains = client._t4_request_locked("DMP", frame, *target, client.t4_timeout_ms)
     for plain in plains:
         reply = decode_dmp_response(plain)
         if (reply.group, reply.parameter, reply.operation) == (group, parameter, expected):
