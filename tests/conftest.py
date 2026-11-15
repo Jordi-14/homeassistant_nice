@@ -34,6 +34,7 @@ from custom_components.nice_bidiwifi.models.administration import (
     NiceInterfaceClock,
     NiceLogSnapshot,
 )
+from custom_components.nice_bidiwifi.models.profiles import DMP_INFO_REQUIRED_WRITES
 from custom_components.nice_bidiwifi.protocol.t4.info import is_array_setting
 from custom_components.nice_bidiwifi.protocol.t4.settings import DmpSetting
 from custom_components.nice_bidiwifi.write_policy import dmp_write_block_reason
@@ -621,6 +622,11 @@ class FakeCoordinator:
     ) -> str | None:
         """Return the production device and array block reasons (INFO is never pending here)."""
         reason = dmp_write_block_reason(self.device_info, setting.group, setting.parameter)
-        if reason is None and is_array_setting(self.setting_info.get(setting.key)):
+        info = self.setting_info.get(setting.key)
+        if reason is None and is_array_setting(info):
             return "per-motor array on this controller; writing it is not supported yet"
+        if reason is None and info is None:
+            reason = dmp_write_block_reason(
+                self.device_info, setting.group, setting.parameter, DMP_INFO_REQUIRED_WRITES
+            )
         return reason

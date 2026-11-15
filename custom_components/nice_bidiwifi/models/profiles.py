@@ -70,6 +70,22 @@ DMP_WRITE_RESTRICTIONS = (
     ),
 )
 
+# Writes allowed only once controller INFO says the value is not a per-motor array.
+DMP_INFO_REQUIRED_WRITES = (
+    DmpWriteRestriction(
+        key="mc824h_hyke_forces",
+        identity_alternatives=(
+            frozenset({"mc824h"}),
+            frozenset({"hyke"}),
+        ),
+        registers=frozenset({(0x04, 0x4A), (0x04, 0x4B)}),
+        reason=(
+            "MC824H / HYKE: forces may be per-motor arrays (#38) and the controller "
+            "INFO for this setting is missing or invalid"
+        ),
+    ),
+)
+
 
 def profile_for_family(family: ProductFamily) -> NiceDeviceProfile:
     """Return the validated profile for a normalized product family."""
