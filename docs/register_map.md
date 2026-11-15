@@ -14,26 +14,29 @@ integration reads registers with DMP requests through the BiDi-WiFi interface:
 | --- | --- | --- | --- |
 | GET | `0x99` | `0x19` | the current value |
 | INFO | `0x89` | `0x09` | the value format: size, range or allowed values |
-| SET | — | — | writes a value (only the `setting` entities do this) |
+| SET | `0xA9` | — | writes a value (only the `setting` entities do this) |
 
 Addresses: the control unit is `00.03`; an OXI radio receiver is `00.0A`.
 
-Reply status byte (`0x00` = OK):
+Reply status byte (`0x00` = OK). The integration treats every other status as
+"no value"; the table is for reading probe results.
 
-| Status | Meaning |
-| --- | --- |
-| `F0` | the register has no INFO |
-| `F1` | GET is not allowed (for example a command-only register) |
-| `F9` | the request needs a parameter (data bytes) |
-| `FD` | the controller does not support this register |
+| Status | Meaning | Seen on ROBUSR10 FG01h |
+| --- | --- | --- |
+| `F0` | the register has no INFO | INFO of 04/01, 04/DA, STD group 00 |
+| `F1` | GET is not allowed | GET of 04/08 |
+| `F9` | the request needs a parameter (data bytes) | GET of 0A/25 on the OXI without a position |
+| `FD` | the controller does not support this register | 147 of the 237 group 04 parameters |
 
 INFO layout (MyNice Pro `decompileInfo`): byte 0 = value size (bits 0-6) and
 little-endian flag (bit 7), byte 1 = data format, byte 2 = function, byte 3 =
 flags. Flag bit 7 adds an array size of `flags & 3` bytes. Flag bit 6 = a list
 follows (a count, then the entries); with bit 5 the list holds the allowed option
-codes, without it one value per field. Without bit 6: min, max, step and an
-optional 2-byte scale. Flag bit 4 = divide by the scale, bit 5 (without bit 6) =
-multiply by it. See `protocol/t4/info.py`.
+codes (1 byte each), without it one value of `size` bytes per field (04/D1,
+04/D2). Without bit 6: min, max, step (`size` bytes each, in the byte order of
+byte 0) and an optional 2-byte scale (always big-endian). Without bit 6, flag
+bit 4 = divide by the scale, else bit 5 = multiply by it. See
+`protocol/t4/info.py`.
 
 Columns:
 
@@ -41,7 +44,11 @@ Columns:
 - **Confirmed on**: the controller model on which someone saw this on a real
   gate. A meaning with neither is marked *guess*.
 - **Read**: *poll* = every status poll; *extended* = the extended scan (about
-  every 5 minutes); *start-up* = once per session; *not read* = documented only.
+  every 5 minutes); *start-up* = once per session (retried up to 3 times after a
+  failure); *live* = pushed by the controller, not requested; *not read* =
+  documented only.
+- **(value)** after a model: the value was read on that model, but its effect on
+  the gate was not tested.
 
 ### Models that confirmed data
 
@@ -70,21 +77,25 @@ values of the same format.
 
 ### STD group 00 — controller identity (address 00.03)
 
-The integration does **not** read these over DMP: the same values come from the
-BiDi-WiFi INFO reply and fill the Home Assistant device page (see *Device
-information* in entity_reference.md). They are listed so the DMP values can be
-compared.
+At address 00.03 the integration does **not** read these over DMP: the same
+values come from the BiDi-WiFi INFO reply. They fill the Home Assistant device
+page (manufacturer, model, model ID, firmware, hardware; see *Device information*
+in [entity_reference.md](../entity_reference.md), #69) and the `control_unit_*`
+sensors. They are listed so the DMP values can be compared. At the OXI receiver
+the integration does read the same group over DMP (see group E).
 
-| Register | Name (app) | Example | App code | Confirmed on |
+| Register | App name | Example | App code | Confirmed on |
 | --- | --- | --- | --- | --- |
-| 00/08 | STD manufacturer | `NICE` | ✓ | ROBUSR10 FG01h |
-| 00/09 | STD_PRODUCT | `ROBUSR10` (device model ID) | ✓ | ROBUSR10 FG01h |
-| 00/0A | STD_HARDWARE_VERSION | `604ar00` | ✓ | ROBUSR10 FG01h |
-| 00/0B | STD_FIRMWARE_VERSION | `FG01h` | ✓ | ROBUSR10 FG01h |
-| 00/0C | STD description | `NewRobus` (device model) | ✓ | ROBUSR10 FG01h |
-| 00/20 | STD product detail | serial-like text, not shown | ✓ | ROBUSR10 FG01h |
+| 00/04 | `STD_PROFILE` | `04` | ✓ | ROBUSR10 FG01h |
+| 00/08 | (manufacturer) | `NICE` | — | ROBUSR10 FG01h |
+| 00/09 | `STD_PRODUCT` | `ROBUSR10` (device model ID) | ✓ | ROBUSR10 FG01h |
+| 00/0A | `STD_HARDWARE_VERSION` | `604ar00` | ✓ | ROBUSR10 FG01h |
+| 00/0B | `STD_FIRMWARE_VERSION` | `FG01h` | ✓ | ROBUSR10 FG01h |
+| 00/0C | `STD_RADIO_DESCRIPTION` | `NewRobus` (device model) | ✓ | ROBUSR10 FG01h |
+| 00/20 | (product detail) | serial-like text, not shown; sensor `control_unit_product_detail` | — | ROBUSR10 FG01h |
 
-All of them answer `F0` to INFO (no INFO).
+Names in brackets are descriptions; the app constant was not checked. 00/08,
+00/09-00/0C and 00/20 answer `F0` to INFO (no INFO).
 
 ### 04/00 — Automation type
 
@@ -106,11 +117,13 @@ The app maps the value with `ListDevice.valueOf`.
 
 | Access | Size | INFO | Read | Entity |
 | --- | --- | --- | --- | --- |
-| GET with index | 9 per element | `09 03 07 81 03`: 9-byte elements, array of 3 | start-up | `controller_configuration` |
+| GET with index | 9 per element | `09 03 07 81 03`: 9-byte elements, array size 3 | start-up | `controller_configuration` |
 
-The value is an array. Element *i* is read with index *i + 1*, like MyNice Pro.
-Each reply is the index byte followed by ASCII text, padded with `00`. The
-integration joins the texts with `, ` and stops at the first missing element.
+Like MyNice Pro, the integration reads INFO array size − 1 elements, with the
+indices 1 to array size − 1 (here 2 elements, indices 1 and 2), at most 16. Each
+reply is the index byte followed by ASCII text, padded with `00`. The texts are
+joined with `, `. If one element is missing, nothing is stored and the read is
+tried again later.
 
 | Index | Example (ROBUSR10) | Meaning | App code | Confirmed on |
 | --- | --- | --- | --- | --- |
@@ -132,7 +145,7 @@ A reply whose index byte does not match the request is ignored (#61).
 | --- | --- | --- | --- |
 | 0 | state, `EVT_CHANGE_STATE` table in `protocol/t4/enums.py`: `01` stopped, `02` opening, `03` closing, `04` open, `05` closed, `07` stopped in pause time, `10`-`12` stopped in partial 1-3 | ✓ | ROBUSR10 FG01h (`01`-`05`) |
 | 1 | `ff` in every read | — | ROBUSR10 FG01h; meaning unknown |
-| 2 | `00`; `02` or `03` seen in some reads after a photocell reversal | — | ROBUSR10 FG01h; meaning unknown |
+| 2 | `00`; `02` or `03` in some reads, also in normal cycles | — | ROBUSR10 FG01h; meaning unknown |
 | 3 | `00` in every read | — | ROBUSR10 FG01h; meaning unknown |
 
 Example: `04 ff 00 00` = open.
@@ -143,6 +156,9 @@ Example: `04 ff 00 00` = open.
 | --- | --- | --- | --- | --- |
 | live event and controller history (`T4_LOGS`); GET answers `FD` | ≥ 2 | `FD` | live | `protocol_event`, `last_state_change_cause` |
 
+The event class `04/02` is not the DMP parameter with the same number: in the app
+map, DMP 04/02 is `CTRL_AUTOMATION_SLAVE_STATUS` (see group G).
+
 | Byte | Meaning | App code | Confirmed on |
 | --- | --- | --- | --- |
 | 0 | new state, same table as 04/01 byte 0 plus events such as `83` opening from command, `88` stopped for command arrival, `91` force limiter intervention | ✓ | ROBUSR10 FG01h (`05`, `83`, `88`, `91`) |
@@ -152,8 +168,11 @@ Seen on the ROBUSR10:
 
 - A photocell reversal gives `83 00` (opening from command, cause *none*), not
   a photocell cause. A remote-control reversal gives no 04/02 at all.
-- Cause `19` (*oview*) came with stops that Home Assistant did not send, so it
-  does not mean "stopped by Home Assistant".
+- Cause `19` (*oview*) comes with commands that arrive through the interface,
+  for example every close sent from Home Assistant (`84 19`). It shows that a
+  command arrived, not who sent it: on 2026-11-14 a stop with cause `19` came
+  although Home Assistant sent no stop (#57). Stops that no command caused had
+  cause `00` (*none*).
 - When the leaf hit an obstacle: `91 00` (force limiter), then `83 00`.
 
 ### Encoder positions
@@ -167,35 +186,44 @@ All are 2-byte big-endian unsigned values. INFO on the ROBUSR10:
 | --- | --- | --- | --- | --- | --- | --- |
 | 04/10 | transformation ratio | extended | `transformation_ratio` | `03 e8` = 1000 | ✓ | ROBUSR10 FG01h (value) |
 | 04/11 | current position | poll | `cover` position, `current_encoder_position` | `14 73` = 5235 when open | ✓ | ROBUSR10 FG01h |
-| 04/12 | maximum open position | extended | `max_open_position` | `14 73` = 5235 | ✓ | ROBUSR10 FG01h |
+| 04/12 | maximum open position | extended | `max_open_encoder_position` | `14 73` = 5235 | ✓ | ROBUSR10 FG01h (value) |
 | 04/13 | minimum closing position | extended | `min_closing_position` | `00 00` | ✓ | ROBUSR10 FG01h (value) |
-| 04/18 | open position (end of travel) | poll | position scale | `14 73` = 5235 | ✓ | ROBUSR10 FG01h |
-| 04/19 | closed position (end of travel) | poll | position scale | `00 00` | ✓ | ROBUSR10 FG01h |
-| 04/21 | partial open 1 position | extended | `partial_open_1_position` | `03 e8` = 1000 | ✓ | ROBUSR10 FG01h |
-| 04/22 | partial open 2 position | extended | `partial_open_2_position` | `0b b8` = 3000 | ✓ | ROBUSR10 FG01h |
-| 04/23 | partial open 3 position | extended | `partial_open_3_position` | `0f a0` = 4000 | ✓ | ROBUSR10 FG01h |
+| 04/18 | open position (end of travel) | poll | position scale, `open_encoder_position` | `14 73` = 5235 | ✓ | ROBUSR10 FG01h |
+| 04/19 | closed position (end of travel) | poll | position scale, `closed_encoder_position` | `00 00` | ✓ | ROBUSR10 FG01h |
+| 04/21 | partial open 1 position | extended | `partial_open_{n}_position`, W `bus_t4_partial_open_{n}_position` | `03 e8` = 1000 | ✓ | ROBUSR10 FG01h (value) |
+| 04/22 | partial open 2 position | extended | `partial_open_{n}_position`, W `bus_t4_partial_open_{n}_position` | `0b b8` = 3000 | ✓ | ROBUSR10 FG01h (value) |
+| 04/23 | partial open 3 position | extended | `partial_open_{n}_position`, W `bus_t4_partial_open_{n}_position` | `0f a0` = 4000 | ✓ | ROBUSR10 FG01h (value) |
 | 04/24 | opening slowdown position | extended | `opening_slowdown_position` | `01 f4` = 500 | ✓ | ROBUSR10 FG01h (value) |
 | 04/25 | closing slowdown position | extended | `closing_slowdown_position` | `01 f4` = 500 | ✓ | ROBUSR10 FG01h (value) |
 
 The position in percent is `(04/11 − 04/19) / (04/18 − 04/19) × 100`. On the
-ROBUSR10 the open position moved by about ±100 counts between cycles (for
-example 5224, 5235, 5239).
+ROBUSR10, 04/18 was between 5024 and 5271 in different sessions. During the
+position-loss fault of 2026-11-14 it also read 39, 66 and 3018 (#57).
 
-"(value)" means the value was read, but its effect on the gate was not tested.
+On the ROBUSR10 the slowdown was seen about 1100 counts before each end, while
+04/24 and 04/25 read 500; how the controller uses these values is not known.
 
 ### 04/40 — Live position
 
 | Access | Size | INFO | Read | Entity |
 | --- | --- | --- | --- | --- |
-| live event only; GET answers `FD` | 2 or more | `FD` | live | `cover` position between polls |
+| live event only; GET answers `FD` | ≥ 3 | `FD` | live | `cover` position between polls |
 
-The value format depends on the controller:
+As with 04/02, the live event class is not the DMP parameter: DMP 04/40 is
+`CTRL_STR_SPEED_MANAGEMENT` in the app map and answers `FD` on the ROBUSR10.
 
-| Format | Confirmed on |
-| --- | --- |
-| raw encoder count; the integration divides by the open position (04/18) | ROBUSR10 FG01h (#56: 135 of 135 events within ±2 %) |
-| raw scalar `0..7000` | RBA4R10 (#14) |
-| percent | controllers behind a CU_WIFI interface |
+| Byte | Meaning | Confirmed on |
+| --- | --- | --- |
+| 0 | state, same table as 04/01 byte 0 | ROBUSR10 FG01h (`02` opening, `03` closing) |
+| 1-2 | position, big-endian | ROBUSR10 FG01h |
+
+How the position is read depends on the frame (`protocol/t4/live.py`,
+`position.py`):
+
+| Frame | Conversion | Confirmed on |
+| --- | --- | --- |
+| target `FF.01`, value up to 7000 | raw scalar: `(raw − 04/19) / (04/18 − 04/19) × 100` when the encoder ends are known, a `live_scalar` calibration first, else `raw / 7000` | ROBUSR10 FG01h (#57 run 0: 135 of 135 events within ±2 % of the polled position); RBA4R10 (#14) |
+| other target, value 0-100 | percent, used as it is | *guess*: some CU_WIFI devices, no model named |
 
 See [position_calibration.md](position_calibration.md) for how each format is used.
 
