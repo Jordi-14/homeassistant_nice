@@ -96,7 +96,7 @@ from .models.commands import (
     NiceCommandResult,
 )
 from .models.config import NiceEntryConfig
-from .protocol.t4.info import DmpInfo
+from .protocol.t4.info import DmpInfo, decode_version_entry
 from .protocol.t4.settings import SETTINGS, DmpSetting
 from .protocol.t4.actions import T4_ACTION_BY_KEY
 from .write_policy import dmp_write_block_reason
@@ -104,6 +104,7 @@ from .write_policy import dmp_write_block_reason
 _LOGGER = logging.getLogger(__name__)
 # full INFO loads per session; a controller without some INFO stops asking after this
 SETTING_INFO_ATTEMPTS = 3
+MAX_CONFIGURATION_ENTRIES = 16
 
 EXTENDED_STATUS_REFRESH_SECONDS = 300.0
 
@@ -217,6 +218,8 @@ class NiceBidiDataUpdateCoordinator(
         self.setting_info: dict[str, DmpInfo] = {}
         # INFO of read-only registers whose value needs the controller's scale, keyed "GG/PP".
         self.register_info: dict[str, DmpInfo] = {}
+        # 04/03 elements as the app joins them, e.g. "RBA3R10, RB600" (board, motor), read once.
+        self.controller_configuration: str | None = None
         self._setting_info_task: asyncio.Task | None = None
         self._setting_info_attempts = 0
         self._extended_status_next_refresh_monotonic = 0.0
@@ -339,6 +342,24 @@ class NiceBidiDataUpdateCoordinator(
             )
         return status
 
+    async def _async_read_controller_configuration(self) -> str | None:
+        """Read 04/03 like MyNice Pro: element i has index i + 1, INFO array size minus one elements."""
+        info = await self.hass.async_add_executor_job(
+            partial(self.client.read_dmp_info, 0x04, 0x03, preemptible=True)
+        )
+        if info is None or (info.array_size or 0) < 2:
+            return None
+        entries = []
+        # the app shows a few boards and motors; a bad INFO must not start 255 reads
+        for index in range(1, min(info.array_size, MAX_CONFIGURATION_ENTRIES + 1)):
+            value = await self.hass.async_add_executor_job(
+                partial(self.client.read_dmp_indexed, 0x04, 0x03, index, preemptible=True)
+            )
+            if (text := decode_version_entry(value)) is None:
+                return None  # incomplete: try again later, never store a part
+            entries.append(text)
+        return ", ".join(entries) or None
+
     async def _async_load_setting_info(self) -> None:
         """Read the controller's range or option list of each writable setting once.
 
@@ -369,10 +390,18 @@ class NiceBidiDataUpdateCoordinator(
                 break
             if info is not None:
                 store[key] = info
+        if self.controller_configuration is None:
+            try:
+                self.controller_configuration = await self._async_read_controller_configuration()
+            except NiceReadPreemptedError:
+                self._setting_info_task = None
+                return
+            except Exception as err:  # noqa: BLE001 - optional identity
+                _LOGGER.debug("Nice 04/03 configuration not available: %r", err)
         loaded = len(self.setting_info) + len(self.register_info)
         _LOGGER.debug("Nice INFO read for %d of %d registers", loaded, len(targets))
         self._setting_info_attempts += 1
-        if loaded < len(targets) and self._setting_info_attempts < SETTING_INFO_ATTEMPTS:
+        if (loaded < len(targets) or self.controller_configuration is None) and self._setting_info_attempts < SETTING_INFO_ATTEMPTS:
             self._setting_info_task = None
         self.async_update_listeners()
 

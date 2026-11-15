@@ -46,7 +46,9 @@ EXTENDED_CONTROLLER_PROFILE = DmpRegisterProfile(
     key="controller_extended_status",
     target=CONTROLLER_TARGET,
     registers=(
+        (0x04, 0x10),
         (0x04, 0x12),
+        (0x04, 0x13),
         (0x04, 0x21),
         (0x04, 0x22),
         (0x04, 0x23),

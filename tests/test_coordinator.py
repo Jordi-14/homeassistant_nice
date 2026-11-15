@@ -111,6 +111,91 @@ async def test_register_info_is_read_for_scaled_registers(hass: HomeAssistant) -
     assert instance.register_info == {"04/5A": info, "04/91": info}
 
 
+async def test_controller_configuration_read_like_the_app(hass: HomeAssistant) -> None:
+    """04/03 INFO array size 3 -> elements at index 1 and 2, joined (ROBUSR10 replies)."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.dmp_info = {(0x04, 0x03): decode_dmp_info(bytes.fromhex("0903078103"))}
+    values = {1: bytes.fromhex("01524241335231300000"), 2: bytes.fromhex("025242363030000000")}
+    client.read_dmp_indexed = lambda group, parameter, index, preemptible=False: values.get(index)
+    instance.client = client
+
+    await instance._async_load_setting_info()
+
+    assert instance.controller_configuration == "RBA3R10, RB600"
+
+
+async def test_controller_configuration_is_not_stored_in_part(hass: HomeAssistant) -> None:
+    """Review of #61: a missing element leaves the value unknown and the load is tried again."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.dmp_info = {(0x04, 0x03): decode_dmp_info(bytes.fromhex("0903078103"))}
+    values = {1: bytes.fromhex("01524241335231300000")}
+    client.read_dmp_indexed = lambda group, parameter, index, preemptible=False: values.get(index)
+    instance.client = client
+    instance._setting_info_task = object()
+
+    await instance._async_load_setting_info()
+
+    assert instance.controller_configuration is None
+    assert instance._setting_info_task is None
+
+
+async def test_configuration_retry_keeps_loaded_setting_and_time_metadata(hass: HomeAssistant) -> None:
+    """Both metadata consumers survive a missing configuration element after rebasing."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    plain = decode_dmp_info(bytes.fromhex("01000a01006401"))
+    scaled = decode_dmp_info(bytes.fromhex("01001111016401000a"))
+    client.dmp_info = {
+        (setting.group, setting.parameter): plain
+        for setting in coordinator_module.SETTINGS.values()
+    }
+    client.dmp_info.update(dict.fromkeys(coordinator_module.SCALED_REGISTERS, scaled))
+    client.dmp_info[(0x04, 0x03)] = decode_dmp_info(bytes.fromhex("0903078103"))
+    values = {1: b"\x01RBA3R10"}
+    client.read_dmp_indexed = lambda group, parameter, index, preemptible=False: values.get(index)
+    instance.client = client
+    instance._setting_info_task = object()
+
+    await instance._async_load_setting_info()
+
+    assert len(instance.setting_info) == len(coordinator_module.SETTINGS)
+    assert instance.register_info == {"04/5A": scaled, "04/5C": scaled, "04/91": scaled}
+    assert instance.controller_configuration is None
+    assert instance._setting_info_task is None
+    first_reads = len(client.dmp_info_reads)
+    values[2] = b"\x02RB600"
+    completed_task = object()
+    instance._setting_info_task = completed_task
+
+    await instance._async_load_setting_info()
+
+    assert instance.controller_configuration == "RBA3R10, RB600"
+    assert client.dmp_info_reads[first_reads:] == [(0x04, 0x03, True)]
+    assert len(instance.register_info) == 3
+    assert instance._setting_info_task is completed_task
+
+
+async def test_controller_configuration_count_is_capped(hass: HomeAssistant) -> None:
+    """Review of #61: a bad INFO array size must not start hundreds of reads."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.dmp_info = {(0x04, 0x03): decode_dmp_info(bytes.fromhex("090307820300"))}
+    reads = []
+
+    def read(group, parameter, index, preemptible=False):
+        reads.append(index)
+        return bytes([index]) + b"X"
+
+    client.read_dmp_indexed = read
+    instance.client = client
+
+    await instance._async_load_setting_info()
+
+    assert reads == list(range(1, coordinator_module.MAX_CONFIGURATION_ENTRIES + 1))
+
+
 async def test_setting_info_failure_keeps_static_limits(hass: HomeAssistant) -> None:
     """Test a route without INFO support leaves the INFO map empty."""
     instance = _coordinator(hass)

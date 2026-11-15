@@ -147,6 +147,8 @@ def status_from_dmp_registers(
         diagnostics_io_byte=io_byte,
         bluebus_devices=decode_bluebus_devices(dmp_bytes(registers.get("04/D0"))),
         controller_errors=decode_controller_errors(diagnostics_io),
+        transformation_ratio=dmp_uint(registers.get("04/10")),
+        min_closing_position=dmp_uint(registers.get("04/13")),
         opening_slowdown_position=dmp_uint(registers.get("04/24")),
         closing_slowdown_position=dmp_uint(registers.get("04/25")),
         opening_slowdown_speed=dmp_uint(registers.get("04/45")),

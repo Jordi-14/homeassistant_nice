@@ -56,6 +56,8 @@ class NiceStatus:
     diagnostics_io_byte: int | None = None
     bluebus_devices: dict[str, str] | None = None
     controller_errors: dict[str, bool] | None = None
+    transformation_ratio: int | None = None
+    min_closing_position: int | None = None
     opening_slowdown_position: int | None = None
     closing_slowdown_position: int | None = None
     opening_slowdown_speed: int | None = None

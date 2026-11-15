@@ -281,6 +281,9 @@ current device profile.
 | Sensor | Electric lock time | `electric_lock_time` | BusT4 `04/5A`, read only, in seconds with the scale from the controller INFO (raw ÷ 10 on a ROBUSR10); unknown without INFO. | Hidden | Disabled | Read-only mirror of a controller setting. |
 | Sensor | Suction cup time | `suction_cup_time` | BusT4 `04/5C`, read only, in seconds with the scale from the controller INFO (raw ÷ 10 on a ROBUSR10); unknown without INFO. | Hidden | Disabled | Read-only mirror of a controller setting. |
 | Sensor | Starting torque time | `starting_torque_time` | BusT4 `04/91`, read only, in seconds with the scale from the controller INFO (raw ÷ 10 on a ROBUSR10); unknown without INFO. | Hidden | Disabled | Read-only mirror of a controller setting. |
+| Sensor | Controller configuration | `controller_configuration` | BusT4 `04/03` elements read once like MyNice Pro (element i at index i + 1, INFO array size − 1 elements) and joined with ", "; e.g. `RBA3R10, RB600` (board, motor) on a ROBUSR10. | Hidden | Disabled | Identifies the controller board and motor. |
+| Sensor | Transformation ratio | `transformation_ratio` | BusT4 `04/10`, read only. | Hidden | Disabled | Read-only controller parameter. |
+| Sensor | Minimum closing encoder position | `min_closing_position` | BusT4 `04/13`, read only. | Hidden | Disabled | Read-only controller parameter. |
 | Binary sensor | Automation blocked | `automation_blocked` | BusT4 `04/9A` (block automatism), read only. | Hidden | Disabled | Shows when the controller is blocked. |
 | Binary sensor | Slowdown enabled | `slowdown` | BusT4 `04/A2` (decelerations), read only. | Hidden | Disabled | Read-only mirror of a controller setting. |
 | Binary sensor | Starting torque | `starting_torque` | BusT4 `04/90`, read only. | Hidden | Disabled | Read-only mirror of a controller setting. |
