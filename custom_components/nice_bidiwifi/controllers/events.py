@@ -70,6 +70,8 @@ class NiceEventController(OwnerBoundController):
         self.event_history: deque[NiceEvent] = deque(maxlen=EVENT_HISTORY_LIMIT)
         self.latest_event: NiceEvent | None = None
         self.event_sequence = 0
+        self.live_state_sequence = 0
+        self.live_position_sequence = 0
         self.protocol_event_count = 0
         self.malformed_protocol_event_count = 0
         self.last_event_at: datetime | None = None
@@ -122,6 +124,36 @@ class NiceEventController(OwnerBoundController):
         if self._obstruction_state is not None:
             return replace(status, obstacle=self._obstruction_state)
         return status
+
+    def preserve_newer_live_status(
+        self, status: NiceStatus, state_sequence: int, position_sequence: int
+    ) -> NiceStatus:
+        """Keep fields updated live while a status poll was in flight."""
+        latest = self.data
+        if latest is None:
+            return status
+        updates = {}
+        registers = dict(status.registers)
+
+        def copy_registers(keys: tuple[str, ...]) -> None:
+            for key in keys:
+                registers.pop(key, None)
+                if key in latest.registers:
+                    registers[key] = latest.registers[key]
+
+        if self.live_state_sequence != state_sequence:
+            updates["state"] = latest.state
+            copy_registers(("NHK/DoorStatus", "NHK/T4Status", "NHK/T4PayloadKind", "NHK/T4StatusIgnored"))
+            registers["NHK/PollStateIgnored"] = "newer_live_update"
+        if self.live_position_sequence != position_sequence:
+            updates["position"] = latest.position
+            updates["current_position"] = latest.current_position
+            copy_registers((
+                "NHK/T4InstantPosition", "NHK/T4InstantPositionRaw", "NHK/T4InstantPositionScale",
+                "NHK/T4CalibratedPosition", "NHK/T4EncoderPosition", "NHK/ConfirmedEndpointPosition",
+            ))
+            registers["NHK/PollPositionIgnored"] = "newer_live_update"
+        return replace(status, registers=registers, **updates) if updates else status
 
     # LOCAL-DIAGNOSTIC(pr55): speed check for implausible travel.
     # Built to diagnose one controller fault (ROBUSR10 + BiDi-WiFi 2.6.4, PR #55
@@ -341,6 +373,10 @@ class NiceEventController(OwnerBoundController):
     def _apply_event(self, event: NiceEvent) -> None:
         """Update normalized state and event diagnostics."""
         event = self._normalize_live_position_event(event)
+        if event.state is not None:
+            self.live_state_sequence += 1
+        if event.position is not None:
+            self.live_position_sequence += 1
         # LOCAL-DIAGNOSTIC(pr55): abnormal-stop detection; see controllers/events.py:_check_abnormal_stop.
         event = self._check_abnormal_stop(event)
         if event.obstruction is not None:

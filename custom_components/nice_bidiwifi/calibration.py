@@ -2193,14 +2193,20 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         return abs(float(target) - float(current)) / speed
 
     def _position_simulation_speed(self, action: str) -> float:
-        """Return display animation speed in percent per second."""
+        """Bias extrapolation below calibrated and recent observed speeds."""
+        candidates = []
         observed_speed = self._observed_position_speed_percent_per_second.get(action)
         if observed_speed is not None:
-            return observed_speed
+            candidates.append(observed_speed)
+        recent = self._observed_position_speed_samples.get(action)
+        if recent:
+            candidates.append(min(recent))
         calibrated_speed = self._calibrated_travel_speed_percent_per_second(action)
-        if calibrated_speed is None:
+        if calibrated_speed is not None:
+            candidates.append(calibrated_speed)
+        if not candidates:
             return POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND
-        return calibrated_speed * POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR
+        return min(candidates) * POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR
 
     def _calibrated_travel_speed_percent_per_second(self, action: str) -> float | None:
         """Return measured full-travel speed from calibration, with legacy fallback."""
