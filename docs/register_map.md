@@ -113,8 +113,8 @@ integration joins the texts with `, ` and stops at the first missing element.
 
 | Index | Example (ROBUSR10) | Meaning | App code | Confirmed on |
 | --- | --- | --- | --- | --- |
-| 1 | `01 52 42 41 33 52 31 30 00` = `RBA3R10` | control board | ✓ | ROBUSR10 FG01h |
-| 2 | `RB600` | motor | ✓ | ROBUSR10 FG01h |
+| 1 | `01 52 42 41 33 52 31 30 00` = `RBA3R10` | control board (*guess*) | — | ROBUSR10 FG01h (value) |
+| 2 | `RB600` | motor (*guess*) | — | ROBUSR10 FG01h (value) |
 
-The meaning of each element (board, motor) is a *guess* from the two values.
+The app reads and joins the elements (✓); the meaning of each one is a *guess* from the two values.
 A reply whose index byte does not match the request is ignored (#61).
