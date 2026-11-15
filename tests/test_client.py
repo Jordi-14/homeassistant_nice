@@ -1526,6 +1526,21 @@ def test_status_from_dmp_registers_decodes_settings_probed_on_robusr10() -> None
     assert status.maintenance_mode == "automatic"
 
 
+def test_status_from_dmp_registers_decodes_input_functions_of_robusr10() -> None:
+    """Test the input functions read from a ROBUSR10 (factory: step-by-step, open, close, emergency stop)."""
+    status = status_from_dmp_registers(
+        _dmp_registers(r71=b"\x01", r72=b"\x03", r73=b"\x04", r74=b"\x27")
+    )
+
+    assert (
+        status.input_1_function,
+        status.input_2_function,
+        status.input_3_function,
+        status.input_4_function,
+    ) == ("step_by_step", "open", "close", "emergency_stop")
+    assert (status.input_1, status.input_4) == (True, True)
+
+
 def test_status_from_dmp_registers_names_unknown_option_codes() -> None:
     """Test an option code missing from the app enums stays visible."""
     status = status_from_dmp_registers(_dmp_registers(r61=b"\x08"))

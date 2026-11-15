@@ -30,6 +30,58 @@ OUTPUT_FUNCTIONS = {
     23: "flashing_light_24v",
 }
 
+# 04/71-04/74 input functions: INFO function byte 0xF2 = ListDeviceCommand; wire code -> command through
+# the table in T4Value_init (libnative-lib.so @0xe678, table @0x7e0c, default device profile).
+# This is the input command list, not the EvtMovCommand event list (that one alternates
+# open/close partial 1-3); both orders are from the app.
+INPUT_FUNCTIONS = {
+    0x00: "none",  # RST: no command
+    0x01: "step_by_step",
+    0x02: "stop",
+    0x03: "open",
+    0x04: "close",
+    0x05: "partial_open_1",
+    0x06: "partial_open_2",
+    0x07: "partial_open_3",
+    0x08: "partial_close_1",
+    0x09: "partial_close_2",
+    0x0A: "partial_close_3",
+    0x0B: "step_by_step_condominium",
+    0x0C: "step_by_step_high_priority",
+    0x0D: "open_and_block",
+    0x0E: "close_and_block",
+    0x0F: "block",
+    0x10: "unblock",
+    0x11: "courtesy_light_timer",
+    0x12: "courtesy_light_on_off",
+    0x13: "master_step_by_step",
+    0x14: "master_open",
+    0x15: "master_close",
+    0x16: "slave_step_by_step",
+    0x17: "slave_open",
+    0x18: "slave_close",
+    0x19: "unblock_and_open",
+    0x1A: "unblock_and_close",
+    # ACND_ON/OFF: enable/disable BlueBus photo commands and inputs set as "condominium open"
+    0x1B: "condominium_open_on",
+    0x1C: "condominium_open_off",
+    0x1D: "loop_on",
+    0x1E: "loop_off",
+    0x21: "alt",
+    0x22: "photo_open",
+    0x23: "photo",
+    0x24: "photo_1",
+    0x25: "photo_2",
+    0x26: "photo_3",
+    0x27: "emergency_stop",
+    0x28: "emergency_command",
+    0x29: "interlocking_stop",
+    0x2A: "sba_sensor",
+    0x2B: "emergency_open",
+    0x2C: "emergency_close",
+    0x30: "testing_step_by_step",
+}
+
 # 04/61 step-by-step mode (ListCommand wire values 1-7).
 STEP_STEP_MODES = {
     1: "open_stop_close_stop",

@@ -15,6 +15,7 @@ from .dmp import (
 from .enums import RADIO_RECEIVER_TYPES
 from .maneuvers import decode_last_maneuvers
 from .options import (
+    INPUT_FUNCTIONS,
     MAINTENANCE_MODES,
     OUTPUT_FUNCTIONS,
     STANDBY_MODES,
@@ -127,6 +128,10 @@ def status_from_dmp_registers(
         maintenance_threshold=dmp_uint(registers.get("04/B1")),
         maintenance_count=dmp_uint(registers.get("04/B2")),
         total_maneuver_count=dmp_uint(registers.get("04/B3")),
+        input_1_function=option_name(INPUT_FUNCTIONS, dmp_uint(registers.get("04/71"))),
+        input_2_function=option_name(INPUT_FUNCTIONS, dmp_uint(registers.get("04/72"))),
+        input_3_function=option_name(INPUT_FUNCTIONS, dmp_uint(registers.get("04/73"))),
+        input_4_function=option_name(INPUT_FUNCTIONS, dmp_uint(registers.get("04/74"))),
         input_1=dmp_bool(registers.get("04/71")),
         input_2=dmp_bool(registers.get("04/72")),
         input_3=dmp_bool(registers.get("04/73")),
