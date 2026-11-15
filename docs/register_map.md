@@ -59,6 +59,9 @@ Columns:
 | ARIA200S / CLBOX | — | — | #11 (state only, speed encoding not verified) |
 | MC824H / HYKE | CD08 | BiDi-WiFi SB725A1, firmware 2.6.4 | #38 (open: forces may be per-motor arrays) |
 
+To add a model, run the read-only `scripts/probe_register_map.py` (see
+[probes.md](probes.md#register-map-probe)) and attach its report to an issue.
+
 Values in the examples come from the ROBUSR10 above. Serial numbers, PINs, keys
 and remote codes are never shown; where an example is needed it uses random
 values of the same format.
