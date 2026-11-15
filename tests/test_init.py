@@ -25,6 +25,7 @@ from custom_components.nice_bidiwifi.const import (
     CONFIG_ENTRY_VERSION,
     DOMAIN,
 )
+from custom_components.nice_bidiwifi.entity import bidi_unique_id
 from custom_components.nice_bidiwifi.errors import NiceBidiAuthError
 from custom_components.nice_bidiwifi.models.config import (
     ConnectionMode,
@@ -86,6 +87,32 @@ async def test_setup_entry_loads_coordinator_and_forwards_platforms(
     assert FakeCoordinator.instances[0].loaded is True
     assert FakeCoordinator.instances[0].refreshed is True
     mock_forward.assert_called_once_with(entry, PLATFORMS)
+
+
+async def test_setup_entry_removes_retired_entities(hass: HomeAssistant) -> None:
+    """Photocell and last stop reason are no longer created; drop their registry entries."""
+    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="entry-1")
+    entry.add_to_hass(hass)
+    entity_registry = er.async_get(hass)
+    retired = [
+        entity_registry.async_get_or_create(
+            platform, DOMAIN, bidi_unique_id(entry, suffix), config_entry=entry
+        ).entity_id
+        for platform, suffix in (("binary_sensor", "photocell"), ("sensor", "last_stop_reason"))
+    ]
+    kept = entity_registry.async_get_or_create(
+        "sensor", DOMAIN, bidi_unique_id(entry, "bluebus_devices"), config_entry=entry
+    ).entity_id
+    FakeCoordinator.instances = []
+
+    with (
+        patch.object(nice_init, "NiceBidiDataUpdateCoordinator", FakeCoordinator),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
+    ):
+        assert await async_setup_entry(hass, entry) is True
+
+    assert [entity_registry.async_get(entity_id) for entity_id in retired] == [None, None]
+    assert entity_registry.async_get(kept) is not None
 
 
 async def test_setup_retries_session_rejection_without_reauth(

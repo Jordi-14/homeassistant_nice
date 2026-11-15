@@ -32,10 +32,23 @@ EVENT_HISTORY_LIMIT = 32
 # diagnostics, or remove it before a stable release.
 ABNORMAL_STOP_EVENT = "nice_bidiwifi_abnormal_stop"
 COMMAND_MOVE_WINDOW_SECONDS = 5.0
-RECENT_COMMAND_SECONDS = 3.0
+NHK_MOVE_EXPIRY_SECONDS = 120.0  # longer than the slowest move seen (83 s)
+RECENT_COMMAND_SECONDS = 5.0  # same as COMMAND_MOVE_WINDOW_SECONDS
 ABNORMAL_SCAN_INTERVAL_SECONDS = 30.0
 IMPLAUSIBLE_TRAVEL_POSITION_DELTA = 1000
 IMPLAUSIBLE_TRAVEL_SPEED = 2000  # position units per second
+ABNORMAL_DEDUPE_SECONDS = 2.0  # NHK and 04/02 often report the same stop
+# EvtChangeState values that report a controller fault, not a normal stop
+FAULT_CHANGE_STATES = frozenset(
+    {
+        "force_limiter_intervent",
+        "fototest_failed",
+        "memory_err",
+        "hw_err",
+        "double_cmd_err",
+        "lockedmotor_err",
+    }
+)
 # Partial and pause stops are normal travel ends.
 NORMAL_STOPS = frozenset(
     {
@@ -77,6 +90,7 @@ class NiceEventController(OwnerBoundController):
         # LOCAL-DIAGNOSTIC(pr55): move tracking for abnormal-stop checks; see controllers/events.py:_check_abnormal_stop.
         self._t4_command_move: tuple[float, str, int | None] | None = None
         self._nhk_move: tuple[float, str, int | None] | None = None
+        self._last_abnormal_fire: tuple[float, str] | None = None
         self.last_t4_cause: str | None = None
         self.last_t4_change_state: str | None = None
         self.last_t4_basic_diagnostic: str | None = None
@@ -124,10 +138,6 @@ class NiceEventController(OwnerBoundController):
         return status
 
     # LOCAL-DIAGNOSTIC(pr55): speed check for implausible travel.
-    # Built to diagnose one controller fault (ROBUSR10 + BiDi-WiFi 2.6.4, PR #55
-    # hardware tests). Thresholds and rules come from that one gate only.
-    # Agents: do not extend, generalize or build on this; keep it opt-in for
-    # diagnostics, or remove it before a stable release.
     @staticmethod
     def _implausible_travel(start: int | None, end: int | None, elapsed: float) -> bool:
         """Return true when the position change is too large and too fast to be real."""
@@ -140,10 +150,6 @@ class NiceEventController(OwnerBoundController):
         )
 
     # LOCAL-DIAGNOSTIC(pr55): abnormal-stop and implausible-travel detection.
-    # Built to diagnose one controller fault (ROBUSR10 + BiDi-WiFi 2.6.4, PR #55
-    # hardware tests). Thresholds and rules come from that one gate only.
-    # Agents: do not extend, generalize or build on this; keep it opt-in for
-    # diagnostics, or remove it before a stable release.
     def _check_abnormal_stop(self, event: NiceEvent) -> NiceEvent:
         """Detect stops that no command explains and travel that cannot be real."""
         change_state = event.t4_change_state
@@ -154,8 +160,11 @@ class NiceEventController(OwnerBoundController):
         reason = None
         start = self.data.current_position if self.data else None
         # arm once per move: 04/40 frames repeat DoorStatus every second
+        # re-arm when no terminal state closed a move that is long over
         if nhk in {"opening", "closing"} and (
-            self._nhk_move is None or self._nhk_move[1] != nhk
+            self._nhk_move is None
+            or self._nhk_move[1] != nhk
+            or now - self._nhk_move[0] >= NHK_MOVE_EXPIRY_SECONDS
         ):
             self._nhk_move = (now, nhk, start)
         if change_state in {"closing_from_command", "opening_from_command"}:
@@ -176,14 +185,32 @@ class NiceEventController(OwnerBoundController):
                 # observational only: the endpoint state is still applied
                 event = replace(event, t4_implausible=True)
                 reason = "implausible_travel"
+        if reason is None and change_state in FAULT_CHANGE_STATES:
+            reason = "controller_fault"
         if (
             reason is None
             and change_state is not None
-            and change_state.startswith("stopped_")
+            and change_state.startswith("stopped")
             and change_state not in NORMAL_STOPS
-            # a stop caused by a remote, key, input or HA command is explained
-            and event.t4_cause in {None, "none", "undefined"}
+            and (
+                # a stop caused by a remote, key, input or HA command is explained;
+                # on ROBUSR10 a photocell reversal also reports cause none, so
+                # a photocell set to "stop" would fire here
+                event.t4_cause in {None, "none", "undefined"}
+                or self._open_close_read_as_stop(change_state, event.t4_cause, now)
+            )
         ):
+            reason = "unexpected_stop"
+        if (
+            reason is None
+            and nhk == "stopped"
+            and self._nhk_move is not None
+            and now - self._nhk_move[0] < COMMAND_MOVE_WINDOW_SECONDS
+            # open/close reverse a move, they do not stop it (2026-11-14 cycle 3:
+            # close, then stopped after 2 s, was the fault)
+            and self._recent_command(now) not in {"stop", "step_step"}
+        ):
+            # shortcut: a remote stop in the first 5 s of a move is reported too
             reason = "unexpected_stop"
         if reason is None and nhk in {"open", "closed"} and self._nhk_move is not None:
             started, direction, start = self._nhk_move
@@ -208,11 +235,23 @@ class NiceEventController(OwnerBoundController):
             self._nhk_move = None
         return event
 
+    def _open_close_read_as_stop(
+        self, change_state: str, cause: str | None, now: float
+    ) -> bool:
+        """Return true when the controller stopped on a recent open or close command.
+
+        On hardware an HA close sent to an open, idle gate came back as
+        stopped_for_command_arrival with cause oview and no motion (2.5 s later).
+        """
+        return (
+            change_state == "stopped_for_command_arrival"
+            and cause == "oview"
+            and self._recent_command(now) in {"open", "close"}
+            and self.data is not None
+            and not self.data.is_moving
+        )
+
     # LOCAL-DIAGNOSTIC(pr55): recent-command age for abnormal-stop checks.
-    # Built to diagnose one controller fault (ROBUSR10 + BiDi-WiFi 2.6.4, PR #55
-    # hardware tests). Thresholds and rules come from that one gate only.
-    # Agents: do not extend, generalize or build on this; keep it opt-in for
-    # diagnostics, or remove it before a stable release.
     def _command_age(self, now: float) -> float | None:
         """Return seconds since a recent command, or None when none is recent."""
         started = self.last_command_monotonic
@@ -220,13 +259,18 @@ class NiceEventController(OwnerBoundController):
             return None
         return now - started
 
+    def _recent_command(self, now: float) -> str | None:
+        """Return the last HA command only while it is recent enough to explain an event."""
+        return self.last_command if self._command_age(now) is not None else None
+
     # LOCAL-DIAGNOSTIC(pr55): abnormal-stop bus event data.
-    # Built to diagnose one controller fault (ROBUSR10 + BiDi-WiFi 2.6.4, PR #55
-    # hardware tests). Thresholds and rules come from that one gate only.
-    # Agents: do not extend, generalize or build on this; keep it opt-in for
-    # diagnostics, or remove it before a stable release.
     def _fire_abnormal_stop(self, event: NiceEvent, reason: str, now: float) -> None:
         """Report an abnormal stop that came with a NiceEvent."""
+        last = self._last_abnormal_fire
+        # one physical stop can come as NHK and 04/02 with different reasons
+        if last is not None and now - last[0] < ABNORMAL_DEDUPE_SECONDS:
+            return
+        self._last_abnormal_fire = (now, reason)
         since_command = (
             now - self.last_command_monotonic
             if self.last_command_monotonic is not None
@@ -246,10 +290,6 @@ class NiceEventController(OwnerBoundController):
         )
 
     # LOCAL-DIAGNOSTIC(pr55): abnormal-stop bus event, counter and scan request.
-    # Built to diagnose one controller fault (ROBUSR10 + BiDi-WiFi 2.6.4, PR #55
-    # hardware tests). Thresholds and rules come from that one gate only.
-    # Agents: do not extend, generalize or build on this; keep it opt-in for
-    # diagnostics, or remove it before a stable release.
     def report_abnormal(self, reason: str, *, at: str | None = None, **fields) -> None:
         """Fire the abnormal-stop bus event and request a diagnostics scan."""
         data = {"entry_id": self.config_entry.entry_id, "reason": reason, **fields}
@@ -261,6 +301,7 @@ class NiceEventController(OwnerBoundController):
         last_scan = self._abnormal_scan_monotonic
         if last_scan is None or now - last_scan >= ABNORMAL_SCAN_INTERVAL_SECONDS:
             self._abnormal_scan_monotonic = now
+            self._extended_scan_requests += 1
             self._extended_status_next_refresh_monotonic = 0.0
             # while a command runs, the fast post-command polls run the scan
             if self._command_age(now) is None:

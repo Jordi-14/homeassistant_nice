@@ -169,9 +169,9 @@ async def test_obstacle_restores_last_state_on_add(monkeypatch) -> None:
 
     from homeassistant.helpers.restore_state import RestoreEntity
 
-    sensor = NiceBidiBinarySensor(
-        FakeCoordinator(), config_entry(), _description("obstacle")
-    )
+    coordinator = FakeCoordinator()
+    coordinator.capabilities = SimpleNamespace(obstruction=True)
+    sensor = NiceBidiBinarySensor(coordinator, config_entry(), _description("obstacle"))
     monkeypatch.setattr(
         NiceBidiBinarySensor, "async_get_last_state", AsyncMock(return_value=SimpleNamespace(state="on"))
     )
@@ -182,3 +182,10 @@ async def test_obstacle_restores_last_state_on_add(monkeypatch) -> None:
     assert isinstance(sensor, RestoreEntity)
     await sensor.async_added_to_hass()
     assert sensor._restored_value is True
+
+    # without NHK Obstruct no event replaces the value, so it is not restored
+    for capabilities in (None, SimpleNamespace(obstruction=False)):
+        coordinator.capabilities = capabilities
+        sensor._restored_value = None
+        await sensor.async_added_to_hass()
+        assert sensor._restored_value is None

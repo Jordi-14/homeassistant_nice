@@ -190,6 +190,19 @@ class TestNiceBidiNumberProperties:
         with pytest.raises(ValueError, match="between 1 and 100"):
             await entity.async_set_native_value(101)
 
+    async def test_number_writes_maintenance_threshold_as_four_bytes(self) -> None:
+        """Test 04/B1 is written with its real 32-bit size."""
+        coordinator = FakeCoordinator()
+        coordinator.data = make_status()
+        entity = NiceBidiNumber(
+            coordinator,
+            config_entry(),
+            _description("bus_t4_maintenance_threshold"),
+        )
+        await entity.async_set_native_value(70000)
+
+        assert coordinator.calls == [("dmp_write", (0x04, 0xB1, 70000, 4))]
+
     async def test_speed_settings_reject_writes_for_aria_clbox(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.device_info = make_device_info(device_product_detail="ARIA 200S CLBOX")

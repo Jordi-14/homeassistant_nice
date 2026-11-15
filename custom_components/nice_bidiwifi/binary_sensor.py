@@ -99,6 +99,22 @@ BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
         value_fn=lambda status: status.obstacle,
     ),
     NiceBidiBinarySensorEntityDescription(
+        key="automation_blocked",
+        name="Automation blocked",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        value_fn=lambda status: status.automation_blocked,
+    ),
+    NiceBidiBinarySensorEntityDescription(
+        key="slowdown",
+        name="Slowdown enabled",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        value_fn=lambda status: status.slowdown,
+    ),
+    NiceBidiBinarySensorEntityDescription(
         key="input_1",
         name="Input 1 enabled",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -285,8 +301,13 @@ class NiceBidiBinarySensor(NiceCoordinatorEntity, BinarySensorEntity, RestoreEnt
     async def async_added_to_hass(self) -> None:
         """Restore the last value until a live one arrives."""
         await super().async_added_to_hass()
-        if self.entity_description.restore and (
-            last_state := await self.async_get_last_state()
+        capabilities = self.coordinator.capabilities
+        # restore only when NHK events can replace the value on the next move
+        if (
+            self.entity_description.restore
+            and capabilities is not None
+            and capabilities.obstruction
+            and (last_state := await self.async_get_last_state())
         ):
             self._restored_value = {"on": True, "off": False}.get(last_state.state)
 

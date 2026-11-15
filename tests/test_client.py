@@ -35,7 +35,10 @@ from custom_components.nice_bidiwifi.client import (
     parse_info_xml,
 )
 from custom_components.nice_bidiwifi.protocol.t4.dmp import DmpResponse
-from custom_components.nice_bidiwifi.protocol.t4.status import status_from_dmp_registers
+from custom_components.nice_bidiwifi.protocol.t4.status import (
+    CONTROLLER_ERROR_BITS,
+    status_from_dmp_registers,
+)
 from tests.conftest import make_device_info, make_status
 
 
@@ -270,6 +273,11 @@ def test_status_from_dmp_registers_decodes_limits(
         ({8: 0x01, 9: 0x00, 15: 0x33}, 256, 42),
         ({8: 0xFF, 9: 0x01, 14: 0xFF, 15: 0x33}, None, None),
         ({8: 0x00, 9: 0x20, 14: 0x01, 15: 0x00}, 32, 256 - 9),
+        ({8: 0x00, 9: 0x22, 14: 0xFF, 15: 0xFB}, 34, -5 - 9),  # frost: signed
+        ({8: 0x00, 9: 0x22, 14: 0xFF, 15: 0xCE}, 34, -50 - 9),
+        ({8: 0x00, 9: 0x22, 14: 0xFF, 15: 0xCD}, 34, None),  # below -50: not a temperature
+        ({8: 0x00, 9: 0x22, 14: 0xFF, 15: 0xFF}, 34, None),  # FF FF filler, not -1
+        ({8: 0x00, 9: 0x22, 14: 0x80, 15: 0x00}, 34, None),  # 80 00 filler
     ],
 )
 def test_status_from_dmp_registers_decodes_diagnostic_parameters(
@@ -1440,6 +1448,67 @@ def test_reconnect_count_does_not_wait_for_the_session_lock() -> None:
         release.set()
         holder.join(timeout=2.0)
         reader.join(timeout=2.0)
+
+
+NO_ERRORS = dict.fromkeys(CONTROLLER_ERROR_BITS, False)
+
+
+@pytest.mark.parametrize(
+    ("d1", "errors"),
+    [
+        ("0100400008040000000000020100", NO_ERRORS),
+        ("0100400008040000000003020100", {**NO_ERRORS, "positions": True, "bluebus": True}),
+        ("01004000", None),
+    ],
+)
+def test_status_from_dmp_registers_decodes_controller_errors(d1, errors) -> None:
+    """Test 04/D1 byte 10 error bits (first row: our controller, no errors)."""
+    status = status_from_dmp_registers(_dmp_registers(rD1=bytes.fromhex(d1)))
+
+    assert status.controller_errors == errors
+
+
+def test_status_from_dmp_registers_decodes_settings_probed_on_robusr10() -> None:
+    """Test the extra setting registers with the values read from a ROBUSR10."""
+    status = status_from_dmp_registers(
+        _dmp_registers(
+            r24=b"\x01\xf4",
+            r25=b"\x01\xf4",
+            r45=b"\x14",
+            r46=b"\x14",
+            r51=b"\x05",
+            r52=b"\x01",
+            r5B=b"\x3c",
+            r61=b"\x02",
+            r8D=b"\x3c",
+            r8E=b"\x31",
+            r95=b"\x03",
+            r99=b"\x03",
+            r9A=b"\x00",
+            rA2=b"\x01",
+            rB0=b"\x05",
+        )
+    )
+
+    assert (status.opening_slowdown_position, status.closing_slowdown_position) == (500, 500)
+    assert (status.opening_slowdown_speed, status.closing_slowdown_speed) == (20, 20)
+    assert status.output_1_function == "flashing_light"
+    assert status.output_2_function == "gate_open_indicator"
+    assert status.courtesy_light_time == 60
+    assert status.step_step_mode == "open_stop_close_open"
+    assert (status.standby_time, status.standby_mode) == (60, "safety_devices")
+    assert (status.pre_flash_open_time, status.pre_flash_close_time) == (3, 3)
+    assert status.automation_blocked is False
+    assert status.slowdown is True
+    assert status.maintenance_mode == "automatic"
+
+
+def test_status_from_dmp_registers_names_unknown_option_codes() -> None:
+    """Test an option code missing from the app enums stays visible."""
+    status = status_from_dmp_registers(_dmp_registers(r61=b"\x08"))
+
+    assert status.step_step_mode == "code_8"
+    assert status.output_1_function is None
 
 
 def test_status_from_dmp_registers_decodes_bluebus_devices() -> None:
