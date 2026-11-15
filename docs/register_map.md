@@ -455,3 +455,141 @@ Seen on the ROBUSR10 FG01h:
   an obstacle gives `03`.
 - Read entry 0 after the gate stops to find why the last close did not finish
   (#64).
+
+## E. OXI radio receiver
+
+An OXI receiver plugged into the control unit answers at address `00.0A`. Its
+identity uses the same STD group 00 as the control unit; the radio settings are
+in group `0A`. All registers below answer `F0` to INFO (no INFO).
+
+### STD group 00 at 00.0A — receiver identity
+
+| Register | Name (app) | Read | Entity | Example | App code | Confirmed on |
+| --- | --- | --- | --- | --- | --- | --- |
+| 00/04 | STD_PROFILE | start-up | — | `0a` | ✓ | OXI on ROBUSR10 FG01h |
+| 00/09 | STD_PRODUCT | start-up | `oxi_product` | `OXIBD group` | ✓ | OXI on ROBUSR10 FG01h |
+| 00/0A | STD_HARDWARE_VERSION | start-up | `oxi_hardware` | `672B` | ✓ | OXI on ROBUSR10 FG01h |
+| 00/0B | STD_FIRMWARE_VERSION | start-up | `oxi_firmware` | `BK00H` | ✓ | OXI on ROBUSR10 FG01h |
+| 00/0C | STD_RADIO_DESCRIPTION | start-up | `oxi_description` | `Radio` | ✓ | OXI on ROBUSR10 FG01h |
+
+`oxi_detected` is on when any of these answers. Before #66 the integration asked
+group `0A` for them; the receiver answers `FD` there.
+
+### 0A/00 — Receiver type
+
+| Access | Size | Read | Entity |
+| --- | --- | --- | --- |
+| GET | 1 | start-up | `oxi_product` attribute `receiver_type` |
+
+`01` OXI, `02` OXIT, `03` OX2, `04` OX2T, `05` OX4, `06` OX4T, `07` OXIFM, `08`
+OXITFM (`RADIO_RECEIVER_TYPES` in `protocol/t4/enums.py`). App code ✓; confirmed on
+an OXI on ROBUSR10 FG01h (`01`).
+
+### 0A/41 — Remote coding (RADIO_CFG_CODES)
+
+| Access | Size | Read | Entity |
+| --- | --- | --- | --- |
+| GET | 1 | start-up | `oxi_product` attribute `coding_type` |
+
+The bits are active low. Bit 7 = 0 means the coding is defined; then the first
+bit that is 0, checked in the order 4 (FLO), 6 (HCS), 5 (FLOR), names the coding
+(MyNice Pro `RadioCfgCodingType`). Example: `5f` → FLOR. App code ✓; confirmed on
+an OXI on ROBUSR10 FG01h with FloR remotes.
+
+### 0A/40 — Receiver configuration (RADIO_CFG)
+
+| Access | Size | Read | Entity |
+| --- | --- | --- | --- |
+| GET | 2 | not read | — |
+
+`status = byte0 << 8 | byte1`; a flag is **on when its bit is 0** (MyNice Pro
+`RadioConfiguration`):
+
+| Bit | Flag | Bit | Flag |
+| --- | --- | --- | --- |
+| 0 | repeater | 8 | PIN management |
+| 1 | release button | 9 | lock memory |
+| 2 | repetition on bus | 10 | block with enabling code |
+| 3 | reception on bus | 11 | block with certificate |
+| 4 | authorization groups | 12 | disable RND |
+| | | 13 | only original transmitters |
+| | | 14 | disable priority |
+
+The OXI on the ROBUSR10 answers `00 7f`: by the app logic bits 8-14 are on and
+bits 0-4 off. That the high byte is unused is a *guess*; it was not compared with
+the MyNice Pro receiver screen yet.
+
+### 0A/25 — Remotes in memory
+
+| Access | Size | Read | Entity |
+| --- | --- | --- | --- |
+| GET with 2 data bytes | 10 per remote | not read | — |
+
+The request carries the memory position `[pos >> 8, pos & 0xFF]`, 0-1023 (MyNice
+Pro `qryPosition`). Without it the receiver answers `F9`. The reply is
+`[pos_hi, pos_lo, 7 bytes, 00]`; an empty slot has `ff` in the 8 bytes after the
+position. Counting the remotes needs one request per position, up to 1024, so the
+integration does not poll it. Example of a used slot with random values:
+`00 01 5a 3c 91 0e 02 00 00 00`.
+
+### Sensitive registers
+
+These hold the receiver PIN, keys and certificates. Their sizes are listed so
+nobody needs to read them; the integration never reads them and their values
+must not be posted in issues.
+
+| Register | Content | Size |
+| --- | --- | --- |
+| 0A/10 | PIN | 4 |
+| 0A/31 | certificates | 5 |
+| 0A/32-0A/35 | Altera, distributor, installer, installation keys | 2 each |
+
+Not to be sent at all: 0A/09 (send a command), 0A/20 (clear the memory), 0A/50
+(send a code).
+
+## F. Commands and procedures
+
+### DEP actions — gate commands
+
+Commands are sent as a DEP frame to `00.03` with arguments `01 82 <command> 64`
+(`build_dep_action_frame` in `protocol/t4/actions.py`). The command codes are the
+`ListDeviceCommand` codes, the same list as the input functions (04/71-04/74).
+
+| Code | Command | Code | Command |
+| --- | --- | --- | --- |
+| `01` | step-by-step | `10` | unblock |
+| `02` | stop | `11` | courtesy light timer |
+| `03` | open | `12` | courtesy light on/off |
+| `04` | close | `13`-`15` | master step-by-step / open / close |
+| `05`-`07` | partial open 1-3 | `16`-`18` | slave step-by-step / open / close |
+| `0b` | step-by-step condominium | `19`, `1a` | unblock and open / close |
+| `0c` | step-by-step high priority | `1b`, `1c` | condominium open on / off (BlueBus inputs) |
+| `0d`-`0f` | open and block, close and block, block | | |
+
+App code ✓; open, close, stop, step-by-step and partial open confirmed on ROBUSR10
+FG01h.
+
+### 04/08 — Accepted commands (CTRL_STR_COMMANDS)
+
+| Access | Size | INFO | Read | Entity |
+| --- | --- | --- | --- | --- |
+| INFO only; GET answers `F1` | 1 | list of the accepted command codes | not read | — |
+
+On the ROBUSR10 FG01h the list has 25 codes: `01`-`07`, `0b`-`1c`. Partial close
+`08`-`0a` is missing, and it matches the actions the integration offers. A future
+version could hide the buttons of commands a controller does not list here.
+
+### Procedures (not used by the integration)
+
+MyNice Pro runs installer procedures by writing these group 04 registers. The
+integration does not read or write them; listed so they are not probed by
+accident.
+
+| Register | Procedure | INFO on ROBUSR10 | Moves the gate | Reversible |
+| --- | --- | --- | --- | --- |
+| 04/0A | search BlueBus devices | `01 80 00 01` | no (*guess*) | device table is replaced |
+| 04/0B | search positions | `01 80 00 01` | **yes**, full travel | positions are replaced |
+| 04/0C | delete parameters | list `00 01 02 03 7d` | no | **no** |
+| 04/0F | go to a position | `F0` | **yes** | — |
+| 04/B4 | reset the maintenance counter | on/off list | no | **no** |
+| 04/05, 04/09, 04/27, 04/2F, 04/3F | search devices, activate receiver, delete intermediate slowdown, reset encoder, delete maps | `FD` | — | — |
