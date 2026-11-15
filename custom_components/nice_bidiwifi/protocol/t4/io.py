@@ -53,6 +53,11 @@ IO_BITS: tuple[tuple[int, int, str], ...] = (
     (12, 7, "overtravel_high_m2"),
 )
 
+# 04/D1 byte 5 (app id 30 "State Alt", table @0x8370, Diagnostic1 SA_*): type of the STOP/Alt input
+ALT_STATES = ("not_set", "b1", "b2", "nc", "no", "out_of_range", "sensitive_edge")
+# 04/D1 byte 11 & 3 (app id 44 "State limiter maneuver", table @0x838c, Diagnostic1 SLM_*: OK, L1, L2, Motor Alarm)
+LIMITER_STATES = ("ok", "level_1", "level_2", "motor_alarm")
+
 # 04/D2 fields at offset 2 * index; "%" fields are scaled with M from INFO. None = already a sensor
 # (service voltage, motor temperature).
 HARDWARE_FIELDS: tuple[tuple[str | None, bool], ...] = (
@@ -93,16 +98,16 @@ def decode_io_diagnostic(data: bytes | None, info: DmpInfo | None) -> dict[str, 
         out["selected_motor"] = "m1" if data[2] & 0x80 else "m2"
     if _present(info, 9, 4):  # 35 Freq: '5' (50 Hz) when clear, '6' (60 Hz) when set (@0x11344)
         out["mains_frequency"] = 60 if data[9] & 0x10 else 50
-    if _present(info, 5, 0):  # 30 State Alt: 8 states, names not traced
-        out["alt_state"] = data[5] & 0x07
+    if _present(info, 5, 0) and data[5] < len(ALT_STATES):  # 30 State Alt: whole byte, >= 7 unknown
+        out["alt_input_type"] = ALT_STATES[data[5]]
     if _present(info, 6, 0):  # 52 Ing. Radio, 53 Ing. T4 mode I: active channels 1-4
         out["radio_inputs"] = [n + 1 for n in range(4) if data[6] >> n & 1]
     if _present(info, 7, 0):
         out["t4_mode_1_inputs"] = [n + 1 for n in range(4) if data[7] >> n & 1]
     if _present(info, 8, 0):  # 54 Ing. T4 mode II: a number ("%02d")
         out["t4_mode_2"] = data[8]
-    if _present(info, 11, 0):  # 44 State limiter maneuver: app states a-d (SLM_*), index only
-        out["force_limiter_state"] = data[11] & 0x03
+    if _present(info, 11, 0):  # 44 State limiter maneuver
+        out["force_limiter_state"] = LIMITER_STATES[data[11] & 0x03]
     return out
 
 

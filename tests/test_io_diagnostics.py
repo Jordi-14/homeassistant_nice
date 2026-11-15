@@ -23,9 +23,9 @@ def test_io_at_rest_open_shows_only_installed_items() -> None:
     assert io["output_2"] is True  # gate-open light while open
     assert io["motor_m1"] is False and io["output_1"] is False
     assert io["direction"] == "left"
-    assert io["force_limiter_state"] == 2
+    assert io["force_limiter_state"] == "level_2"
     assert io["mains_frequency"] == 50
-    assert io["alt_state"] == 4 and io["radio_inputs"] == [] and io["t4_mode_2"] == 0
+    assert io["alt_input_type"] == "no" and io["radio_inputs"] == [] and io["t4_mode_2"] == 0
     # not installed on this controller (INFO): loops, second motor, encoder items, fan
     for name in ("loop_1", "motor_m2", "encoder_m1_fault", "fan", "selected_motor"):
         assert name not in io
