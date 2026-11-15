@@ -31,6 +31,7 @@ from custom_components.nice_bidiwifi.const import DOMAIN
 from custom_components.nice_bidiwifi.coordinator import NiceBidiDataUpdateCoordinator
 from custom_components.nice_bidiwifi.errors import NiceReadPreemptedError
 from custom_components.nice_bidiwifi.protocol.t4.info import decode_dmp_info
+from custom_components.nice_bidiwifi.protocol.t4.settings import SETTINGS
 from tests.conftest import FakeClient, config_entry_data, make_device_info, make_status
 
 
@@ -2847,3 +2848,23 @@ async def test_remove_entry_deletes_the_issue_and_stored_baseline(
     assert _issue(hass) is None
     assert LIMITS_KEY not in hass_storage
     await instance.async_shutdown()
+
+
+async def test_setting_writes_wait_for_info_and_refuse_arrays(hass: HomeAssistant) -> None:
+    """Review of #63: the array guard covers every setting writer and does not fail open at start."""
+    instance = _coordinator(hass)
+    setting = SETTINGS["auto_close"]
+    assert "not read yet" in instance.setting_write_block_reason(setting)
+    with pytest.raises(HomeAssistantError, match="not read yet"):
+        await instance.async_write_setting(setting, 1)
+
+    instance.setting_info["auto_close"] = decode_dmp_info(bytes.fromhex("01000a8102010801"))
+    assert "per-motor array" in instance.setting_write_block_reason(setting)
+
+    instance.setting_info["auto_close"] = decode_dmp_info(bytes.fromhex("01000a01000101"))
+    assert instance.setting_write_block_reason(setting) is None
+
+    # a controller without INFO for a setting: writes open after the last load attempt
+    del instance.setting_info["auto_close"]
+    instance._setting_info_attempts = coordinator_module.SETTING_INFO_ATTEMPTS
+    assert instance.setting_write_block_reason(setting) is None

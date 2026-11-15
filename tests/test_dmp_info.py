@@ -66,6 +66,8 @@ def test_is_array_setting() -> None:
     assert not is_array_setting(decode_dmp_info(bytes.fromhex("01000a01006401")))
     assert not is_array_setting(decode_dmp_info(bytes.fromhex("0903078101")))
     assert not is_array_setting(None)
+    # array flag with 2 size bytes but only 1 present: unknown, not "plain"
+    assert decode_dmp_info(bytes.fromhex("01000a8202")) is None
 
 
 def test_decode_dmp_info_rejects_short_data() -> None:

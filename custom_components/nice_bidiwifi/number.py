@@ -22,7 +22,7 @@ from .entities.factory import (
     build_described_entities,
 )
 from .entity import NiceCoordinatorEntity
-from .protocol.t4.info import DmpInfo, is_array_setting
+from .protocol.t4.info import DmpInfo
 from .runtime import get_coordinator
 from .protocol.t4.settings import (
     ALWAYS_CLOSE_MODE,
@@ -287,7 +287,6 @@ class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
             and self.coordinator.calibration_state != CALIBRATION_STATE_RUNNING
             and not self._disabled_for_device()
             and not status.is_moving
-            and not self._is_array
             and self.native_value is not None
         )
 
@@ -303,11 +302,6 @@ class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
     def _info(self) -> DmpInfo | None:
         """Return the controller's INFO for this setting, if it was read."""
         return self.coordinator.setting_info.get(self.entity_description.setting.key)
-
-    @property
-    def _is_array(self) -> bool:
-        """Return true when the controller reports this setting as a per-element array."""
-        return is_array_setting(self._info)
 
     def _limits(self) -> tuple[float, float]:
         """Return (min, max): static limits, the dynamic maximum, then the controller's INFO."""
@@ -351,14 +345,11 @@ class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Write the BusT4 number value."""
-        if self._disabled_for_device():
+        if (reason := self.coordinator.setting_write_block_reason(
+            self.entity_description.setting
+        )) is not None:
             raise HomeAssistantError(
-                f"{self.entity_description.name} is disabled for this controller model"
-            )
-        if self._is_array:
-            raise HomeAssistantError(
-                f"{self.entity_description.name} is a per-motor array on this controller; "
-                "writing it is not supported yet"
+                f"{self.entity_description.name} is disabled for this controller: {reason}"
             )
         int_value = int(round(value))
         min_value = self.native_min_value

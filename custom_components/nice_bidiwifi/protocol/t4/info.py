@@ -39,7 +39,9 @@ def decode_dmp_info(data: bytes | None) -> DmpInfo | None:
     flags = data[3]
     offset = 4 + (flags & 0x03 if flags & 0x80 else 0)
     info = DmpInfo(size=size, data_format=data[1], function=data[2], flags=flags)
-    if flags & 0x80 and len(data) >= offset:
+    if flags & 0x80:
+        if len(data) < offset:
+            return None  # array size cut off: unknown, never "not an array"
         info = replace(info, array_size=int.from_bytes(data[4:offset], "big"))
     if flags & 0x40:
         if not flags & 0x20 or len(data) <= offset:
