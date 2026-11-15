@@ -208,6 +208,7 @@ class NiceBidiDataUpdateCoordinator(
         self.position_controller._init_position_state()
         self._extended_status_cache: NiceBidiStatus | None = None
         self._extended_status_next_refresh_monotonic = 0.0
+        self._extended_scan_requests = 0
         self._last_open_position: int | None = None
         self._limits_store = controller_limits_store(hass, entry.entry_id)
         self.controller_limits_changed: dict | None = None
@@ -407,7 +408,7 @@ class NiceBidiDataUpdateCoordinator(
 
         try:
             include_extended = self._should_read_extended_status()
-            scan_due = self._extended_status_next_refresh_monotonic
+            scan_due = self._extended_scan_requests
             status = self.client.read_status(
                 include_extended=include_extended,
                 preemptible=True,
@@ -527,7 +528,7 @@ class NiceBidiDataUpdateCoordinator(
         return time.monotonic() >= self._extended_status_next_refresh_monotonic
 
     def _cache_extended_status(
-        self, status: NiceBidiStatus, scan_due: float | None = None
+        self, status: NiceBidiStatus, scan_due: int | None = None
     ) -> NiceBidiStatus:
         """Store the latest broad BusT4 scan and flag a maneuver log that stopped updating."""
         log, count = status.last_maneuvers, status.total_maneuver_count
@@ -545,8 +546,8 @@ class NiceBidiDataUpdateCoordinator(
                 )
             status = replace(status, last_maneuvers_stale=stale)
         self._extended_status_cache = status
-        # a scan request (0.0) that came while this scan ran stays due
-        if scan_due is None or self._extended_status_next_refresh_monotonic == scan_due:
+        # a scan request that came while this scan ran stays due
+        if scan_due is None or self._extended_scan_requests == scan_due:
             self._extended_status_next_refresh_monotonic = time.monotonic() + EXTENDED_STATUS_REFRESH_SECONDS
         return status
 
@@ -854,6 +855,7 @@ class NiceBidiDataUpdateCoordinator(
         self.last_error = None
         self._extend_post_command_fast_poll_window()
         self.update_interval = MOVING_UPDATE_INTERVAL
+        self._extended_scan_requests += 1
         self._extended_status_next_refresh_monotonic = 0.0
         if refresh:
             await self.async_request_refresh()

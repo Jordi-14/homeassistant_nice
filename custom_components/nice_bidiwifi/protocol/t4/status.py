@@ -44,13 +44,15 @@ def decode_controller_errors(data: bytes | None) -> dict[str, bool] | None:
     }
 
 
-# Below this raw value the field is not a real temperature (e.g. FF xx filler).
+# Below this raw value the field is not a real temperature.
 MIN_RAW_TEMPERATURE = -50
+# FF FF and 80 00 are "no value" fillers, not -1 or -32768
+NO_TEMPERATURE = frozenset({b"\xff\xff", b"\x80\x00"})
 
 
 def _motor_temperature(data: bytes | None) -> int | None:
     """04/D2 offset 14: signed 16-bit (MyNice Pro reads it with ldrsh), so frost stays visible."""
-    if not data or len(data) < 16:
+    if not data or len(data) < 16 or data[14:16] in NO_TEMPERATURE:
         return None
     raw = int.from_bytes(data[14:16], "big", signed=True)
     return raw - 9 if raw >= MIN_RAW_TEMPERATURE else None

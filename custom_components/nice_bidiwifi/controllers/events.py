@@ -33,7 +33,7 @@ EVENT_HISTORY_LIMIT = 32
 ABNORMAL_STOP_EVENT = "nice_bidiwifi_abnormal_stop"
 COMMAND_MOVE_WINDOW_SECONDS = 5.0
 NHK_MOVE_EXPIRY_SECONDS = 120.0  # longer than the slowest move seen (83 s)
-RECENT_COMMAND_SECONDS = 3.0
+RECENT_COMMAND_SECONDS = 5.0  # same as COMMAND_MOVE_WINDOW_SECONDS
 ABNORMAL_SCAN_INTERVAL_SECONDS = 30.0
 IMPLAUSIBLE_TRAVEL_POSITION_DELTA = 1000
 IMPLAUSIBLE_TRAVEL_SPEED = 2000  # position units per second
@@ -43,7 +43,6 @@ FAULT_CHANGE_STATES = frozenset(
     {
         "force_limiter_intervent",
         "fototest_failed",
-        "alt_intervention",
         "memory_err",
         "hw_err",
         "double_cmd_err",
@@ -207,7 +206,9 @@ class NiceEventController(OwnerBoundController):
             and nhk == "stopped"
             and self._nhk_move is not None
             and now - self._nhk_move[0] < COMMAND_MOVE_WINDOW_SECONDS
-            and self._recent_command(now) != "stop"
+            # open/close reverse a move, they do not stop it (2026-11-14 cycle 3:
+            # close, then stopped after 2 s, was the fault)
+            and self._recent_command(now) not in {"stop", "step_step"}
         ):
             # shortcut: a remote stop in the first 5 s of a move is reported too
             reason = "unexpected_stop"
@@ -266,7 +267,8 @@ class NiceEventController(OwnerBoundController):
     def _fire_abnormal_stop(self, event: NiceEvent, reason: str, now: float) -> None:
         """Report an abnormal stop that came with a NiceEvent."""
         last = self._last_abnormal_fire
-        if last is not None and last[1] == reason and now - last[0] < ABNORMAL_DEDUPE_SECONDS:
+        # one physical stop can come as NHK and 04/02 with different reasons
+        if last is not None and now - last[0] < ABNORMAL_DEDUPE_SECONDS:
             return
         self._last_abnormal_fire = (now, reason)
         since_command = (
@@ -299,6 +301,7 @@ class NiceEventController(OwnerBoundController):
         last_scan = self._abnormal_scan_monotonic
         if last_scan is None or now - last_scan >= ABNORMAL_SCAN_INTERVAL_SECONDS:
             self._abnormal_scan_monotonic = now
+            self._extended_scan_requests += 1
             self._extended_status_next_refresh_monotonic = 0.0
             # while a command runs, the fast post-command polls run the scan
             if self._command_age(now) is None:

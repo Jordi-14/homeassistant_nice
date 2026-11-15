@@ -276,6 +276,8 @@ def test_status_from_dmp_registers_decodes_limits(
         ({8: 0x00, 9: 0x22, 14: 0xFF, 15: 0xFB}, 34, -5 - 9),  # frost: signed
         ({8: 0x00, 9: 0x22, 14: 0xFF, 15: 0xCE}, 34, -50 - 9),
         ({8: 0x00, 9: 0x22, 14: 0xFF, 15: 0xCD}, 34, None),  # below -50: not a temperature
+        ({8: 0x00, 9: 0x22, 14: 0xFF, 15: 0xFF}, 34, None),  # FF FF filler, not -1
+        ({8: 0x00, 9: 0x22, 14: 0x80, 15: 0x00}, 34, None),  # 80 00 filler
     ],
 )
 def test_status_from_dmp_registers_decodes_diagnostic_parameters(

@@ -1014,7 +1014,7 @@ async def test_nhk_stop_soon_after_start_without_04_02(hass, monkeypatch) -> Non
         hass, state="open", current_position=3018, closed_position=0, open_position=3018
     )
     controller = coordinator.event_controller
-    for command in ("stop", "close"):
+    for command in ("stop", "step_step", "close"):
         coordinator.last_command = command
         coordinator.last_command_monotonic = clock.now
         controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
@@ -1023,6 +1023,43 @@ async def test_nhk_stop_soon_after_start_without_04_02(hass, monkeypatch) -> Non
         clock.now += 10.0
     await hass.async_block_till_done()
     assert [e.data["reason"] for e in events] == ["unexpected_stop"]
+    await coordinator.async_shutdown()
+
+
+async def test_nhk_stop_4_s_after_a_stop_command_is_normal(hass, monkeypatch) -> None:
+    """The stop command must explain an NHK stop for the whole 5 s window, not only 3 s."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=3018, closed_position=0, open_position=3018
+    )
+    controller = coordinator.event_controller
+    controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
+    clock.now += 0.5
+    coordinator.last_command = "stop"
+    coordinator.last_command_monotonic = clock.now
+    clock.now += 4.0
+    controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
+    await hass.async_block_till_done()
+    assert events == []
+    await coordinator.async_shutdown()
+
+
+async def test_one_stop_seen_twice_with_two_reasons_fires_once(hass, monkeypatch) -> None:
+    """A force-limiter 04/02 and the NHK stop of the same stop must not count twice."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=3018, closed_position=0, open_position=3018
+    )
+    controller = coordinator.event_controller
+    controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
+    clock.now += 2.0
+    controller._handle_raw_frame(_t4_event("04 02 91 00 00 00"))
+    clock.now += 0.3
+    controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
+    await hass.async_block_till_done()
+    assert [e.data["reason"] for e in events] == ["controller_fault"]
     await coordinator.async_shutdown()
 
 

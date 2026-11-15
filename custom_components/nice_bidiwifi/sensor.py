@@ -644,6 +644,8 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         name="Controller errors",
         entity_category=EntityCategory.DIAGNOSTIC,
         icon="mdi:alert-circle-outline",
+        # bit map seen on one ROBUSR10 only
+        entity_registry_visible_default=False,
         value_fn=_controller_error_count,
         extra_attributes_fn=lambda coordinator: (
             dict(_status(coordinator).controller_errors or {})

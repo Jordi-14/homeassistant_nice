@@ -1046,15 +1046,17 @@ async def test_write_dmp_register_records_command_metadata(hass: HomeAssistant) 
 
 
 async def test_scan_request_during_a_scan_is_kept(hass: HomeAssistant) -> None:
-    """An abnormal stop sets 0.0 while a scan runs; the scan end must not overwrite it."""
+    """A scan request that came while a scan ran must survive the scan end, even when that scan was requested too."""
     instance = _coordinator(hass)
-    # the scan started when due at 5.0; a request set 0.0 while it ran
+    # the scan was itself requested (due 0.0); one more request came while it ran
+    started = instance._extended_scan_requests
+    instance._extended_scan_requests += 1
     instance._extended_status_next_refresh_monotonic = 0.0
-    instance._cache_extended_status(make_status(), scan_due=5.0)
+    instance._cache_extended_status(make_status(), scan_due=started)
     assert instance._extended_status_next_refresh_monotonic == 0.0
 
     # no request during the scan: schedule the next one
-    instance._cache_extended_status(make_status(), scan_due=0.0)
+    instance._cache_extended_status(make_status(), scan_due=instance._extended_scan_requests)
     assert instance._extended_status_next_refresh_monotonic > 0.0
 
 
