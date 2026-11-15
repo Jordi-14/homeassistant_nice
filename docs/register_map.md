@@ -230,11 +230,13 @@ See [position_calibration.md](position_calibration.md) for how each format is us
 ## C. Settings
 
 All settings are read in the extended scan. A read-only sensor or binary sensor
-shows each value; the registers marked **W** also have a writable `bus_t4_*`
-entity (number or switch). Before a write the integration reads the INFO of the
-setting and uses its range (#58). It refuses one-value writes when INFO marks the
-value as a per-motor array, and on known models it refuses writes that are not
-verified (see *Write restrictions* below).
+shows each value, except 04/85, 04/86, 04/89 and 04/8A, which only their
+writable number shows. The registers marked **W** have a writable `bus_t4_*`
+entity (number or switch). Once per session, after the first successful poll,
+the integration reads the INFO of each writable setting (up to 3 tries); number
+entities then use its range (#58). On known models some writes are refused (see
+*Write restrictions* below); #63 (open) also refuses one-value writes when INFO
+marks the value as a per-motor array.
 
 INFO strings below are from the ROBUSR10 (FG01h). Other models can give other
 ranges, which is why the integration reads INFO and does not use fixed limits.
@@ -245,15 +247,15 @@ INFO `01 00 01 41 02 00 01`: 1 byte, list of values `00`, `01`.
 
 | Register | Setting | W | Example (ROBUSR10) | App code | Confirmed on |
 | --- | --- | --- | --- | --- | --- |
-| 04/80 | automatic close | W | `00` | ✓ | ROBUSR10 FG01h |
-| 04/84 | close after photo | W | `00` | ✓ | ROBUSR10 FG01h |
-| 04/88 | always close | W | `00` | ✓ | ROBUSR10 FG01h |
-| 04/8C | stand-by | W | `00` | ✓ | ROBUSR10 FG01h |
+| 04/80 | automatic close | W | `00` | ✓ | ROBUSR10 FG01h (value) |
+| 04/84 | close after photo | W | `00` | ✓ | ROBUSR10 FG01h (value) |
+| 04/88 | always close | W | `00` | ✓ | ROBUSR10 FG01h (value) |
+| 04/8C | stand-by | W | `00` | ✓ | ROBUSR10 FG01h (value) |
 | 04/90 | starting torque | | `00` | ✓ | ROBUSR10 FG01h (value) |
-| 04/94 | pre-flash | W | `00` | ✓ | ROBUSR10 FG01h |
+| 04/94 | pre-flash | W | `00` | ✓ | ROBUSR10 FG01h (value) |
 | 04/98 | slave mode | | `00` | ✓ | ROBUSR10 FG01h (value) |
 | 04/9A | automation blocked | | `00` | ✓ | ROBUSR10 FG01h (value) |
-| 04/9C | key lock | W | `00` | ✓ | ROBUSR10 FG01h |
+| 04/9C | key lock | W | `00` | ✓ | ROBUSR10 FG01h (value) |
 | 04/A2 | slowdown | | `01` | ✓ | ROBUSR10 FG01h (value) |
 
 ### Times
@@ -264,8 +266,8 @@ second; the sensor shows seconds (#60).
 | Register | Setting | W | INFO (min-max, step, scale) | Example (ROBUSR10) | App code | Confirmed on |
 | --- | --- | --- | --- | --- | --- | --- |
 | 04/81 | pause time | W | 0-250, 1 | `1e` = 30 s | ✓ | ROBUSR10 FG01h |
-| 04/85 | photo close time | W | 0-250, 1 | `05` = 5 s | ✓ | ROBUSR10 FG01h |
-| 04/89 | always close time | W | 0-250, 1 | `05` = 5 s | ✓ | ROBUSR10 FG01h |
+| 04/85 | photo close time | W | 0-250, 1 | `05` = 5 s | ✓ | ROBUSR10 FG01h (value) |
+| 04/89 | always close time | W | 0-250, 1 | `05` = 5 s | ✓ | ROBUSR10 FG01h (value) |
 | 04/5B | courtesy light time | | 0-250, 1 | `3c` = 60 s | ✓ | ROBUSR10 FG01h |
 | 04/8D | stand-by time | | 10-250, 1 | `3c` = 60 s | ✓ | ROBUSR10 FG01h (value) |
 | 04/95 | pre-flash time, opening | | 0-10, 1 | `03` = 3 s | ✓ | ROBUSR10 FG01h (value) |
@@ -283,27 +285,29 @@ INFO `01 00 0a 01 00 64 01`: 1 byte, 0-100 %, step 1.
 
 | Register | Setting | W | Example (ROBUSR10) | App code | Confirmed on |
 | --- | --- | --- | --- | --- | --- |
-| 04/42 | opening speed | W | `50` = 80 % | ✓ | ROBUSR10 FG01h |
-| 04/43 | closing speed | W | `46` = 70 % | ✓ | ROBUSR10 FG01h |
+| 04/42 | opening speed | W | `50` = 80 % | ✓ | ROBUSR10 FG01h (value) |
+| 04/43 | closing speed | W | `46` = 70 % | ✓ | ROBUSR10 FG01h (value) |
 | 04/45 | opening slowdown speed | | `14` = 20 % | ✓ | ROBUSR10 FG01h (value) |
 | 04/46 | closing slowdown speed | | `14` = 20 % | ✓ | ROBUSR10 FG01h (value) |
-| 04/4A | opening force | W | `64` = 100 % | ✓ | ROBUSR10 FG01h |
-| 04/4B | closing force | W | `64` = 100 % | ✓ | ROBUSR10 FG01h |
+| 04/4A | opening force | W | `64` = 100 % | ✓ | ROBUSR10 FG01h (value) |
+| 04/4B | closing force | W | `64` = 100 % | ✓ | ROBUSR10 FG01h (value) |
 
 The speed in 04/D2 is a measured value, not this setting: with 80 / 70 % set,
 04/D2 showed 95-99 % opening and 71-84 % closing (ROBUSR10).
 
 ### Option settings
 
-The INFO is a list of the codes this controller allows (flags `61`). The integration
-shows the code by name from the tables in `protocol/t4/options.py`; an unknown code
-shows as `code_<n>`.
+The INFO is a list of the codes this controller allows (flags `61`). The
+integration shows the code by name from the tables in `protocol/t4/options.py`;
+a code without a name shows as `code_<n>` in decimal (for example `ListOut` code
+`23` = `code_35`). 04/86 and 04/8A have no names yet: their number entities show
+the raw code.
 
 | Register | Setting | W | App list (INFO function) | Allowed codes (ROBUSR10) | Example (ROBUSR10) | Confirmed on |
 | --- | --- | --- | --- | --- | --- | --- |
 | 04/51 | output 1 function | | `ListOut` (`F4`) | 00 01 03 02 04 05 17 06 23 07 0b 0f 10 11 12 | `05` flashing light | ROBUSR10 FG01h |
 | 04/52 | output 2 function | | `ListOut` (`F4`) | same | `01` gate-open indicator | ROBUSR10 FG01h |
-| 04/61 | step-by-step mode | | `ListCommand` (`F3`) | 01-08 | `02` open-stop-close-open | ROBUSR10 FG01h |
+| 04/61 | step-by-step mode | | `ListCommand` (`F3`) | 01-08 | `02` open-stop-close-open | ROBUSR10 FG01h (value) |
 | 04/62 | partial open mode | | `ListCommand` | 01-05 07 08 | `02` | ROBUSR10 FG01h (value) |
 | 04/63 | open mode | | `ListCommand` | 09-0d | `09` open-stop-open | ROBUSR10 FG01h (value) |
 | 04/64 | close mode | | `ListCommand` | 0e 0f 10 12 | `0e` close-stop-close | ROBUSR10 FG01h (value) |
@@ -315,16 +319,16 @@ shows as `code_<n>`.
 | 04/6C | Alt reaction, closing | | `ListCommand` | 17 18 19 | `18` Alt and short reverse | ROBUSR10 FG01h (value) |
 | 04/78 | obstacle reaction, opening | | `ListCommand` | 17 18 19 | `19` Alt and reverse | ROBUSR10 FG01h (value) |
 | 04/79 | obstacle reaction, closing | | `ListCommand` | 17 18 19 | `19` Alt and reverse | ROBUSR10 FG01h |
-| 04/71 | input 1 function | | `ListDeviceCommand` (`F2`) | 31 codes, 00-26 | `01` step-by-step | ROBUSR10 FG01h |
+| 04/71 | input 1 function | | `ListDeviceCommand` (`F2`) | 00 01 05 03 04 02 06 07 0c 0d 19 0e 1a 0f 10 11 12 0b 13 14 15 16 17 18 1b 1c 21 22 23 25 26 | `01` step-by-step | ROBUSR10 FG01h |
 | 04/72 | input 2 function | | `ListDeviceCommand` | same | `03` open | ROBUSR10 FG01h |
 | 04/73 | input 3 function | | `ListDeviceCommand` | same | `04` close | ROBUSR10 FG01h |
-| 04/74 | input 4 function | | `ListDeviceCommand` | 2b 2c 27 | `27` emergency stop | ROBUSR10 FG01h |
+| 04/74 | input 4 function | | `ListDeviceCommand` | 2b 2c 27 | `27` emergency stop | ROBUSR10 FG01h (value) |
 | 04/86 | photo close mode | W | `ListFunctionsMode` (`F5`) | 10 11 | `11` | ROBUSR10 FG01h (value; names not mapped) |
 | 04/8A | always close mode | W | `ListFunctionsMode` | 20 21 | `20` | ROBUSR10 FG01h (value; names not mapped) |
 | 04/8E | stand-by mode | | `ListFunctionsMode` | 30 31 32 | `31` safety devices | ROBUSR10 FG01h (value) |
 | 04/B0 | maintenance mode | | `ListFunctionsMode` | 05 04 | `05` automatic | ROBUSR10 FG01h (value) |
 
-"Confirmed on" means the read value matched the gate (for example output 1
+"Confirmed on" without "(value)" means the gate behaved as the value says (for example output 1
 flashed during every move, the photocell reversed the gate); "(value)" means only
 the value was read.
 
@@ -338,7 +342,8 @@ the value was read.
 | 04/B2 | maintenance count | | 0-4294967295, 1 | `00 00 04 95` = 1173 | ✓ | ROBUSR10 FG01h (value) |
 | 04/B3 | total maneuver count | | 0-4294967295, 1 | `00 00 00 22` = 34 | ✓ | ROBUSR10 FG01h (value) |
 
-Open: on the ROBUSR10, 04/B3 (34) is lower than 04/B2 (1173), so the unit or
+04/B3 is `CTRL_MANEUVERS_COUNTER` in the app. It seemed to go up by one per
+close/open cycle (*guess*). Open: on the ROBUSR10, 04/B3 (34) is lower than 04/B2 (1173), so the unit or
 meaning of 04/B3 is not clear yet.
 
 ### Write restrictions
@@ -346,8 +351,8 @@ meaning of 04/B3 is not clear yet.
 | Model | Registers | Rule | Source |
 | --- | --- | --- | --- |
 | ARIA200S / CLBOX | 04/42, 04/43 | writes blocked: speed encoding not verified | #11 |
-| MC824H / HYKE | 04/4A, 04/4B | writes blocked unless valid INFO says the value is not a per-motor array (#63, open) | #38 |
-| any | any setting | writes blocked while INFO is not loaded, and when INFO marks an array | #63 (open) |
+| MC824H / HYKE | 04/4A, 04/4B | writes blocked unless valid INFO says the value is not a per-motor array, also after the 3 tries (#63, open; not tested on an MC824H) | #38 |
+| any | any setting | writes blocked until the INFO read is done (at most 3 tries), and when INFO marks an array | #63 (open) |
 
 Rules are in `models/profiles.py` and `coordinator.setting_write_block_reason`.
 
