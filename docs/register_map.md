@@ -321,3 +321,137 @@ meaning of 04/B3 is not clear yet.
 | any | any setting | writes blocked while INFO is not loaded, and when INFO marks an array | #63 (open) |
 
 Rules are in `models/profiles.py` and `coordinator.setting_write_block_reason`.
+
+## D. Diagnostics
+
+The decoders for 04/D1 and 04/D2 attributes and the `bluebus_gate_state` sensor
+are in #65 (open). On other branches these registers are shown as raw bytes.
+
+### 04/D0 — BlueBus devices
+
+| Access | Size | INFO | Read | Entity |
+| --- | --- | --- | --- | --- |
+| GET | 27 | `01 81 e0 01` | extended | `bluebus_devices`, `bluebus_gate_state` (#65) |
+
+Decoder: `protocol/t4/bluebus.py` (MyNice Pro `setDiagPhotoStatus` @0x211f8 and the
+device rows of the diagnostics screen).
+
+| Byte | Bits | Meaning | App code | Confirmed on |
+| --- | --- | --- | --- | --- |
+| 0 | 0 | 1 = gate not moving, 0 = moving | — | ROBUSR10 FG01h (every sample in cycles 11-13) |
+| 0 | 3 | together with byte 10: photocell *in error* | ✓ | — |
+| 1 | 4 | BlueBus line error: every device shows `stand_by` | ✓ | — |
+| 2 | 0-6 | photocell installed: PHOTO, PHOTO II, PHOTO 1, PHOTO 1 II, PHOTO 2, PHOTO 2 II, PHOTO 3 | ✓ | ROBUSR10 FG01h (PHOTO only) |
+| 3 | 0-3 | FTA, FTD, FTB, FTC photocell installed | ✓ | — |
+| 4 | 0-3 | CMD 1-4 installed | ✓ | — |
+| 4 | 5, 6 | PHOTO OPEN, PHOTO OPEN II installed | ✓ | — |
+| 5 | 0 | S-SL installed | ✓ | — |
+| 6 | 0-6 | photocell not working (order of byte 2) | ✓ | — |
+| 7 | 0-3 | FT photocell not working | ✓ | — |
+| 8 | 0-3, 5, 6 | CMD / PHOTO OPEN not working | ✓ | — |
+| 10 | 0-6 | photocell error (with byte 0 bit 3) | ✓ | — |
+| 11 | 0-6 | photocell active (with byte 19) | ✓ | ROBUSR10 FG01h |
+| 12 | 0-3 | gate state: `01` closed, `02` open, `04` closing, `08` opening, `00` stopped between the ends | — | ROBUSR10 FG01h (cycles 11-13: 50+ samples and 59 diagnostics files, also closed after 330 s at rest) |
+| 12 | 7 | stand-by: every photocell shows `stand_by` | ✓ | — (stand-by is off on the test gate) |
+| 17 | 0-2 | S-SL status | ✓ | — |
+| 19 | 0-6 | photocell beam: 1 = free, 0 = interrupted | ✓ | ROBUSR10 FG01h (beam blocked by hand during a close) |
+| 20 | pairs | FT photocell on/off | ✓ | — |
+| 21-24 | — | CMD 1-4 / PHOTO OPEN status (`21` = CMD 1 and PHOTO OPEN) | ✓ | — |
+
+Byte 12 bits 0-3 repeat 04/01 on a healthy controller. A difference between the
+two shows a controller that reports one state over BusT4 and another to its
+BlueBus devices; that is why `bluebus_gate_state` exists (#65).
+
+Example, gate open at rest:
+`11 00 81 00 00 00 00 00 00 00 00 7f 02 00 00 00 00 00 00 01 00 c0 00 00 00 00 00`
+→ PHOTO installed (byte 2 bit 0), beam free (byte 19 bit 0), gate open (byte 12),
+not moving (byte 0 bit 0).
+
+### 04/D1 — Inputs and outputs
+
+| Access | Size | INFO | Read | Entity |
+| --- | --- | --- | --- | --- |
+| GET | 14 | list of 14 "installed" masks: `0f 07 43 00 0d ff ff ff ff 3c 1f ff 01 00` | extended | `diagnostics_io_byte` (byte 2 as hex) with decoded attributes (#65), `controller_errors` |
+
+Each item is one bit; the same bit in the INFO list says whether the controller
+has it. Only installed items are shown. Decoder: `protocol/t4/io.py` (MyNice Pro
+`T4InputOutputDiagnostic_init` @0xf7d4).
+
+| Byte | Bits | Items | App code | Confirmed on |
+| --- | --- | --- | --- | --- |
+| 0 | 0-5 | Alt input OK (1 = OK), input 1-3, loop 1-2 | ✓ | ROBUSR10 FG01h (Alt OK = 1) |
+| 1 | 0-2 | buttons 1-3 | ✓ | — |
+| 2 | 0-5 | limit open / close M1, M2; unlocked M1, M2 | ✓ | — (encoder-only gate) |
+| 2 | 6 | direction: 1 = left (SX) | ✓ | ROBUSR10 FG01h (`40`, left-hand gate) |
+| 2 | 7 | selected motor: 1 = M1 | ✓ | — |
+| 3 | 0-3 | encoder fault M1, M2 (1 = fault); encoder input M1, M2 | ✓ | — |
+| 4 | 0-7 | outputs: motor M1, M2, output 1-3, fan, green light, red light | ✓ | ROBUSR10 FG01h (motor M1, output 1 flashing light, output 2 gate-open light change with the gate) |
+| 5 | whole byte | type of the STOP/Alt input: `0` not set, `1` B1, `2` B2, `3` NC, `4` NO, `5` out of range, `6` sensitive edge | ✓ | ROBUSR10 FG01h (`04` NO) |
+| 6 | 0-3 | radio inputs 1-4 | ✓ | — |
+| 7 | 0-3 | T4 mode I inputs 1-4 | ✓ | — |
+| 8 | whole byte | T4 mode II (number) | ✓ | — |
+| 9 | 0-3, 5 | thermal, heating, stand-by, battery, automatic opening | ✓ | — |
+| 9 | 4 | mains frequency: 0 = 50 Hz, 1 = 60 Hz | ✓ | — |
+| 10 | 0-6 | controller errors: positions, BlueBus, Alt, functions, regulations, map 1, map 2 (1 = error) | ✓ | ROBUSR10 FG01h (all 0) |
+| 11 | 0-1 | force limiter state: `0` OK, `1` level 1, `2` level 2, `3` motor alarm | ✓ | ROBUSR10 FG01h (always level 2) |
+| 12 | 0-2 | overload output 1-3 | ✓ | ROBUSR10 FG01h (output 1 always 1) |
+| 12 | 4-7 | overtravel low / high M1, M2 | ✓ | — |
+
+Seen in 489 samples on the ROBUSR10 (rest and motion): every byte except byte 4
+was constant, `01 00 40 00 xx 04 00 00 00 00 00 02 01 00`.
+
+- Overload output 1 was 1 with the flashing light on and off, so it is not
+  "output active". Its meaning is open.
+- The force limiter showed level 2 at rest, in normal motion and during a
+  photocell reversal. It is probably the set level, not an alarm (*guess*).
+
+### 04/D2 — Hardware values
+
+| Access | Size | INFO | Read | Entity |
+| --- | --- | --- | --- | --- |
+| GET | 28 | list of 14 big-endian `u16` field scales | extended (and fast while moving in a local diagnostic build) | `diagnostics_parameters` with decoded attributes (#65), `service_voltage`, `motor_temperature` |
+
+Each field is a big-endian `u16` at offset 2 × index. In the INFO list, bit 15 of
+each entry = field available, bits 0-14 = full scale *M*. A percent field is
+`((value × 100) & 0xFFFC) // M` (MyNice Pro `diag1DgxCalcPCT`); on the ROBUSR10
+*M* = 100, so the raw value is already percent.
+
+| Index | Field | Seen on ROBUSR10 FG01h | App code |
+| --- | --- | --- | --- |
+| 0 | work time left (s) | 240 at the start of a move, −1 per second, 0 at the stop | ✓ |
+| 1 | pause time left (s) | 30 after a photocell reversal | ✓ |
+| 2 | courtesy light time left (s) | 60 after a stop, counts down | ✓ |
+| 3 | bus current (%) | 11 in every sample | ✓ |
+| 4 | service voltage | 34 at rest, 30-33 while moving (unit V is a *guess*) | ✓ |
+| 5 | torque M1 (%) | 50-60 at the start, 20-45 running, 12-30 in the slowdown | ✓ |
+| 6 | torque M2 (%) | not available (0) | ✓ |
+| 7 | motor temperature | 22-28 raw; signed `ldrsh` in the app | ✓ |
+| 8, 9 | voltage M1, M2 (%) | not available (0) | ✓ |
+| 10 | speed M1 (%) | 95-99 opening, 71-84 closing, 17-19 in the slowdown | ✓ |
+| 11 | speed M2 (%) | not available (0) | ✓ |
+| 12 | encoder position (same as 04/11) | — | ✓ |
+| 13 | — | 0 | — |
+
+The integration shows the motor temperature as raw − 9 °C. The app shows the raw
+value; the −9 offset is not confirmed (#57).
+
+### 04/DA — Last 8 maneuvers
+
+| Access | Size | INFO | Read | Entity |
+| --- | --- | --- | --- | --- |
+| GET | 8 | `F0` | extended | `last_maneuvers` |
+
+One byte per maneuver, outcome from `AUTOMATION_STATUS_DIAGNOSTICS` in
+`protocol/t4/enums.py`: `00` OK, `01` BlueBus error, `02` photo intervention,
+`03` obstacle detected, `04` Alt detected, `05` internal parameters error, `06`
+maneuvers per hour exceeded, `07` electric anomaly, `08` blocking command, `09`
+automation blocked, `0a` obstacle detected by encoder. All `ff` = no data.
+
+Seen on the ROBUSR10 FG01h:
+
+- Byte 0 is the newest entry. A full cycle (close + open) moves the list by two.
+- A close that the photocell reversed, followed by the reopening, is **one**
+  entry `02` (photo intervention). A remote-control reversal gives `00`. A hit on
+  an obstacle gives `03`.
+- Read entry 0 after the gate stops to find why the last close did not finish
+  (#64).
