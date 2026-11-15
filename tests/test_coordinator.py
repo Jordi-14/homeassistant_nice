@@ -537,13 +537,17 @@ async def test_stop_preserves_in_flight_estimated_position(
     instance.async_set_updated_data(make_status(state="closed", position=0.0, current_position=0))
 
     await instance._async_send_action("open", refresh=False)
-    clock = 12.0
-    assert instance.display_position == 12.0
+    moving = make_status(state="opening", position=10.0, current_position=100)
+    instance.async_set_updated_data(moving)
+    instance._sync_position_simulation_from_status(moving)
+    clock = 1.0
+    held = instance.display_position
+    assert 10.0 < held < 11.0
 
     await instance._async_send_action("stop", refresh=False)
 
     assert client.actions == ["open", "stop"]
-    assert instance._last_known_position == 12.0
+    assert instance._last_known_position == held
     assert instance.position_simulation_action is None
 
 
@@ -827,7 +831,7 @@ async def test_position_simulation_uses_calibrated_travel_speed(
     await instance._async_send_action("open", refresh=False)
 
     assert instance.position_simulation_action == "open"
-    assert instance.position_simulation_speed_percent_per_second == 5.0
+    assert instance.position_simulation_speed_percent_per_second == 4.0
 
     await instance._async_cancel_position_simulation()
 
@@ -867,9 +871,9 @@ async def test_position_simulation_learns_speed_from_sparse_live_samples(
     )
 
     assert instance.observed_position_speed_percent_per_second == {"open": 4.0}
-    assert instance.position_simulation_speed_percent_per_second == 4.0
+    assert instance.position_simulation_speed_percent_per_second == 3.2
     now[0] = 107.0
-    assert instance._current_simulated_position() == 48.0
+    assert 41.0 < instance._current_simulated_position() < 42.0
 
     await instance._async_cancel_position_simulation()
 

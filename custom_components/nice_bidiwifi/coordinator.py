@@ -285,6 +285,8 @@ class NiceBidiDataUpdateCoordinator(
     async def _async_update_data(self) -> NiceBidiStatus:
         """Fetch state from the BiDi."""
         self.event_controller.ensure_registered()
+        live_state_sequence = self.event_controller.live_state_sequence
+        live_position_sequence = self.event_controller.live_position_sequence
         try:
             if self.connection_state == CONNECTION_STATE_FAILED:
                 self._set_connection_state(CONNECTION_STATE_RECONNECTING)
@@ -311,6 +313,9 @@ class NiceBidiDataUpdateCoordinator(
             self._clear_position_simulation()
             raise UpdateFailed(str(err)) from err
 
+        status = self.event_controller.preserve_newer_live_status(
+            status, live_state_sequence, live_position_sequence
+        )
         self._track_controller_limits(status)
         status = self.event_controller.reconcile_polled_obstacle(status)
         status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))

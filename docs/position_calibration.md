@@ -27,6 +27,29 @@ synthetic endpoint percentages or time-derived position. Once real position
 reporting has been observed, the integration may bridge sparse updates with a
 clearly marked cached or simulated display value.
 
+### Conservative animation between readings
+
+After a command, the percentage waits for the controller to report movement.
+It can then move beyond the latest reported position at a conservative speed:
+80% of the lower available calibrated or recent observed speed. Recent slower
+samples limit short bursts, so learned speed does not remove this margin.
+
+Extrapolation gradually eases as the last reading gets older. It is limited to
+about half a second's extra travel at the initial prediction speed, rather than
+running indefinitely at that speed. The next real reading becomes the new
+anchor. For example, the display can advance beyond a reported 83.1%, while
+normally remaining below the next reported 85.6%.
+
+A status poll that started before a newer live update cannot replace its state
+or position. Fresh readings can still report a genuine stop or reversal.
+Position-target calculations prefer the real reported percentage over the
+deliberately lagging display value. Calibration measurements and motor settings
+are not changed by the animation margin.
+
+These measures reduce prediction overshoot. They cannot guarantee the gate's
+physical position between messages if it stops unexpectedly or reports an
+incorrect value. The animation remains marked as estimated.
+
 Home Assistant covers do not have a separate visual state for "stopped
 mid-travel". A stopped half-open gate normally appears as open with a
 percentage, for example `Open - 42%`, while both open and close actions remain
