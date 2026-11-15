@@ -1465,6 +1465,7 @@ def test_oxi_identity_comes_from_std_group_00() -> None:
         "00/0B@00.0A": DmpResponse("", 0x00, 0x0B, value=b"BK00H"),
         "00/0C@00.0A": DmpResponse("", 0x00, 0x0C, value=b"Radio"),
         "0A/00@00.0A": DmpResponse("", 0x0A, 0x00, value=b"\x01"),
+        "0A/41@00.0A": DmpResponse("", 0x0A, 0x41, value=b"\x5f"),
     }
     status = status_from_dmp_registers(registers)
 
@@ -1472,4 +1473,8 @@ def test_oxi_identity_comes_from_std_group_00() -> None:
     assert (status.oxi_product, status.oxi_hardware_version) == ("OXIBD group", "672B")
     assert (status.oxi_firmware_version, status.oxi_description) == ("BK00H", "Radio")
     assert status.oxi_receiver_type == "oxi"
+    assert status.oxi_coding_type == "flor"  # 0x5F: bit 7 clear (defined), bit 5 clear
     assert status_from_dmp_registers({}).oxi_detected is False
+    for raw, coding in ((b"\xff", None), (b"\x6f", "flo"), (b"\x3f", "hcs")):
+        reply = {"0A/41@00.0A": DmpResponse("", 0x0A, 0x41, value=raw)}
+        assert status_from_dmp_registers(reply).oxi_coding_type == coding

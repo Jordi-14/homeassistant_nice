@@ -67,6 +67,7 @@ class NiceStatus:
     oxi_firmware_version: str | None = None
     oxi_description: str | None = None
     oxi_receiver_type: str | None = None
+    oxi_coding_type: str | None = None
 
     def __post_init__(self) -> None:
         """Freeze register observations with the rest of the status."""

@@ -91,6 +91,7 @@ OXI_INFO_PROFILE = DmpRegisterProfile(
         (0x00, 0x0B),
         (0x00, 0x0C),
         (0x0A, 0x00),  # RADIO_DEVICE: receiver type (ListDevice)
+        (0x0A, 0x41),  # RADIO_CFG_CODES: remote coding (FLO / FLOR / HCS)
     ),
     required=False,
 )

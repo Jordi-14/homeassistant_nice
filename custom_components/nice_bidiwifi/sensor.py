@@ -527,8 +527,15 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
             _status(coordinator).oxi_product if _status(coordinator) else None
         ),
         extra_attributes_fn=lambda coordinator: (
-            {"receiver_type": _status(coordinator).oxi_receiver_type}
-            if _status(coordinator) and _status(coordinator).oxi_receiver_type
+            {
+                key: value
+                for key, value in (
+                    ("receiver_type", _status(coordinator).oxi_receiver_type),
+                    ("coding_type", _status(coordinator).oxi_coding_type),
+                )
+                if value is not None
+            }
+            if _status(coordinator)
             else {}
         ),
     ),
