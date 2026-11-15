@@ -12,6 +12,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.util import slugify
 
 from .coordinator import NiceBidiDataUpdateCoordinator, controller_limits_store
+from .entity import bidi_unique_id
 from .const import (
     CONFIG_ENTRY_VERSION,
     CONF_CONNECTION_MODE,
@@ -112,9 +113,27 @@ def _async_migrate_default_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -
         )
 
 
+
+# Removed in PR #55: their 04/D0 / 04/D1 decoding was wrong.
+RETIRED_ENTITIES = (
+    (Platform.BINARY_SENSOR, "photocell"),
+    (Platform.SENSOR, "last_stop_reason"),
+)
+
+
+def _async_remove_retired_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove registry entries of entities this integration no longer creates."""
+    entity_registry = er.async_get(hass)
+    for platform, suffix in RETIRED_ENTITIES:
+        if entity_id := entity_registry.async_get_entity_id(
+            platform, DOMAIN, bidi_unique_id(entry, suffix)
+        ):
+            entity_registry.async_remove(entity_id)
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Nice from a config entry."""
     _async_migrate_default_entity_ids(hass, entry)
+    _async_remove_retired_entities(hass, entry)
 
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
     await coordinator.async_load_calibration()

@@ -144,6 +144,8 @@ def _unknown_status() -> NiceBidiStatus:
 
 
 LIMITS_STORAGE_VERSION = 1
+# normal open positions vary by ~5 % (5024-5271); the fault left 39, 66 and 3018 (-42 %)
+LIMITS_DROP_RATIO = 0.75
 
 
 def controller_limits_store(hass: HomeAssistant, entry_id: str) -> Store:
@@ -206,6 +208,7 @@ class NiceBidiDataUpdateCoordinator(
         self.position_controller._init_position_state()
         self._extended_status_cache: NiceBidiStatus | None = None
         self._extended_status_next_refresh_monotonic = 0.0
+        self._extended_scan_requests = 0
         self._last_open_position: int | None = None
         self._limits_store = controller_limits_store(hass, entry.entry_id)
         self.controller_limits_changed: dict | None = None
@@ -341,7 +344,7 @@ class NiceBidiDataUpdateCoordinator(
         baseline = self._last_open_position
         if opened is None:
             return
-        if baseline is not None and opened < 0.5 * baseline:
+        if baseline is not None and opened < LIMITS_DROP_RATIO * baseline:
             if self.controller_limits_changed is None:
                 ir.async_create_issue(
                     self.hass,
@@ -410,6 +413,7 @@ class NiceBidiDataUpdateCoordinator(
 
         try:
             include_extended = self._should_read_extended_status()
+            scan_due = self._extended_scan_requests
             status = self.client.read_status(
                 include_extended=include_extended,
                 preemptible=True,
@@ -443,7 +447,7 @@ class NiceBidiDataUpdateCoordinator(
             return _unknown_status()
 
         if include_extended:
-            status = self._cache_extended_status(status)
+            status = self._cache_extended_status(status, scan_due)
         else:
             status = self._merge_cached_extended_status(status)
         if self.device_info is None:
@@ -528,16 +532,14 @@ class NiceBidiDataUpdateCoordinator(
             return False
         return time.monotonic() >= self._extended_status_next_refresh_monotonic
 
-    def _cache_extended_status(self, status: NiceBidiStatus) -> NiceBidiStatus:
+    def _cache_extended_status(
+        self, status: NiceBidiStatus, scan_due: int | None = None
+    ) -> NiceBidiStatus:
         """Store the latest broad BusT4 scan and flag a maneuver log that stopped updating."""
         log, count = status.last_maneuvers, status.total_maneuver_count
         if log is not None and count is not None:
             baseline = self._maneuver_log_baseline
             # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log rule (unchanged log plus a failure sign).
-            # Built to diagnose one controller fault (ROBUSR10 + BiDi-WiFi 2.6.4, PR #55
-            # hardware tests). Thresholds and rules come from that one gate only.
-            # Agents: do not extend, generalize or build on this; keep it opt-in for
-            # diagnostics, or remove it before a stable release.
             if baseline is None or baseline[0] != log:
                 self._maneuver_log_baseline = (log, count, self.abnormal_stop_count)
                 stale = False
@@ -549,7 +551,9 @@ class NiceBidiDataUpdateCoordinator(
                 )
             status = replace(status, last_maneuvers_stale=stale)
         self._extended_status_cache = status
-        self._extended_status_next_refresh_monotonic = time.monotonic() + EXTENDED_STATUS_REFRESH_SECONDS
+        # a scan request that came while this scan ran stays due
+        if scan_due is None or self._extended_scan_requests == scan_due:
+            self._extended_status_next_refresh_monotonic = time.monotonic() + EXTENDED_STATUS_REFRESH_SECONDS
         return status
 
     def _merge_cached_extended_status(self, status: NiceBidiStatus) -> NiceBidiStatus:
@@ -856,6 +860,7 @@ class NiceBidiDataUpdateCoordinator(
         self.last_error = None
         self._extend_post_command_fast_poll_window()
         self.update_interval = MOVING_UPDATE_INTERVAL
+        self._extended_scan_requests += 1
         self._extended_status_next_refresh_monotonic = 0.0
         if refresh:
             await self.async_request_refresh()

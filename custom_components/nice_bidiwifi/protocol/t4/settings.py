@@ -68,11 +68,12 @@ PARTIAL_OPEN_3_POSITION = DmpSetting(
     0x23,
     size=2,
 )
+# 04/B1 is a 32-bit register: GET returns 4 bytes and INFO reports size 4.
 MAINTENANCE_THRESHOLD = DmpSetting(
     "maintenance_threshold",
     0x04,
     0xB1,
-    size=2,
+    size=4,
 )
 
 SETTINGS = {

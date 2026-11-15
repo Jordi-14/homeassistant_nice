@@ -82,6 +82,19 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("sensor", "opening_force"),
     _entity("sensor", "closing_force"),
     _entity("sensor", "pause_time"),
+    _entity("sensor", "opening_slowdown_position", False),
+    _entity("sensor", "closing_slowdown_position", False),
+    _entity("sensor", "opening_slowdown_speed", False),
+    _entity("sensor", "closing_slowdown_speed", False),
+    _entity("sensor", "courtesy_light_time", False),
+    _entity("sensor", "standby_time", False),
+    _entity("sensor", "pre_flash_open_time", False),
+    _entity("sensor", "pre_flash_close_time", False),
+    _entity("sensor", "output_1_function", False),
+    _entity("sensor", "output_2_function", False),
+    _entity("sensor", "step_step_mode", False),
+    _entity("sensor", "standby_mode", False),
+    _entity("sensor", "maintenance_mode", False),
     _entity("sensor", "maintenance_threshold"),
     _entity("sensor", "maintenance_count"),
     _entity("sensor", "total_maneuver_count"),
@@ -89,6 +102,7 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("sensor", "service_voltage", False),
     _entity("sensor", "diagnostics_io_byte", False),
     _entity("sensor", "bluebus_devices"),
+    _entity("sensor", "controller_errors"),
     _entity("sensor", "last_maneuvers"),
     _entity("sensor", "diagnostics_parameters", False),
     _entity("sensor", "oxi_product", False),
@@ -106,6 +120,8 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("binary_sensor", "limit_closed", False),
     _entity("binary_sensor", "limit_open", False),
     _entity("binary_sensor", "obstacle"),
+    _entity("binary_sensor", "automation_blocked", False),
+    _entity("binary_sensor", "slowdown", False),
     _entity("binary_sensor", "input_1", False),
     _entity("binary_sensor", "input_2", False),
     _entity("binary_sensor", "input_3", False),
@@ -119,4 +135,4 @@ PROTECTED_ENTITY_CATALOG = (
     _entity("binary_sensor", "oxi_detected"),
 )
 
-assert len(PROTECTED_ENTITY_CATALOG) == 91
+assert len(PROTECTED_ENTITY_CATALOG) == 107

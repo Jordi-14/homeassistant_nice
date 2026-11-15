@@ -12,7 +12,66 @@ from .dmp import (
     dmp_uint,
     status_from_register,
 )
+from .enums import RADIO_RECEIVER_TYPES
 from .maneuvers import decode_last_maneuvers
+from .options import (
+    MAINTENANCE_MODES,
+    OUTPUT_FUNCTIONS,
+    STANDBY_MODES,
+    STEP_STEP_MODES,
+    option_name,
+)
+
+
+# 04/D1 byte 10, bits 0-6 = MyNice Pro T4InputOutputDiagnostic ids 37-43 (1 = ERR, "Err positions" @0x114b0).
+CONTROLLER_ERROR_BITS = (
+    "positions",
+    "bluebus",
+    "alt",
+    "functions",
+    "regulations",
+    "map_1",
+    "map_2",
+)
+
+
+def decode_controller_errors(data: bytes | None) -> dict[str, bool] | None:
+    """Return the controller error flags of 04/D1, or None when not read."""
+    if not data or len(data) < 11 or all(byte == 0xFF for byte in data):
+        return None
+    return {
+        name: bool(data[10] >> bit & 1)
+        for bit, name in enumerate(CONTROLLER_ERROR_BITS)
+    }
+
+
+# Below this raw value the field is not a real temperature.
+MIN_RAW_TEMPERATURE = -50
+# FF FF and 80 00 are "no value" fillers, not -1 or -32768
+NO_TEMPERATURE = frozenset({b"\xff\xff", b"\x80\x00"})
+
+
+def _motor_temperature(data: bytes | None) -> int | None:
+    """04/D2 offset 14: signed 16-bit (MyNice Pro reads it with ldrsh), so frost stays visible."""
+    if not data or len(data) < 16 or data[14:16] in NO_TEMPERATURE:
+        return None
+    raw = int.from_bytes(data[14:16], "big", signed=True)
+    return raw - 9 if raw >= MIN_RAW_TEMPERATURE else None
+
+
+def _coding_type(value: int | None) -> str | None:
+    """RadioCfgCodingType.getCodingType: active-low bits, 7 = defined, 4 = FLO, 6 = HCS, 5 = FLOR."""
+    if value is None or value > 0xFF or value & 0x80:
+        return None
+    for bit, name in ((0x10, "flo"), (0x40, "hcs"), (0x20, "flor")):
+        if not value & bit:
+            return name
+    return None
+
+
+def _receiver_type(code: int | None) -> str | None:
+    """Return the OXI receiver type name, or code_<n> for an unknown code."""
+    return None if code is None else RADIO_RECEIVER_TYPES.get(code, f"code_{code}")
 
 
 def status_from_dmp_registers(
@@ -82,14 +141,24 @@ def status_from_dmp_registers(
         limit_closed=bool(io_byte & 0x02) if io_byte is not None else None,
         diagnostics_io_byte=io_byte,
         bluebus_devices=decode_bluebus_devices(dmp_bytes(registers.get("04/D0"))),
+        controller_errors=decode_controller_errors(diagnostics_io),
+        opening_slowdown_position=dmp_uint(registers.get("04/24")),
+        closing_slowdown_position=dmp_uint(registers.get("04/25")),
+        opening_slowdown_speed=dmp_uint(registers.get("04/45")),
+        closing_slowdown_speed=dmp_uint(registers.get("04/46")),
+        output_1_function=option_name(OUTPUT_FUNCTIONS, dmp_uint(registers.get("04/51"))),
+        output_2_function=option_name(OUTPUT_FUNCTIONS, dmp_uint(registers.get("04/52"))),
+        courtesy_light_time=dmp_uint(registers.get("04/5B")),
+        step_step_mode=option_name(STEP_STEP_MODES, dmp_uint(registers.get("04/61"))),
+        standby_time=dmp_uint(registers.get("04/8D")),
+        standby_mode=option_name(STANDBY_MODES, dmp_uint(registers.get("04/8E"))),
+        pre_flash_open_time=dmp_uint(registers.get("04/95")),
+        pre_flash_close_time=dmp_uint(registers.get("04/99")),
+        automation_blocked=dmp_bool(registers.get("04/9A")),
+        slowdown=dmp_bool(registers.get("04/A2")),
+        maintenance_mode=option_name(MAINTENANCE_MODES, dmp_uint(registers.get("04/B0"))),
         last_maneuvers=decode_last_maneuvers(dmp_bytes(registers.get("04/DA"))),
-        motor_temperature=(
-            int.from_bytes(diagnostic_parameters[14:16], "big") - 9
-            if diagnostic_parameters
-            and len(diagnostic_parameters) > 15
-            and diagnostic_parameters[14] < 0x80  # vendor "not available"
-            else None
-        ),
+        motor_temperature=_motor_temperature(diagnostic_parameters),
         service_voltage=(
             int.from_bytes(diagnostic_parameters[8:10], "big")
             if diagnostic_parameters
@@ -102,9 +171,11 @@ def status_from_dmp_registers(
             if diagnostic_parameters is not None
             else None
         ),
-        oxi_detected=any(key.startswith("0A/") for key in registers),
-        oxi_product=dmp_ascii(registers.get("0A/09@00.0A")),
-        oxi_hardware_version=dmp_ascii(registers.get("0A/0A@00.0A")),
-        oxi_firmware_version=dmp_ascii(registers.get("0A/0B@00.0A")),
-        oxi_description=dmp_ascii(registers.get("0A/0C@00.0A")),
+        oxi_detected=any(key.endswith("@00.0A") for key in registers),
+        oxi_product=dmp_ascii(registers.get("00/09@00.0A")),
+        oxi_hardware_version=dmp_ascii(registers.get("00/0A@00.0A")),
+        oxi_firmware_version=dmp_ascii(registers.get("00/0B@00.0A")),
+        oxi_description=dmp_ascii(registers.get("00/0C@00.0A")),
+        oxi_receiver_type=_receiver_type(dmp_uint(registers.get("0A/00@00.0A"))),
+        oxi_coding_type=_coding_type(dmp_uint(registers.get("0A/41@00.0A"))),
     )

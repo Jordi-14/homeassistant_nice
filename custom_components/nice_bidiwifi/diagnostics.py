@@ -312,6 +312,8 @@ async def async_get_config_entry_diagnostics(
                 "oxi_hardware_version": status.oxi_hardware_version if status else None,
                 "oxi_firmware_version": status.oxi_firmware_version if status else None,
                 "oxi_description": status.oxi_description if status else None,
+                "oxi_receiver_type": status.oxi_receiver_type if status else None,
+                "oxi_coding_type": status.oxi_coding_type if status else None,
             },
         },
         "device_info": _device_info_diagnostics(device_info),

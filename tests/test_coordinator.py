@@ -1049,6 +1049,21 @@ async def test_write_dmp_register_records_command_metadata(hass: HomeAssistant) 
     assert instance._extended_status_next_refresh_monotonic == 0.0
 
 
+async def test_scan_request_during_a_scan_is_kept(hass: HomeAssistant) -> None:
+    """A scan request that came while a scan ran must survive the scan end, even when that scan was requested too."""
+    instance = _coordinator(hass)
+    # the scan was itself requested (due 0.0); one more request came while it ran
+    started = instance._extended_scan_requests
+    instance._extended_scan_requests += 1
+    instance._extended_status_next_refresh_monotonic = 0.0
+    instance._cache_extended_status(make_status(), scan_due=started)
+    assert instance._extended_status_next_refresh_monotonic == 0.0
+
+    # no request during the scan: schedule the next one
+    instance._cache_extended_status(make_status(), scan_due=instance._extended_scan_requests)
+    assert instance._extended_status_next_refresh_monotonic > 0.0
+
+
 async def test_write_dmp_register_blocks_while_gate_is_moving(hass: HomeAssistant) -> None:
     """Test BusT4 config writes are blocked during motion."""
     instance = _coordinator(hass)
@@ -2426,6 +2441,15 @@ async def test_controller_limit_drop_raises_and_clears_repair_issue(
     await poll(5247)
     assert instance.controller_limits_changed is None
     assert registry.async_get_issue(DOMAIN, issue_id) is None
+
+    # 2026-11-14: 5239 -> 3018 (-42 %) must be flagged; normal drift (-5 %) must not
+    await poll(5024)
+    assert instance.controller_limits_changed is None
+    await poll(3018)
+    assert instance.controller_limits_changed == {
+        "previous_open_position": 5024,
+        "open_position": 3018,
+    }
 
 
 async def test_controller_limit_drop_is_one_abnormal_event_with_a_scan(

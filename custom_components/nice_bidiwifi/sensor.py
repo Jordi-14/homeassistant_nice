@@ -16,7 +16,12 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfTemperature
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfElectricPotential,
+    UnitOfTemperature,
+    UnitOfTime,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -68,6 +73,18 @@ def _bluebus_fault_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | No
     if status is None or status.bluebus_devices is None:
         return None
     return sum(value in _BLUEBUS_FAULT_NAMES for value in status.bluebus_devices.values())
+
+
+def _status_field(name: str, coordinator: NiceBidiDataUpdateCoordinator) -> Any:
+    status = _status(coordinator)
+    return getattr(status, name) if status else None
+
+
+def _controller_error_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
+    status = _status(coordinator)
+    if status is None or status.controller_errors is None:
+        return None
+    return sum(status.controller_errors.values())
 
 
 def _last_maneuvers(coordinator: NiceBidiDataUpdateCoordinator) -> tuple[str, ...] | None:
@@ -408,6 +425,137 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         ),
     ),
     NiceBidiSensorEntityDescription(
+        key="opening_slowdown_position",
+        name="Opening slowdown position",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:ray-end-arrow",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=partial(_status_field, "opening_slowdown_position"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="closing_slowdown_position",
+        name="Closing slowdown position",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:ray-start-arrow",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=partial(_status_field, "closing_slowdown_position"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="opening_slowdown_speed",
+        name="Opening slowdown speed",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:speedometer-slow",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        value_fn=partial(_status_field, "opening_slowdown_speed"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="closing_slowdown_speed",
+        name="Closing slowdown speed",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:speedometer-slow",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        value_fn=partial(_status_field, "closing_slowdown_speed"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="courtesy_light_time",
+        name="Courtesy light time",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:lightbulb-on-outline",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        value_fn=partial(_status_field, "courtesy_light_time"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="standby_time",
+        name="Standby time",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:power-sleep",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        value_fn=partial(_status_field, "standby_time"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="pre_flash_open_time",
+        name="Pre-flash time before opening",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:alarm-light-outline",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        value_fn=partial(_status_field, "pre_flash_open_time"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="pre_flash_close_time",
+        name="Pre-flash time before closing",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:alarm-light-outline",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        value_fn=partial(_status_field, "pre_flash_close_time"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="output_1_function",
+        name="Output 1 function",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:export",
+        value_fn=partial(_status_field, "output_1_function"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="output_2_function",
+        name="Output 2 function",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:export",
+        value_fn=partial(_status_field, "output_2_function"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="step_step_mode",
+        name="Step-by-step mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gesture-tap-button",
+        value_fn=partial(_status_field, "step_step_mode"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="standby_mode",
+        name="Standby mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:power-sleep",
+        value_fn=partial(_status_field, "standby_mode"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="maintenance_mode",
+        name="Maintenance management",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:wrench-cog",
+        value_fn=partial(_status_field, "maintenance_mode"),
+    ),
+    NiceBidiSensorEntityDescription(
         key="maintenance_threshold",
         name="Maintenance threshold",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -492,6 +640,20 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         ),
     ),
     NiceBidiSensorEntityDescription(
+        key="controller_errors",
+        name="Controller errors",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:alert-circle-outline",
+        # bit map seen on one ROBUSR10 only
+        entity_registry_visible_default=False,
+        value_fn=_controller_error_count,
+        extra_attributes_fn=lambda coordinator: (
+            dict(_status(coordinator).controller_errors or {})
+            if _status(coordinator)
+            else {}
+        ),
+    ),
+    NiceBidiSensorEntityDescription(
         key="last_maneuvers",
         name="Last 8 maneuvers",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -525,6 +687,18 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         icon="mdi:radio-tower",
         value_fn=lambda coordinator: (
             _status(coordinator).oxi_product if _status(coordinator) else None
+        ),
+        extra_attributes_fn=lambda coordinator: (
+            {
+                key: value
+                for key, value in (
+                    ("receiver_type", _status(coordinator).oxi_receiver_type),
+                    ("coding_type", _status(coordinator).oxi_coding_type),
+                )
+                if value is not None
+            }
+            if _status(coordinator)
+            else {}
         ),
     ),
     NiceBidiSensorEntityDescription(

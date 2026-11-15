@@ -55,6 +55,22 @@ class NiceStatus:
     obstacle: bool | None = None
     diagnostics_io_byte: int | None = None
     bluebus_devices: dict[str, str] | None = None
+    controller_errors: dict[str, bool] | None = None
+    opening_slowdown_position: int | None = None
+    closing_slowdown_position: int | None = None
+    opening_slowdown_speed: int | None = None
+    closing_slowdown_speed: int | None = None
+    output_1_function: str | None = None
+    output_2_function: str | None = None
+    courtesy_light_time: int | None = None
+    step_step_mode: str | None = None
+    standby_time: int | None = None
+    standby_mode: str | None = None
+    pre_flash_open_time: int | None = None
+    pre_flash_close_time: int | None = None
+    automation_blocked: bool | None = None
+    slowdown: bool | None = None
+    maintenance_mode: str | None = None
     last_maneuvers: tuple[str, ...] | None = None
     # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log flag; see coordinator.py:_cache_extended_status.
     last_maneuvers_stale: bool | None = None
@@ -66,6 +82,8 @@ class NiceStatus:
     oxi_hardware_version: str | None = None
     oxi_firmware_version: str | None = None
     oxi_description: str | None = None
+    oxi_receiver_type: str | None = None
+    oxi_coding_type: str | None = None
 
     def __post_init__(self) -> None:
         """Freeze register observations with the rest of the status."""

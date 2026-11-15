@@ -891,6 +891,37 @@ async def test_nhk_normal_travel_is_not_implausible(hass, monkeypatch) -> None:
     await coordinator.async_shutdown()
 
 
+async def test_plain_stopped_without_command_is_unexpected(hass, monkeypatch) -> None:
+    """State 1 is "stopped" (no underscore) and must match like stopped_*."""
+    _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(hass)
+    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 01 00"))
+    await hass.async_block_till_done()
+    assert [(e.data["reason"], e.data["change_state"]) for e in events] == [
+        ("unexpected_stop", "stopped")
+    ]
+    await coordinator.async_shutdown()
+
+
+async def test_nhk_move_without_terminal_state_expires(hass, monkeypatch) -> None:
+    """A move cut without open/closed/stopped must not hide the next fake move."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=5114, closed_position=0, open_position=5114
+    )
+    controller = coordinator.event_controller
+    controller._handle_raw_frame(frame_xml(_nhk_change("closing")))  # no terminal state
+    clock.now += 200.0
+    controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
+    clock.now += 0.96
+    controller._handle_raw_frame(frame_xml(_nhk_change("closed")))
+    await hass.async_block_till_done()
+    assert [e.data["reason"] for e in events] == ["implausible_travel"]
+    await coordinator.async_shutdown()
+
+
 async def test_one_event_when_04_02_and_nhk_both_match(hass, monkeypatch) -> None:
     clock = _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
@@ -921,4 +952,190 @@ async def test_repeated_door_status_frames_do_not_rearm_the_nhk_move(hass, monke
     controller._handle_raw_frame(frame_xml(_nhk_change("open")))
     await hass.async_block_till_done()
     assert events == []
+    await coordinator.async_shutdown()
+
+
+async def test_force_limiter_is_a_controller_fault(hass, monkeypatch) -> None:
+    """2026-11-14: 04 02 91 at the end of a close, then the controller reversed."""
+    _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="closing", current_position=51, closed_position=0, open_position=5133
+    )
+    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 91 00 00 00"))
+    await hass.async_block_till_done()
+    assert [(e.data["reason"], e.data["change_state"]) for e in events] == [
+        ("controller_fault", "force_limiter_intervent")
+    ]
+    await coordinator.async_shutdown()
+
+
+async def test_close_on_idle_open_gate_read_as_stop_is_unexpected(hass, monkeypatch) -> None:
+    """2026-11-14 cycle 1: HA close on an open gate came back as a stop with cause oview."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=5239, closed_position=0, open_position=5239
+    )
+    controller = coordinator.event_controller
+    coordinator.last_command = "close"
+    coordinator.last_command_monotonic = clock.now
+    clock.now += 2.5
+    controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
+    controller._handle_raw_frame(_t4_event("04 02 88 19 00 00"))
+    await hass.async_block_till_done()
+    assert [(e.data["reason"], e.data["cause"]) for e in events] == [
+        ("unexpected_stop", "oview")
+    ]
+    await coordinator.async_shutdown()
+
+
+async def test_open_command_stopping_a_moving_gate_is_normal(hass, monkeypatch) -> None:
+    """Old cycle 2: HA open while the gate closed gives the same 88 19, which is fine."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="closing", current_position=3000, closed_position=0, open_position=5114
+    )
+    coordinator.last_command = "open"
+    coordinator.last_command_monotonic = clock.now
+    clock.now += 1.8
+    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 88 19 00 00"))
+    await hass.async_block_till_done()
+    assert events == []
+    await coordinator.async_shutdown()
+
+
+async def test_nhk_stop_soon_after_start_without_04_02(hass, monkeypatch) -> None:
+    """2026-11-14 cycle 3: NHK closing then stopped after 2 s, no 04/02; a stop command is fine."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=3018, closed_position=0, open_position=3018
+    )
+    controller = coordinator.event_controller
+    for command in ("stop", "step_step", "close"):
+        coordinator.last_command = command
+        coordinator.last_command_monotonic = clock.now
+        controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
+        clock.now += 2.0
+        controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
+        clock.now += 10.0
+    await hass.async_block_till_done()
+    assert [e.data["reason"] for e in events] == ["unexpected_stop"]
+    await coordinator.async_shutdown()
+
+
+async def test_nhk_stop_4_s_after_a_stop_command_is_normal(hass, monkeypatch) -> None:
+    """The stop command must explain an NHK stop for the whole 5 s window, not only 3 s."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=3018, closed_position=0, open_position=3018
+    )
+    controller = coordinator.event_controller
+    controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
+    clock.now += 0.5
+    coordinator.last_command = "stop"
+    coordinator.last_command_monotonic = clock.now
+    clock.now += 4.0
+    controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
+    await hass.async_block_till_done()
+    assert events == []
+    await coordinator.async_shutdown()
+
+
+async def test_one_stop_seen_twice_with_two_reasons_fires_once(hass, monkeypatch) -> None:
+    """A force-limiter 04/02 and the NHK stop of the same stop must not count twice."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=3018, closed_position=0, open_position=3018
+    )
+    controller = coordinator.event_controller
+    controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
+    clock.now += 2.0
+    controller._handle_raw_frame(_t4_event("04 02 91 00 00 00"))
+    clock.now += 0.3
+    controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
+    await hass.async_block_till_done()
+    assert [e.data["reason"] for e in events] == ["controller_fault"]
+    await coordinator.async_shutdown()
+
+
+async def test_old_close_does_not_explain_a_later_oview_stop(hass, monkeypatch) -> None:
+    """A Close from an hour ago must not make a new oview stop (e.g. from the app) abnormal."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=5239, closed_position=0, open_position=5239
+    )
+    coordinator.last_command = "close"
+    coordinator.last_command_monotonic = clock.now
+    clock.now += 3600.0
+    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 88 19 00 00"))
+    await hass.async_block_till_done()
+    assert events == []
+    await coordinator.async_shutdown()
+
+
+async def test_old_stop_does_not_hide_a_short_nhk_stop(hass, monkeypatch) -> None:
+    """A Stop from an hour ago must not suppress the short NHK stop alert."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=3018, closed_position=0, open_position=3018
+    )
+    controller = coordinator.event_controller
+    coordinator.last_command = "stop"
+    coordinator.last_command_monotonic = clock.now
+    clock.now += 3600.0
+    controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
+    clock.now += 2.0
+    controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
+    await hass.async_block_till_done()
+    assert [e.data["reason"] for e in events] == ["unexpected_stop"]
+    await coordinator.async_shutdown()
+
+
+async def test_nhk_and_04_02_report_one_stop_once(hass, monkeypatch) -> None:
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="open", current_position=5239, closed_position=0, open_position=5239
+    )
+    controller = coordinator.event_controller
+    coordinator.last_command = "close"
+    controller._handle_raw_frame(frame_xml(_nhk_change("closing")))
+    clock.now += 2.0
+    controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
+    clock.now += 0.01
+    controller._handle_raw_frame(_t4_event("04 02 88 00 00 00"))
+    await hass.async_block_till_done()
+    assert [e.data["reason"] for e in events] == ["unexpected_stop"]
+    await coordinator.async_shutdown()
+
+
+async def test_photocell_reversal_during_close_is_not_abnormal(hass, monkeypatch) -> None:
+    """2026-11-14 cycle 6: the photocell beam was blocked while the gate closed.
+
+    The controller reversed with opening_from_command and cause none (not photo_*),
+    and NHK reported opening with obstruction false. A reversal is not a stop.
+    """
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="closing", current_position=1287, closed_position=0, open_position=5251
+    )
+    controller = coordinator.event_controller
+    coordinator.last_command = "close"
+    coordinator.last_command_monotonic = clock.now - 20.7
+    controller._handle_raw_frame(_t4_event("04 02 83 00 00 00"))
+    clock.now += 0.19
+    controller._handle_raw_frame(frame_xml(_nhk_change("opening")))
+    clock.now += 23.0
+    controller._handle_raw_frame(_t4_event("04 02 04 00 00 00", xml=_nhk_xml("open")))
+    await hass.async_block_till_done()
+    assert events == []
+    assert coordinator.data.state == "open"
     await coordinator.async_shutdown()
