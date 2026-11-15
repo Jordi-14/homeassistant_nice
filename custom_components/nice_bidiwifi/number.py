@@ -345,9 +345,11 @@ class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Write the BusT4 number value."""
-        if self._disabled_for_device():
+        if (reason := self.coordinator.setting_write_block_reason(
+            self.entity_description.setting
+        )) is not None:
             raise HomeAssistantError(
-                f"{self.entity_description.name} is disabled for this controller model"
+                f"{self.entity_description.name} is disabled for this controller: {reason}"
             )
         int_value = int(round(value))
         min_value = self.native_min_value

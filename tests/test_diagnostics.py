@@ -115,6 +115,7 @@ async def test_diagnostics_redacts_sensitive_data(hass) -> None:
     }
     assert diagnostics["device_info"]["interface_serial"] == "**REDACTED**"
     assert diagnostics["device_info"]["device_serial"] == "**REDACTED**"
+    assert diagnostics["controller_info"] == {"configuration": None, "settings": {}}
     assert diagnostics["status"]["state"] == "opening"
     assert diagnostics["status"]["position"] == 42.4
     assert diagnostics["status"]["current_position"] == 424

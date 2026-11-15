@@ -237,6 +237,32 @@ class TestNiceBidiNumberProperties:
 
         assert (force.native_min_value, force.native_max_value) == (1, 100)
 
+    async def test_number_refuses_a_per_motor_array_setting(self) -> None:
+        """MC824H (#38): force is per motor. With INFO marking an array, no one-value write is sent.
+
+        The INFO bytes are constructed (array bit, array size 2, range 1-8 from the MC824H manual);
+        no MC824H INFO capture exists yet.
+        """
+        coordinator = FakeCoordinator()
+        coordinator.setting_info = {
+            "opening_force": decode_dmp_info(bytes.fromhex("01000a8102010801"))
+        }
+        entity = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_force"))
+
+        assert entity.available is False
+        with pytest.raises(HomeAssistantError, match="per-motor array"):
+            await entity.async_set_native_value(4)
+        assert coordinator.calls == []
+
+    async def test_number_keeps_plain_settings_writable(self) -> None:
+        """ROBUSR10 04/4A INFO (plain, 0-100) keeps the force number writable."""
+        coordinator = FakeCoordinator()
+        coordinator.setting_info = {"opening_force": decode_dmp_info(bytes.fromhex("01000a01006401"))}
+        entity = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_force"))
+
+        await entity.async_set_native_value(50)
+        assert coordinator.calls == [("dmp_write", (0x04, 0x4A, 50, 1))]
+
     async def test_number_rejects_out_of_range_value(self) -> None:
         coordinator = FakeCoordinator()
         entity = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_speed"))

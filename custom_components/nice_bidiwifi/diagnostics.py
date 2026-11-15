@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -238,6 +239,13 @@ async def async_get_config_entry_diagnostics(
             ),
             "history_limit": coordinator.event_history.maxlen,
             "history": [event.as_diagnostics() for event in coordinator.event_history],
+        },
+        "controller_info": {
+            "configuration": coordinator.controller_configuration,
+            "settings": {
+                key: asdict(info)
+                for key, info in coordinator.setting_info.items()
+            },
         },
         "status": {
             "state": status.state if status else None,

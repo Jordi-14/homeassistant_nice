@@ -96,9 +96,10 @@ from .models.commands import (
     NiceCommandResult,
 )
 from .models.config import NiceEntryConfig
-from .protocol.t4.info import DmpInfo, decode_version_entry
+from .protocol.t4.info import DmpInfo, decode_version_entry, is_array_setting
 from .protocol.t4.settings import SETTINGS, DmpSetting
 from .protocol.t4.actions import T4_ACTION_BY_KEY
+from .models.profiles import DMP_INFO_REQUIRED_WRITES
 from .write_policy import dmp_write_block_reason
 
 _LOGGER = logging.getLogger(__name__)
@@ -754,6 +755,8 @@ class NiceBidiDataUpdateCoordinator(
         value: int,
     ) -> None:
         """Write one reviewed semantic DMP setting."""
+        if (reason := self.setting_write_block_reason(setting)) is not None:
+            raise HomeAssistantError(f"Nice setting {setting.key} cannot be written: {reason}")
         await self.async_write_dmp_register(
             setting.group,
             setting.parameter,
@@ -765,12 +768,25 @@ class NiceBidiDataUpdateCoordinator(
         self,
         setting: DmpSetting,
     ) -> str | None:
-        """Return a device-specific block reason for a reviewed setting."""
-        return dmp_write_block_reason(
-            self.device_info,
-            setting.group,
-            setting.parameter,
-        )
+        """Return why a reviewed setting must not be written now, or None."""
+        reason = dmp_write_block_reason(self.device_info, setting.group, setting.parameter)
+        if reason is not None:
+            return reason
+        info = self.setting_info.get(setting.key)
+        if is_array_setting(info):
+            # MC824H forces (#38); a one-value write would hit one motor element
+            return "per-motor array on this controller; writing it is not supported yet"
+        if info is None:
+            # known per-motor candidates stay blocked without INFO, even after the last attempt
+            reason = dmp_write_block_reason(
+                self.device_info, setting.group, setting.parameter, DMP_INFO_REQUIRED_WRITES
+            )
+            if reason is not None:
+                return reason
+            if self._setting_info_attempts < SETTING_INFO_ATTEMPTS:
+                # until INFO says whether it is an array; shortcut: opens after the last attempt
+                return "controller INFO for this setting is not read yet"
+        return None
 
     async def _async_send_action(
         self,
