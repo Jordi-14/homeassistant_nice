@@ -239,7 +239,8 @@ entities then use its range (#58). On known models some writes are refused (see
 marks the value as a per-motor array.
 
 INFO strings below are from the ROBUSR10 (FG01h). Other models can give other
-ranges, which is why the integration reads INFO and does not use fixed limits.
+ranges, which is why the integration reads INFO; a number entity uses the INFO
+range within its own fixed limits.
 
 ### On/off settings
 
@@ -359,7 +360,12 @@ Rules are in `models/profiles.py` and `coordinator.setting_write_block_reason`.
 ## D. Diagnostics
 
 The decoders for 04/D1 and 04/D2 attributes and the `bluebus_gate_state` sensor
-are in #65 (open). On other branches these registers are shown as raw bytes.
+are in #65 (open). Without #65 these registers are shown as raw bytes. With #65
+the INFO of 04/D1 and 04/D2 is read once per session, like the settings.
+
+The ROBUSR10 samples "in motion" below come from a local test build that read
+04/D0-04/D2 about once a second during gate cycles; the integration itself reads
+them in the extended scan.
 
 ### 04/D0 — BlueBus devices
 
@@ -378,15 +384,16 @@ device rows of the diagnostics screen).
 | 2 | 0-6 | photocell installed: PHOTO, PHOTO II, PHOTO 1, PHOTO 1 II, PHOTO 2, PHOTO 2 II, PHOTO 3 | ✓ | ROBUSR10 FG01h (PHOTO only) |
 | 3 | 0-3 | FTA, FTD, FTB, FTC photocell installed | ✓ | — |
 | 4 | 0-3 | CMD 1-4 installed | ✓ | — |
-| 4 | 5, 6 | PHOTO OPEN, PHOTO OPEN II installed | ✓ | — |
+| 4 | 5, 6 | PHOTO OPEN, PHOTO OPEN II installed | *guess* (masks from the "not working" code) | — |
 | 5 | 0 | S-SL installed | ✓ | — |
 | 6 | 0-6 | photocell not working (order of byte 2) | ✓ | — |
+| 9 | 0 | S-SL not working | ✓ | — |
 | 7 | 0-3 | FT photocell not working | ✓ | — |
 | 8 | 0-3, 5, 6 | CMD / PHOTO OPEN not working | ✓ | — |
 | 10 | 0-6 | photocell error (with byte 0 bit 3) | ✓ | — |
-| 11 | 0-6 | photocell active (with byte 19) | ✓ | ROBUSR10 FG01h |
+| 11 | 0-6 | photocell active (with byte 19) | ✓ | ROBUSR10 FG01h (value: `7f` in every read) |
 | 12 | 0-3 | gate state: `01` closed, `02` open, `04` closing, `08` opening, `00` stopped between the ends | — | ROBUSR10 FG01h (cycles 11-13: 50+ samples and 59 diagnostics files, also closed after 330 s at rest) |
-| 12 | 7 | stand-by: every photocell shows `stand_by` | ✓ | — (stand-by is off on the test gate) |
+| 12 | 7 | stand-by: every PHOTO device of byte 2 shows `stand_by` (not FT, CMD or S-SL) | ✓ | — (stand-by is off on the test gate) |
 | 17 | 0-2 | S-SL status | ✓ | — |
 | 19 | 0-6 | photocell beam: 1 = free, 0 = interrupted | ✓ | ROBUSR10 FG01h (beam blocked by hand during a close) |
 | 20 | pairs | FT photocell on/off | ✓ | — |
@@ -399,7 +406,9 @@ BlueBus devices; that is why `bluebus_gate_state` exists (#65).
 Example, gate open at rest:
 `11 00 81 00 00 00 00 00 00 00 00 7f 02 00 00 00 00 00 00 01 00 c0 00 00 00 00 00`
 → PHOTO installed (byte 2 bit 0), beam free (byte 19 bit 0), gate open (byte 12),
-not moving (byte 0 bit 0).
+not moving (byte 0 bit 0). Byte 0 bit 4, byte 2 bit 7 and byte 21 (`c0`) are also
+set on the ROBUSR10; their meaning here is unknown (CMD 1 is not installed, so
+byte 21 is not shown).
 
 ### 04/D1 — Inputs and outputs
 
@@ -408,27 +417,28 @@ not moving (byte 0 bit 0).
 | GET | 14 | list of 14 "installed" masks: `0f 07 43 00 0d ff ff ff ff 3c 1f ff 01 00` | extended | `diagnostics_io_byte` (byte 2 as hex) with decoded attributes (#65), `controller_errors` |
 
 Each item is one bit; the same bit in the INFO list says whether the controller
-has it. Only installed items are shown. Decoder: `protocol/t4/io.py` (MyNice Pro
+has it. When the INFO was read, only installed items are shown; without INFO all
+items are shown. `controller_errors` does not check the INFO. Decoder: `protocol/t4/io.py` (MyNice Pro
 `T4InputOutputDiagnostic_init` @0xf7d4).
 
 | Byte | Bits | Items | App code | Confirmed on |
 | --- | --- | --- | --- | --- |
-| 0 | 0-5 | Alt input OK (1 = OK), input 1-3, loop 1-2 | ✓ | ROBUSR10 FG01h (Alt OK = 1) |
+| 0 | 0-5 | Alt input OK (1 = OK), input 1-3, loop 1-2 | ✓ | ROBUSR10 FG01h (value: Alt OK = 1) |
 | 1 | 0-2 | buttons 1-3 | ✓ | — |
 | 2 | 0-5 | limit open / close M1, M2; unlocked M1, M2 | ✓ | — (encoder-only gate) |
-| 2 | 6 | direction: 1 = left (SX) | ✓ | ROBUSR10 FG01h (`40`, left-hand gate) |
+| 2 | 6 | direction: 1 = left (SX) | ✓ | ROBUSR10 FG01h (value: `1`) |
 | 2 | 7 | selected motor: 1 = M1 | ✓ | — |
 | 3 | 0-3 | encoder fault M1, M2 (1 = fault); encoder input M1, M2 | ✓ | — |
 | 4 | 0-7 | outputs: motor M1, M2, output 1-3, fan, green light, red light | ✓ | ROBUSR10 FG01h (motor M1, output 1 flashing light, output 2 gate-open light change with the gate) |
-| 5 | whole byte | type of the STOP/Alt input: `0` not set, `1` B1, `2` B2, `3` NC, `4` NO, `5` out of range, `6` sensitive edge | ✓ | ROBUSR10 FG01h (`04` NO) |
+| 5 | whole byte | type of the STOP/Alt input: `0` not set, `1` B1, `2` B2, `3` NC, `4` NO, `5` out of range, `6` sensitive edge | ✓ | ROBUSR10 FG01h (value: `04` NO) |
 | 6 | 0-3 | radio inputs 1-4 | ✓ | — |
 | 7 | 0-3 | T4 mode I inputs 1-4 | ✓ | — |
 | 8 | whole byte | T4 mode II (number) | ✓ | — |
 | 9 | 0-3, 5 | thermal, heating, stand-by, battery, automatic opening | ✓ | — |
 | 9 | 4 | mains frequency: 0 = 50 Hz, 1 = 60 Hz | ✓ | — |
-| 10 | 0-6 | controller errors: positions, BlueBus, Alt, functions, regulations, map 1, map 2 (1 = error) | ✓ | ROBUSR10 FG01h (all 0) |
-| 11 | 0-1 | force limiter state: `0` OK, `1` level 1, `2` level 2, `3` motor alarm | ✓ | ROBUSR10 FG01h (always level 2) |
-| 12 | 0-2 | overload output 1-3 | ✓ | ROBUSR10 FG01h (output 1 always 1) |
+| 10 | 0-6 | controller errors: positions, BlueBus, Alt, functions, regulations, map 1, map 2 (1 = error) | ✓ | ROBUSR10 FG01h (value: all 0) |
+| 11 | 0-1 | force limiter state: `0` OK, `1` level 1, `2` level 2, `3` motor alarm | ✓ | ROBUSR10 FG01h (value: always level 2) |
+| 12 | 0-2 | overload output 1-3 | ✓ | ROBUSR10 FG01h (value: output 1 always 1) |
 | 12 | 4-7 | overtravel low / high M1, M2 | ✓ | — |
 
 Seen in 489 samples on the ROBUSR10 (rest and motion): every byte except byte 4
@@ -443,12 +453,14 @@ was constant, `01 00 40 00 xx 04 00 00 00 00 00 02 01 00`.
 
 | Access | Size | INFO | Read | Entity |
 | --- | --- | --- | --- | --- |
-| GET | 28 | list of 14 big-endian `u16` field scales | extended (and fast while moving in a local diagnostic build) | `diagnostics_parameters` with decoded attributes (#65), `service_voltage`, `motor_temperature` |
+| GET | 28 | list of 14 big-endian `u16` field scales | extended | `diagnostics_parameters` with decoded attributes (#65), `service_voltage`, `motor_temperature` |
 
 Each field is a big-endian `u16` at offset 2 × index. In the INFO list, bit 15 of
 each entry = field available, bits 0-14 = full scale *M*. A percent field is
-`((value × 100) & 0xFFFC) // M` (MyNice Pro `diag1DgxCalcPCT`); on the ROBUSR10
-*M* = 100, so the raw value is already percent.
+`((value × 100) & 0xFFFC) // M`, limited to 0-255 (MyNice Pro `diag1DgxCalcPCT`;
+for *M* > 650 the app first shifts value and *M* right, see `dgx_percent` in
+`protocol/t4/io.py`). On the ROBUSR10 *M* = 100, so the raw value is already
+percent.
 
 | Index | Field | Seen on ROBUSR10 FG01h | App code |
 | --- | --- | --- | --- |
@@ -459,11 +471,11 @@ each entry = field available, bits 0-14 = full scale *M*. A percent field is
 | 4 | service voltage | 34 at rest, 30-33 while moving (unit V is a *guess*) | ✓ |
 | 5 | torque M1 (%) | 50-60 at the start, 20-45 running, 12-30 in the slowdown | ✓ |
 | 6 | torque M2 (%) | not available (0) | ✓ |
-| 7 | motor temperature | 22-28 raw; signed `ldrsh` in the app | ✓ |
+| 7 | motor temperature | 15-28 raw (two days); signed `ldrsh` in the app | ✓ |
 | 8, 9 | voltage M1, M2 (%) | not available (0) | ✓ |
 | 10 | speed M1 (%) | 95-99 opening, 71-84 closing, 17-19 in the slowdown | ✓ |
 | 11 | speed M2 (%) | not available (0) | ✓ |
-| 12 | encoder position (same as 04/11) | — | ✓ |
+| 12 | not used by the app or the integration | same value as 04/11 (5235 when open) | — |
 | 13 | — | 0 | — |
 
 The integration shows the motor temperature as raw − 9 °C. The app shows the raw
@@ -484,9 +496,9 @@ automation blocked, `0a` obstacle detected by encoder. All `ff` = no data.
 Seen on the ROBUSR10 FG01h:
 
 - Byte 0 is the newest entry. A full cycle (close + open) moves the list by two.
-- A close that the photocell reversed, followed by the reopening, is **one**
-  entry `02` (photo intervention). A remote-control reversal gives `00`. A hit on
-  an obstacle gives `03`.
+- A close that the photocell reversed, followed by the reopening, gave **one**
+  entry `02` (photo intervention) in the tests (*guess* that this is always so).
+  A remote-control reversal gave `00`. A hit on an obstacle gave `03`.
 - Read entry 0 after the gate stops to find why the last close did not finish
   (#64).
 
@@ -494,41 +506,47 @@ Seen on the ROBUSR10 FG01h:
 
 An OXI receiver plugged into the control unit answers at address `00.0A`. Its
 identity uses the same STD group 00 as the control unit; the radio settings are
-in group `0A`. All registers below answer `F0` to INFO (no INFO).
+in group `0A`. The registers below answer `F0` to INFO (no INFO), except 0A/50
+and 0A/51, whose INFO is OK but empty.
 
 ### STD group 00 at 00.0A — receiver identity
 
 | Register | Name (app) | Read | Entity | Example | App code | Confirmed on |
 | --- | --- | --- | --- | --- | --- | --- |
-| 00/04 | STD_PROFILE | start-up | — | `0a` | ✓ | OXI on ROBUSR10 FG01h |
-| 00/09 | STD_PRODUCT | start-up | `oxi_product` | `OXIBD group` | ✓ | OXI on ROBUSR10 FG01h |
-| 00/0A | STD_HARDWARE_VERSION | start-up | `oxi_hardware` | `672B` | ✓ | OXI on ROBUSR10 FG01h |
-| 00/0B | STD_FIRMWARE_VERSION | start-up | `oxi_firmware` | `BK00H` | ✓ | OXI on ROBUSR10 FG01h |
-| 00/0C | STD_RADIO_DESCRIPTION | start-up | `oxi_description` | `Radio` | ✓ | OXI on ROBUSR10 FG01h |
+| 00/04 | STD_PROFILE | extended | — | `0a` | ✓ | OXI on ROBUSR10 FG01h |
+| 00/09 | STD_PRODUCT | extended | `oxi_product` | `OXIBD group` | ✓ | OXI on ROBUSR10 FG01h |
+| 00/0A | STD_HARDWARE_VERSION | extended | `oxi_hardware` | `672B` | ✓ | OXI on ROBUSR10 FG01h |
+| 00/0B | STD_FIRMWARE_VERSION | extended | `oxi_firmware` | `BK00H` | ✓ | OXI on ROBUSR10 FG01h |
+| 00/0C | STD_RADIO_DESCRIPTION | extended | `oxi_description` | `Radio` | ✓ | OXI on ROBUSR10 FG01h |
 
-`oxi_detected` is on when any of these answers. Before #66 the integration asked
-group `0A` for them; the receiver answers `FD` there.
+`oxi_detected` is on when address 00.0A sends any reply to these registers or to
+0A/00 and 0A/41, even an error status. Before #66 the integration asked group
+`0A` for the identity; the receiver answers `FD` there.
 
 ### 0A/00 — Receiver type
 
 | Access | Size | Read | Entity |
 | --- | --- | --- | --- |
-| GET | 1 | start-up | `oxi_product` attribute `receiver_type` |
+| GET | 1 | extended | `oxi_product` attribute `receiver_type` |
 
-`01` OXI, `02` OXIT, `03` OX2, `04` OX2T, `05` OX4, `06` OX4T, `07` OXIFM, `08`
-OXITFM (`RADIO_RECEIVER_TYPES` in `protocol/t4/enums.py`). App code ✓; confirmed on
-an OXI on ROBUSR10 FG01h (`01`).
+Attribute values (`RADIO_RECEIVER_TYPES` in `protocol/t4/enums.py`): `01` `oxi`,
+`02` `oxit`, `03` `ox2`, `04` `ox2t`, `05` `ox4`, `06` `ox4t`, `07` `oxifm`, `08`
+`oxitfm`, more codes up to `20` in the same table; any other code shows as
+`code_<n>`. The names come from the app enum `ListDevice`; that the wire value
+maps to this enum is a *guess* except for `01`, confirmed on an OXI on ROBUSR10
+FG01h.
 
 ### 0A/41 — Remote coding (RADIO_CFG_CODES)
 
 | Access | Size | Read | Entity |
 | --- | --- | --- | --- |
-| GET | 1 | start-up | `oxi_product` attribute `coding_type` |
+| GET | 1 | extended | `oxi_product` attribute `coding_type` |
 
 The bits are active low. Bit 7 = 0 means the coding is defined; then the first
 bit that is 0, checked in the order 4 (FLO), 6 (HCS), 5 (FLOR), names the coding
-(MyNice Pro `RadioCfgCodingType`). Example: `5f` → FLOR. App code ✓; confirmed on
-an OXI on ROBUSR10 FG01h with FloR remotes.
+(MyNice Pro `RadioCfgCodingType`). Attribute values: `flo`, `hcs`, `flor`; no
+attribute when bit 7 = 1 or no bit is 0. Example: `5f` → `flor`. App code ✓;
+confirmed on an OXI on ROBUSR10 FG01h with FloR remotes.
 
 ### 0A/40 — Receiver configuration (RADIO_CFG)
 
@@ -551,7 +569,7 @@ an OXI on ROBUSR10 FG01h with FloR remotes.
 
 The OXI on the ROBUSR10 answers `00 7f`: by the app logic bits 8-14 are on and
 bits 0-4 off. That the high byte is unused is a *guess*; it was not compared with
-the MyNice Pro receiver screen yet.
+the MyNice Pro receiver screen yet. App code ✓; OXI on ROBUSR10 FG01h (value).
 
 ### 0A/25 — Remotes in memory
 
@@ -563,14 +581,16 @@ The request carries the memory position `[pos >> 8, pos & 0xFF]`, 0-1023 (MyNice
 Pro `qryPosition`). Without it the receiver answers `F9`. The reply is
 `[pos_hi, pos_lo, 7 bytes, 00]`; an empty slot has `ff` in the 8 bytes after the
 position. Counting the remotes needs one request per position, up to 1024, so the
-integration does not poll it. Example of a used slot with random values:
-`00 01 5a 3c 91 0e 02 00 00 00`.
+integration does not poll it. App code ✓; layout confirmed on an OXI on ROBUSR10
+FG01h. Example of a used slot with random values: `02 c7 5a 3c 91 0e 02 7b 11 00`.
 
 ### Sensitive registers
 
 These hold the receiver PIN, keys and certificates. Their sizes are listed so
 nobody needs to read them; the integration never reads them and their values
 must not be posted in issues.
+
+Sizes seen on an OXI on ROBUSR10 FG01h; names from the app.
 
 | Register | Content | Size |
 | --- | --- | --- |
@@ -586,8 +606,12 @@ Not to be sent at all: 0A/09 (send a command), 0A/20 (clear the memory), 0A/50
 ### DEP actions — gate commands
 
 Commands are sent as a DEP frame to `00.03` with arguments `01 82 <command> 64`
-(`build_dep_action_frame` in `protocol/t4/actions.py`). The command codes are the
-`ListDeviceCommand` codes, the same list as the input functions (04/71-04/74).
+(`build_dep_action_frame` in `protocol/t4/actions.py`). The codes are the `01`-`1c`
+part of the `ListDeviceCommand` list (the input functions 04/71-04/74 use the
+same list). Names below follow `INPUT_FUNCTIONS`; the button names in
+`T4_ACTIONS` differ for some codes (for example `0f`/`10` Lock / Unlock, `19`/`1a`
+Release and open / close, `1b`/`1c` Enable / Disable BlueBUS inputs). The
+integration has no action for partial close `08`-`0a`.
 
 | Code | Command | Code | Command |
 | --- | --- | --- | --- |
@@ -600,8 +624,9 @@ Commands are sent as a DEP frame to `00.03` with arguments `01 82 <command> 64`
 | `0c` | step-by-step high priority | `1b`, `1c` | condominium open on / off (BlueBus inputs) |
 | `0d`-`0f` | open and block, close and block, block | | |
 
-App code ✓; open, close, stop, step-by-step and partial open confirmed on ROBUSR10
-FG01h.
+App code ✓. No DEP command code is confirmed on hardware yet. On ROBUSR10 FG01h
+open and close were tested through the cover entity, which sends the BiDi-WiFi
+`DoorAction`, not a DEP frame.
 
 ### 04/08 — Accepted commands (CTRL_STR_COMMANDS)
 
@@ -610,22 +635,26 @@ FG01h.
 | INFO only; GET answers `F1` | 1 | list of the accepted command codes | not read | — |
 
 On the ROBUSR10 FG01h the list has 25 codes: `01`-`07`, `0b`-`1c`. Partial close
-`08`-`0a` is missing, and it matches the actions the integration offers. A future
-version could hide the buttons of commands a controller does not list here.
+`08`-`0a` is missing. The integration does not read 04/08: it shows a button only
+when the interface lists the command in its T4 allowed mask
+(`protocol/t4/allowed.py`). On ROBUSR10 FG01h that mask (`0x1FFFF8FE`) holds the
+same 25 codes as 04/08.
 
 ### Procedures (not used by the integration)
 
-MyNice Pro runs installer procedures by writing these group 04 registers. The
-integration does not read or write them; listed so they are not probed by
-accident.
+These group 04 registers start installer procedures or moves in MyNice Pro,
+probably by a SET (*guess*; how the app starts them was not traced). The
+integration does not read or write them; they are listed so they are not probed
+by accident. The "Moves the gate" and "Reversible" columns are *guesses* from the
+app names; none of these registers was ever written.
 
 | Register | Procedure | INFO on ROBUSR10 | Moves the gate | Reversible |
 | --- | --- | --- | --- | --- |
-| 04/0A | search BlueBus devices | `01 80 00 01` | no (*guess*) | device table is replaced |
+| 04/0A | search BlueBus devices | `01 80 00 01` | no | the device table is replaced |
 | 04/0B | search positions | `01 80 00 01` | **yes**, full travel | positions are replaced |
 | 04/0C | delete parameters | list `00 01 02 03 7d` | no | **no** |
-| 04/0F | go to a position | `F0` | **yes** | — |
-| 04/B4 | reset the maintenance counter | on/off list | no | **no** |
+| 04/0F | go to a position (a move command, not a procedure) | `F0` | **yes** | — |
+| 04/B4 | reset the maintenance counter | `01 00 01 41 02 00 01` | no | **no** |
 | 04/05, 04/09, 04/27, 04/2F, 04/3F | search devices, activate receiver, delete intermediate slowdown, reset encoder, delete maps | `FD` | — | — |
 
 ## G. All group 04 parameters
@@ -634,8 +663,10 @@ The full list of the 237 group 04 parameters that MyNice Pro 2.18 knows
 (`global_map_Commands` in `libnative-lib.so`, decoded in #54), with the names of
 the app. **INFO** and **GET** show how a ROBUSR10 FG01h answered a one-off
 read-only probe (`OK`, or the status code from *How to read this page*). Action
-registers (search, delete, reset, test, calibration) got no GET on purpose: "not
-sent". **Map** links the description on this page, when there is one.
+registers (search, delete, reset, activate, go to position, test, calibration)
+got no GET on purpose: "not sent". 04/E9 (a time) was skipped by the same name
+filter. **Map** ✓ = described in sections A-F; registers that share one row there
+(04/05, 04/09, 04/27, 04/2F, 04/3F) have no ✓.
 
 74 parameters answer GET or INFO with `OK` on the ROBUSR10; other models answer other sets.
 
@@ -671,7 +702,7 @@ sent". **Map** links the description on this page, when there is one.
 | 04/1C | `CTRL_PEDESTRIAN_POSITION_OPENING_2` | Pedestrian opening position 2 | FD | FD |  |
 | 04/1D | `CTRL_PEDESTRIAN_POSITION_OPENING_3` | Pedestrian opening position 3 | FD | FD |  |
 | 04/1E | `CTRL_REALIGNMENT_OPN` | Position to reach in OPEN before execute a closing during realignment | FD | FD |  |
-| 04/1F | `CTRL_OPN_TOLLERANCE` | Limit switch stop tolerance for \ | FD | FD |  |
+| 04/1F | `CTRL_OPN_TOLLERANCE` | Limit switch stop tolerance for (cut off in #54) | FD | FD |  |
 | 04/20 | `CTRL_STR_POSITION_INTERMEDIATE` | Position intermediate | FD | FD |  |
 | 04/21 | `CTRL_INTERMEDIATE_POSITION_1` | Intermediate position 1 | OK | OK | ✓ |
 | 04/22 | `CTRL_INTERMEDIATE_POSITION_2` | Intermediate position 2 | OK | OK | ✓ |
