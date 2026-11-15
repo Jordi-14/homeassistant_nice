@@ -22,6 +22,7 @@ from .entities.factory import (
     build_described_entities,
 )
 from .entity import NiceCoordinatorEntity
+from .protocol.t4.info import DmpInfo
 from .runtime import get_coordinator
 from .protocol.t4.settings import (
     ALWAYS_CLOSE_MODE,
@@ -298,15 +299,49 @@ class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
         return self.entity_description.value_fn(status)
 
     @property
-    def native_max_value(self) -> float:
-        """Return the dynamic maximum value when the controller reports one."""
+    def _info(self) -> DmpInfo | None:
+        """Return the controller's INFO for this setting, if it was read."""
+        return self.coordinator.setting_info.get(self.entity_description.setting.key)
+
+    def _limits(self) -> tuple[float, float]:
+        """Return (min, max): static limits, the dynamic maximum, then the controller's INFO."""
+        low = self.entity_description.native_min_value or 0
+        high = self.entity_description.native_max_value or 0
         dynamic_max_fn = self.entity_description.dynamic_max_fn
         status = self.coordinator.data
         if dynamic_max_fn is not None and status is not None:
             dynamic_max = dynamic_max_fn(status)
             if dynamic_max is not None:
-                return dynamic_max
-        return self.entity_description.native_max_value or 0
+                high = dynamic_max
+        info = self._info
+        if info is None:
+            return low, high
+        values = info.options or (
+            (info.minimum, info.maximum)
+            if info.minimum is not None and info.maximum is not None
+            else ()
+        )
+        if not values:
+            return low, high
+        info_low, info_high = max(low, min(values)), min(high, max(values))
+        # INFO that contradicts the other limits is ignored, never an empty range
+        return (info_low, info_high) if info_low <= info_high else (low, high)
+
+    @property
+    def native_min_value(self) -> float:
+        """Return the static minimum, raised to the controller's minimum or lowest option."""
+        return self._limits()[0]
+
+    @property
+    def native_max_value(self) -> float:
+        """Return the static or dynamic maximum, lowered to the controller's maximum or option."""
+        return self._limits()[1]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, list[int]] | None:
+        """Return the option codes the controller accepts, when it lists them."""
+        info = self._info
+        return {"allowed_values": list(info.options)} if info and info.options else None
 
     async def async_set_native_value(self, value: float) -> None:
         """Write the BusT4 number value."""
@@ -319,6 +354,11 @@ class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
         max_value = self.native_max_value
         if int_value < min_value or int_value > max_value:
             raise ValueError(f"{self.entity_description.name} must be between {min_value} and {max_value}")
+        info = self._info
+        if info and info.options and int_value not in info.options:
+            raise ValueError(
+                f"{self.entity_description.name} must be one of {list(info.options)}"
+            )
         await self.coordinator.async_write_setting(
             self.entity_description.setting,
             int_value,

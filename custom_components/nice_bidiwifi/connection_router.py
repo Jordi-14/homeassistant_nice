@@ -378,6 +378,9 @@ class NiceConnectionRouter:
     def read_info_xml(self) -> str:
         return self._read("read_info_xml")
 
+    def read_dmp_info(self, group: int, parameter: int, **kwargs):
+        return self._read("read_dmp_info", group, parameter, **kwargs)
+
     def read_logs(self, event_count: int = LOG_EVENTS_PER_SCOPE):
         return self._read("read_logs", event_count)
 

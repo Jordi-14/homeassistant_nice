@@ -11,6 +11,7 @@ from custom_components.nice_bidiwifi.number import (
     NiceBidiNumber,
     async_setup_entry,
 )
+from custom_components.nice_bidiwifi.protocol.t4.info import decode_dmp_info
 from tests.conftest import FakeCoordinator, config_entry, make_device_info, make_status
 
 
@@ -182,6 +183,59 @@ class TestNiceBidiNumberProperties:
         await entity.async_set_native_value(1500)
 
         assert coordinator.calls == [("dmp_write", (0x04, 0x21, 1500, 2))]
+
+    async def test_number_uses_controller_option_list(self) -> None:
+        """Test INFO options (04/86 on a ROBUSR10: 16, 17) narrow a 0-255 mode number."""
+        coordinator = FakeCoordinator()
+        coordinator.setting_info = {
+            "photo_close_mode": decode_dmp_info(bytes.fromhex("0100f561021011"))
+        }
+        entity = NiceBidiNumber(
+            coordinator, config_entry(), _description("bus_t4_photo_close_mode")
+        )
+
+        assert (entity.native_min_value, entity.native_max_value) == (16, 17)
+        assert entity.extra_state_attributes == {"allowed_values": [16, 17]}
+        with pytest.raises(ValueError, match="between 16 and 17"):
+            await entity.async_set_native_value(0)
+        await entity.async_set_native_value(17)
+        assert coordinator.calls == [("dmp_write", (0x04, 0x86, 17, 1))]
+
+    async def test_number_rejects_code_missing_from_option_list(self) -> None:
+        """Test a value inside the range but not in the controller's list."""
+        coordinator = FakeCoordinator()
+        coordinator.setting_info["always_close_mode"] = decode_dmp_info(
+            bytes.fromhex("0100f56103202224")
+        )
+        entity = NiceBidiNumber(
+            coordinator, config_entry(), _description("bus_t4_always_close_mode")
+        )
+
+        with pytest.raises(ValueError, match="one of"):
+            await entity.async_set_native_value(0x23)
+
+    async def test_number_never_widens_static_limits(self) -> None:
+        """Test INFO 0-100 keeps the static minimum 1 of a force setting."""
+        coordinator = FakeCoordinator()
+        coordinator.setting_info = {
+            "opening_force": decode_dmp_info(bytes.fromhex("01000a01006401")),
+            "pause_time": decode_dmp_info(bytes.fromhex("01001101006401")),
+        }
+        force = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_force"))
+        pause = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_pause_time"))
+
+        assert (force.native_min_value, force.native_max_value) == (1, 100)
+        assert (pause.native_min_value, pause.native_max_value) == (0, 100)
+
+    async def test_number_ignores_info_that_empties_the_range(self) -> None:
+        """Test INFO 112-128 against a static 1-100 force keeps 1-100, not min > max."""
+        coordinator = FakeCoordinator()
+        coordinator.setting_info = {
+            "opening_force": decode_dmp_info(bytes.fromhex("01000a01708001")),
+        }
+        force = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_force"))
+
+        assert (force.native_min_value, force.native_max_value) == (1, 100)
 
     async def test_number_rejects_out_of_range_value(self) -> None:
         coordinator = FakeCoordinator()

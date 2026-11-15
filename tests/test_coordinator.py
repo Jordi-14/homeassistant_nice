@@ -30,6 +30,7 @@ from custom_components.nice_bidiwifi.client import (
 from custom_components.nice_bidiwifi.const import DOMAIN
 from custom_components.nice_bidiwifi.coordinator import NiceBidiDataUpdateCoordinator
 from custom_components.nice_bidiwifi.errors import NiceReadPreemptedError
+from custom_components.nice_bidiwifi.protocol.t4.info import decode_dmp_info
 from tests.conftest import FakeClient, config_entry_data, make_device_info, make_status
 
 
@@ -60,6 +61,86 @@ def _coordinator(
     entry = MockConfigEntry(domain=DOMAIN, data=data or config_entry_data(), entry_id="entry-1")
     entry.add_to_hass(hass)
     return NiceBidiDataUpdateCoordinator(hass, entry)
+
+
+async def test_setting_info_is_read_once_per_setting(hass: HomeAssistant) -> None:
+    """Test the INFO of each writable setting is stored by its key."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.dmp_info = {(0x04, 0x86): decode_dmp_info(bytes.fromhex("0100f561021011"))}
+    instance.client = client
+
+    await instance._async_load_setting_info()
+
+    assert instance.setting_info == {"photo_close_mode": client.dmp_info[(0x04, 0x86)]}
+
+
+async def test_setting_info_yields_to_a_command_and_resumes(hass: HomeAssistant) -> None:
+    """Review of #58: INFO reads yield to a pending command and the next load reads only what is missing."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    info = decode_dmp_info(bytes.fromhex("0100f561021011"))
+    client.dmp_info = {(0x04, 0x86): info}
+    client.dmp_info_preempt_at = (0x04, 0x86)
+    instance.client = client
+    instance._setting_info_task = object()
+
+    await instance._async_load_setting_info()
+
+    assert instance.setting_info == {}
+    assert instance._setting_info_task is None  # the next successful poll restarts the load
+    first = list(client.dmp_info_reads)
+    assert all(preemptible for *_, preemptible in first)
+
+    await instance._async_load_setting_info()
+
+    assert instance.setting_info == {"photo_close_mode": info}
+    second = client.dmp_info_reads[len(first):]
+    done_before = {(g, p) for g, p, _ in first[:-1]}
+    assert not done_before & {(g, p) for g, p, _ in second if (g, p) in client.dmp_info}
+
+
+async def test_setting_info_failure_keeps_static_limits(hass: HomeAssistant) -> None:
+    """Test a route without INFO support leaves the INFO map empty."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+
+    def fail(group: int, parameter: int):
+        raise AttributeError("cloud client has no DMP INFO")
+
+    client.read_dmp_info = fail
+    instance.client = client
+
+    await instance._async_load_setting_info()
+
+    assert instance.setting_info == {}
+
+
+async def test_setting_info_error_is_retried_a_few_times(hass: HomeAssistant) -> None:
+    """Review of #58: an error must not stop the INFO load for the whole session."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    info = decode_dmp_info(bytes.fromhex("0100f561021011"))
+    calls = []
+
+    def flaky(group: int, parameter: int, *, preemptible: bool = False):
+        calls.append((group, parameter))
+        if len(calls) == 1:
+            raise OSError("wifi drop")
+        return info if (group, parameter) == (0x04, 0x86) else None
+
+    client.read_dmp_info = flaky
+    instance.client = client
+    for _ in range(coordinator_module.SETTING_INFO_ATTEMPTS):
+        instance._setting_info_task = object()
+        await instance._async_load_setting_info()
+        if instance._setting_info_task is not None:
+            break
+
+    assert instance.setting_info == {"photo_close_mode": info}
+    # settings this controller has no INFO for stop being asked after the last attempt
+    assert instance._setting_info_task is not None
+    assert instance._setting_info_attempts == coordinator_module.SETTING_INFO_ATTEMPTS
 
 
 async def test_update_data_reads_status_and_caches_device_info(

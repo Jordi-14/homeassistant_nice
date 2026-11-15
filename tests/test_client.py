@@ -1280,6 +1280,29 @@ def test_nhk_status_read_yields_only_when_preemptible(preemptible: bool) -> None
         assert interrupts == [None]
 
 
+def test_dmp_info_read_yields_before_sending() -> None:
+    """Review of #58: a preemptible INFO read sends nothing while a command waits."""
+    sent = []
+
+    class InfoClient(NiceBidiClient):
+        def _t4_request_locked(self, *args, **kwargs):
+            sent.append(args)
+            return b"", []
+
+    client = InfoClient(
+        "192.0.2.10",
+        443,
+        NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"),
+        should_yield=lambda: True,
+    )
+
+    with pytest.raises(NiceReadPreemptedError):
+        client._read_dmp_info_locked(0x04, 0x86, preemptible=True)
+    assert sent == []
+    assert client._read_dmp_info_locked(0x04, 0x86) is None
+    assert len(sent) == 1
+
+
 def test_send_action_rejects_invalid_action() -> None:
     """Test action validation."""
     with pytest.raises(ValueError, match="action must be open"):
@@ -1547,3 +1570,21 @@ def test_oxi_identity_comes_from_std_group_00() -> None:
     for raw, coding in ((b"\xff", None), (b"\x6f", "flo"), (b"\x3f", "hcs")):
         reply = {"0A/41@00.0A": DmpResponse("", 0x0A, 0x41, value=raw)}
         assert status_from_dmp_registers(reply).oxi_coding_type == coding
+
+
+def test_late_info_reply_is_not_a_register_value() -> None:
+    """Review of #58: an INFO reply (op 0x09) that arrives with a GET must not become the value."""
+
+    class LateInfoClient(NiceBidiClient):
+        def _t4_request_locked(self, protocol, plain_payload, daddr, dendpoint, tout_ms):
+            info = bytearray(_dmp_response(0x04, 0x81, bytes.fromhex("01001101006401")))
+            info[11] = 0x09
+            return b"<Response />", [_dmp_response(0x04, 0x81, b"\x1e"), bytes(info)]
+
+    client = LateInfoClient(
+        "192.0.2.10", 443, NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF")
+    )
+    registers: dict = {}
+    client._read_dmp_register_locked(registers, 0x00, 0x03, 0x04, 0x81, required=False)
+
+    assert registers["04/81"].value == b"\x1e"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio  # noqa: F401 - re-exported for compatibility with existing tests.
+from functools import partial
 from dataclasses import fields, replace
 from datetime import UTC, datetime
 import logging
@@ -95,11 +96,14 @@ from .models.commands import (
     NiceCommandResult,
 )
 from .models.config import NiceEntryConfig
-from .protocol.t4.settings import DmpSetting
+from .protocol.t4.info import DmpInfo
+from .protocol.t4.settings import SETTINGS, DmpSetting
 from .protocol.t4.actions import T4_ACTION_BY_KEY
 from .write_policy import dmp_write_block_reason
 
 _LOGGER = logging.getLogger(__name__)
+# full INFO loads per session; a controller without some INFO stops asking after this
+SETTING_INFO_ATTEMPTS = 3
 
 EXTENDED_STATUS_REFRESH_SECONDS = 300.0
 
@@ -207,6 +211,10 @@ class NiceBidiDataUpdateCoordinator(
         self.last_successful_update: datetime | None = None
         self.position_controller._init_position_state()
         self._extended_status_cache: NiceBidiStatus | None = None
+        # Value format (DMP INFO) of each writable setting, read once from the controller.
+        self.setting_info: dict[str, DmpInfo] = {}
+        self._setting_info_task: asyncio.Task | None = None
+        self._setting_info_attempts = 0
         self._extended_status_next_refresh_monotonic = 0.0
         self._extended_scan_requests = 0
         self._last_open_position: int | None = None
@@ -321,7 +329,48 @@ class NiceBidiDataUpdateCoordinator(
         status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
         self.event_controller.mark_connected()
+        if self._setting_info_task is None:
+            self._setting_info_task = self.config_entry.async_create_background_task(
+                self.hass, self._async_load_setting_info(), "nice-setting-info"
+            )
         return status
+
+    async def _async_load_setting_info(self) -> None:
+        """Read the controller's range or option list of each writable setting once.
+
+        The reads yield to gate commands: on a pending command the load stops and the next
+        successful poll resumes it with the settings that are still missing. After an error
+        or a missing reply the next poll tries again, at most SETTING_INFO_ATTEMPTS times.
+        """
+        for setting in SETTINGS.values():
+            if setting.key in self.setting_info:
+                continue
+            try:
+                info = await self.hass.async_add_executor_job(
+                    partial(
+                        self.client.read_dmp_info,
+                        setting.group,
+                        setting.parameter,
+                        preemptible=True,
+                    )
+                )
+            except NiceReadPreemptedError:
+                _LOGGER.debug("Nice setting INFO read yielded to a command; resuming later")
+                self._setting_info_task = None
+                return
+            except Exception as err:  # noqa: BLE001 - optional metadata, static limits stay in use
+                _LOGGER.debug("Nice setting INFO not available: %r", err)
+                break
+            if info is not None:
+                self.setting_info[setting.key] = info
+        _LOGGER.debug("Nice setting INFO read for %d settings", len(self.setting_info))
+        self._setting_info_attempts += 1
+        if (
+            len(self.setting_info) < len(SETTINGS)
+            and self._setting_info_attempts < SETTING_INFO_ATTEMPTS
+        ):
+            self._setting_info_task = None
+        self.async_update_listeners()
 
     @property
     def _limits_issue_id(self) -> str:
@@ -908,5 +957,8 @@ class NiceBidiDataUpdateCoordinator(
         # a still-valid issue is recreated by the first poll after setup
         ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
         await self._async_cancel_background_tasks(calibration_reason="shutdown")
+        if self._setting_info_task is not None:
+            # it must not open a new session on the closed client
+            self._setting_info_task.cancel()
         self.event_controller.shutdown()
         await self.hass.async_add_executor_job(self.client.close)
