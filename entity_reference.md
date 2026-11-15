@@ -44,6 +44,22 @@ matching entities without `setting` are read-only views of the current
 controller values. Change writable settings only while the gate is visible and
 safe to operate, and write down the original values first.
 
+## Device information
+
+The Home Assistant device page shows the controller identity read from the
+BiDi-WiFi INFO reply:
+
+| Field | Source | Example (ROBUSR10) |
+| --- | --- | --- |
+| Manufacturer | controller manufacturer, `Nice` when missing | `NICE` |
+| Model | controller description; interface product or `BiDi-WiFi` when missing | `NewRobus` |
+| Model ID | controller product code; not shown when missing | `ROBUSR10` |
+| Firmware / hardware | controller firmware and hardware versions | `FG01h` / `604ar00` |
+| Serial number | controller serial number | (unit-specific) |
+
+Use the model ID when you report an issue: it names the exact control unit,
+while the model is a family name.
+
 Quick recommendations:
 
 | Need | Use | Notes |
@@ -56,7 +72,7 @@ Quick recommendations:
 | Connection route health | Overall connection state, active route, local/cloud route state, last successful update, reconnect count | Shows which configured routes are reachable and whether LAN or cloud is currently carrying traffic. |
 | Controller tuning | Entities ending in `setting` | Advanced; these write controller registers. |
 | Raw diagnostics | Diagnostics I/O byte and diagnostics parameters | Developer/debug data for comparing controllers. |
-| Radio receiver info | OXI entities | Metadata from the OXI/radio endpoint when it answers locally. |
+| Radio receiver info | OXI entities | Product, versions, receiver type and remote coding of the OXI receiver when it answers locally. |
 | Protocol event automations | Protocol event | Emits normalized state, obstruction, maintenance, diagnostic, BlueBUS, battery, motor-current, and reset event types when reported. |
 | Event delivery health | Event stream state | Shows active delivery, polling fallback, or stopped state. |
 
@@ -291,10 +307,10 @@ current device profile.
 | Binary sensor | Slave mode | `slave_mode` | BusT4 `04/98`, read only. | Hidden | Disabled | Read-only mirror of a controller setting. |
 | Sensor | Last 8 maneuvers | `last_maneuvers` | Number of the last 8 maneuvers that did not end `ok`; unknown slots are not counted, decoded from `04/DA`; attributes list the 8 outcomes (vendor order, newest slot not confirmed) and the obstacle count (codes 3 and 10). | Hidden | Enabled | Replaces the removed stop-reason sensor; the slot order must be checked on hardware. |
 | Sensor | Diagnostics parameters | `diagnostics_parameters` | Raw `04/D2` diagnostics parameter bytes. Attributes: the fields the controller's INFO marks as available (remaining work, pause and courtesy-light time in s, bus current, torque and speed in %, scaled like MyNice Pro; service voltage and motor temperature have their own sensors). Read in the extended scan, so values during a move are rare. `04/D4` (inverter diagnostics) uses the same layout; only the probe script reads it. | Hidden | Disabled | Raw developer/debug data. |
-| Sensor | OXI product | `oxi_product` | Product string of the OXI/radio receiver (`00/09` STD_PRODUCT at address `00.0A`), e.g. `OXIBD group`. | Hidden | Disabled | Optional metadata; empty when no OXI is installed. |
-| Sensor | OXI firmware | `oxi_firmware` | Firmware string from the OXI/radio endpoint when available locally. | Hidden | Disabled | Optional metadata that is often unavailable. |
-| Sensor | OXI hardware | `oxi_hardware` | Hardware string from the OXI/radio endpoint when available locally. | Hidden | Disabled | Optional metadata that is often unavailable. |
-| Sensor | OXI description | `oxi_description` | Description string from the OXI/radio endpoint when available locally. | Hidden | Disabled | Optional metadata that is often unavailable. |
+| Sensor | OXI product | `oxi_product` | Product string of the OXI/radio receiver (`00/09` STD_PRODUCT at address `00.0A`), e.g. `OXIBD group`. Attributes: `receiver_type` from `0A/00` (`oxi`, `oxit`, `ox2`, `ox2t`, `ox4`, `ox4t`, `oxifm`, `oxitfm`; unknown codes as `code_<n>`) and `coding_type` of the remotes from `0A/41` (`flo`, `flor`, `hcs`; missing when the receiver reports none). Each attribute is left out when the receiver does not answer. | Hidden | Disabled | Optional metadata; empty when no OXI is installed. Checked on an OXI with FloR remotes. |
+| Sensor | OXI firmware | `oxi_firmware` | Firmware version of the OXI receiver (`00/0B` at address `00.0A`), e.g. `BK00H`. | Hidden | Disabled | Optional metadata; empty when no OXI is installed. |
+| Sensor | OXI hardware | `oxi_hardware` | Hardware version of the OXI receiver (`00/0A` at address `00.0A`), e.g. `672B`. | Hidden | Disabled | Optional metadata; empty when no OXI is installed. |
+| Sensor | OXI description | `oxi_description` | Description of the OXI receiver (`00/0C` at address `00.0A`), e.g. `Radio`. | Hidden | Disabled | Optional metadata; empty when no OXI is installed. |
 | Sensor | Interface firmware | `interface_firmware` | BiDi-WiFi interface firmware version from INFO metadata. | Hidden | Enabled | Useful for support and compatibility reports. |
 | Sensor | Interface hardware | `interface_hardware` | BiDi-WiFi interface hardware version from INFO metadata. | Hidden | Enabled | Useful for support and compatibility reports. |
 | Sensor | Interface serial | `interface_serial` | BiDi-WiFi interface serial number from INFO metadata. | Hidden | Enabled | Useful for support and compatibility reports. |
