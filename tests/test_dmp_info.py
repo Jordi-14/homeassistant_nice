@@ -10,8 +10,8 @@ from custom_components.nice_bidiwifi.protocol.t4.info import (
     DMP_INFO_FLAGS,
     DmpInfo,
     decode_dmp_info,
-    scaled_value,
     decode_version_entry,
+    scaled_value,
 )
 
 
