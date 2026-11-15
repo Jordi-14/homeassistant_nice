@@ -2,8 +2,9 @@
 
 Layout from MyNice Pro decompileInfo (libnative-lib.so @0x22ba8), checked against INFO replies of a ROBUSR10:
 byte 0 = value size (bits 0-6) and little-endian flag (bit 7), byte 1 = data format, byte 2 = function,
-byte 3 = flags. Flag bit 7 adds an index of (flags & 3) bytes. Flag bit 6 = a list follows (count, then one
-byte per entry); with bit 5 the list holds the allowed option codes. Without bit 6: min, max, step
+byte 3 = flags. Flag bit 7 adds an index of (flags & 3) bytes. Flag bit 6 = a list follows (count, then the
+entries); with bit 5 the list holds the allowed option codes (one byte each), without it one value of `size`
+bytes per field (04/D1 installed bits, 04/D2 scales). Without bit 6: min, max, step
 (size bytes each) and an optional 2-byte scale.
 """
 
@@ -50,7 +51,7 @@ def decode_dmp_info(data: bytes | None) -> DmpInfo | None:
             width = size or 1
             raw = data[offset + 1 : offset + 1 + data[offset] * width]
             if len(raw) != data[offset] * width:
-                return None
+                return info  # cut-off list: header only, as before
             values = tuple(
                 int.from_bytes(raw[i : i + width], order) for i in range(0, len(raw), width)
             )

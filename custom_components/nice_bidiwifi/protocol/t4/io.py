@@ -52,19 +52,18 @@ IO_BITS: tuple[tuple[int, int, str], ...] = (
     (12, 6, "overtravel_low_m2"),
     (12, 7, "overtravel_high_m2"),
 )
-# 04/D1 byte 11 & 3 (app id 44 "State limiter maneuver", Diagnostic1 SLM_*)
-LIMITER_STATES = ("ok", "threshold_1", "threshold_2", "motor_alarm")
 
-# 04/D2 fields at offset 2 * index; "%" fields are scaled with M from INFO
-HARDWARE_FIELDS: tuple[tuple[str, bool], ...] = (
+# 04/D2 fields at offset 2 * index; "%" fields are scaled with M from INFO. None = already a sensor
+# (service voltage, motor temperature).
+HARDWARE_FIELDS: tuple[tuple[str | None, bool], ...] = (
     ("work_time_left", False),
     ("pause_time_left", False),
     ("courtesy_light_time_left", False),
     ("bus_current", True),
-    ("service_voltage", False),
+    (None, False),
     ("torque_m1", True),
     ("torque_m2", True),
-    ("temperature_raw", False),
+    (None, False),
     ("voltage_m1", True),
     ("voltage_m2", True),
     ("speed_m1", True),
@@ -73,8 +72,8 @@ HARDWARE_FIELDS: tuple[tuple[str, bool], ...] = (
 
 
 def _present(info: DmpInfo | None, byte: int, bit: int) -> bool:
-    """Return true when INFO marks the item as installed (no INFO: show everything)."""
-    if info is None or info.values is None:
+    """Return true when INFO marks the item as installed (no usable INFO: show everything)."""
+    if info is None or info.values is None or info.size != 1:
         return True
     return byte < len(info.values) and bool(info.values[byte] >> bit & 1)
 
@@ -92,28 +91,48 @@ def decode_io_diagnostic(data: bytes | None, info: DmpInfo | None) -> dict[str, 
         out["direction"] = "left" if data[2] & 0x40 else "right"
     if _present(info, 2, 7):  # 17 Selection engine: sign of byte 2
         out["selected_motor"] = "m1" if data[2] & 0x80 else "m2"
-    if _present(info, 11, 0):
-        out["force_limiter_state"] = LIMITER_STATES[data[11] & 0x03]
+    if _present(info, 9, 4):  # 35 Freq: '5' (50 Hz) when clear, '6' (60 Hz) when set (@0x11344)
+        out["mains_frequency"] = 60 if data[9] & 0x10 else 50
+    if _present(info, 5, 0):  # 30 State Alt: 8 states, names not traced
+        out["alt_state"] = data[5] & 0x07
+    if _present(info, 6, 0):  # 52 Ing. Radio, 53 Ing. T4 mode I: active channels 1-4
+        out["radio_inputs"] = [n + 1 for n in range(4) if data[6] >> n & 1]
+    if _present(info, 7, 0):
+        out["t4_mode_1_inputs"] = [n + 1 for n in range(4) if data[7] >> n & 1]
+    if _present(info, 8, 0):  # 54 Ing. T4 mode II: a number ("%02d")
+        out["t4_mode_2"] = data[8]
+    if _present(info, 11, 0):  # 44 State limiter maneuver: app states a-d (SLM_*), index only
+        out["force_limiter_state"] = data[11] & 0x03
     return out
+
+
+def dgx_percent(value: int, full_scale: int) -> int:
+    """MyNice Pro diag1DgxCalcPCT: 100 * value / full_scale with the app's 16-bit and 0-255 limits."""
+    if full_scale == 0:
+        return 0
+    shift = 0
+    while full_scale >> shift > 650:
+        shift += 1
+    return (((value >> shift) * 100) & 0xFFFC) // (full_scale >> shift) & 0xFF
 
 
 def decode_hardware_diagnostic(data: bytes | None, info: DmpInfo | None) -> dict[str, int] | None:
     """Return the available 04/D2 fields by name; percent fields need INFO, others are raw values."""
-    if not data or len(data) < 2 * len(HARDWARE_FIELDS):
+    if not data or len(data) < 2 or all(b in (0x00, 0xFF) for b in data):
         return None
     out: dict[str, int] = {}
-    for index, (name, percent) in enumerate(HARDWARE_FIELDS):
+    for index, (name, percent) in enumerate(HARDWARE_FIELDS[: len(data) // 2]):
+        if name is None:
+            continue
         scale = info.values[index] if info and info.values and index < len(info.values) else None
         if scale is not None and not scale & 0x8000:
             continue  # not available on this controller
-        if data[2 * index] & 0x80 and name != "temperature_raw":
-            continue  # the app shows "-" (the temperature is signed)
-        value = int.from_bytes(
-            data[2 * index : 2 * index + 2], "big", signed=name == "temperature_raw"
-        )
+        if data[2 * index] & 0x80:
+            continue  # the app shows "-"
+        value = int.from_bytes(data[2 * index : 2 * index + 2], "big")
         if percent:
-            if not scale or not scale & 0x7FFF:
-                continue
-            value = ((value * 100) & 0xFFFC) // (scale & 0x7FFF)
+            if scale is None:
+                continue  # the full scale comes only from INFO
+            value = dgx_percent(value, scale & 0x7FFF)
         out[name] = value
     return out

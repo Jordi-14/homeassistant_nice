@@ -105,3 +105,9 @@ def test_scaled_value(raw, hex_info, expected) -> None:
     """Test the app's scaling (StepCounterView.getScaledNum)."""
     info = decode_dmp_info(bytes.fromhex(hex_info.replace(" ", ""))) if hex_info else None
     assert scaled_value(raw, info) == expected
+
+
+def test_cut_off_value_list_keeps_the_header() -> None:
+    """A bit-6 list (no option codes) that is cut off gives the header INFO, as before the values field."""
+    info = decode_dmp_info(bytes.fromhex("0281e2410e8000"))
+    assert info is not None and info.values is None and info.flags == 0x41
