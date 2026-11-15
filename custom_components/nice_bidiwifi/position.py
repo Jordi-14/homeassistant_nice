@@ -8,7 +8,6 @@ from contextlib import suppress
 from dataclasses import replace
 from datetime import timedelta
 import logging
-import math
 import time
 
 from homeassistant.exceptions import HomeAssistantError
@@ -38,12 +37,9 @@ POSITION_TARGET_TOLERANCE = 1.0
 POST_COMMAND_REFRESH_DELAY_SECONDS = 2.0
 POST_COMMAND_FAST_POLL_SECONDS = 60.0
 RECENT_STOP_STATUS_OVERRIDE_SECONDS = 20.0
-POSITION_SIMULATION_TICK_SECONDS = 1.0
+POSITION_SIMULATION_TICK_SECONDS = 0.25
 POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND = 1.0
 POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR = 0.8
-# Predict a short distance beyond a reading, easing rather than running ahead
-# indefinitely when the next real update is delayed.
-POSITION_SIMULATION_EXTRAPOLATION_SECONDS = 0.5
 POSITION_OBSERVED_SPEED_WINDOW = 3
 POSITION_OBSERVED_SPEED_MIN_DELTA_PERCENT = 0.5
 POSITION_OBSERVED_SPEED_MIN_INTERVAL_SECONDS = 0.25
@@ -319,10 +315,6 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         if not self.display_position_estimated:
             return None
         speed = self._position_simulation_speed_percent_per_second
-        anchor_time = self._position_simulation_anchor_monotonic
-        if speed is not None and anchor_time is not None and self._position_simulation_confirmed_moving:
-            elapsed = max(0.0, time.monotonic() - anchor_time)
-            speed *= math.exp(-elapsed / POSITION_SIMULATION_EXTRAPOLATION_SECONDS)
         return round(speed, 2) if speed is not None else None
 
     @property
@@ -441,8 +433,6 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             return anchor
 
         elapsed = max(0.0, time.monotonic() - anchor_time)
-        horizon = POSITION_SIMULATION_EXTRAPOLATION_SECONDS
-        elapsed = -horizon * math.expm1(-elapsed / horizon)
         if action == "open":
             calculated = min(100.0, anchor + (speed * elapsed))
             target = self._position_simulation_target_position
@@ -571,8 +561,12 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         confirmed_moving: bool,
         keep_target: bool,
     ) -> None:
-        """Anchor simulation to a fresh real position update."""
+        """Follow readings without rewinding the display during continuous motion."""
         now = time.monotonic()
+        if action == self._position_simulation_action:
+            displayed = self._current_simulated_position()
+            if displayed is not None:
+                position = max(position, displayed) if action == "open" else min(position, displayed)
         speed = self._position_simulation_speed(action)
         target = self._position_simulation_target_position if keep_target else None
         limit = 100.0 if action == "open" and target is None else 0.0 if target is None else target

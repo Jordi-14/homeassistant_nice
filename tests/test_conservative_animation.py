@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -16,6 +18,62 @@ from custom_components.nice_bidiwifi.models.events import (
     NiceEventKind,
 )
 from tests.conftest import FakeClient, config_entry_data, make_status
+
+
+@pytest.mark.parametrize(("state", "position", "direction"), [
+    ("opening", 40.0, 1), ("closing", 60.0, -1),
+])
+async def test_duplicate_and_lagging_readings_keep_movement_continuous(hass, monkeypatch, state, position, direction):
+    coordinator, clock = _coordinator(hass, monkeypatch)
+    coordinator._sync_position_simulation_from_status(make_status(state=state, position=position))
+    previous = position
+    for _ in range(12):
+        clock[0] += 0.25
+        predicted = coordinator.display_position
+        assert 0 < direction * (predicted - previous) <= 1
+        coordinator.async_set_updated_data(make_status(state=state, position=position))
+        coordinator._sync_position_simulation_from_status(coordinator.data)
+        assert coordinator.data.position == position
+        assert coordinator.display_position == predicted
+        previous = predicted
+    ahead = previous + direction * 5
+    coordinator.async_set_updated_data(make_status(state=state, position=ahead))
+    coordinator._sync_position_simulation_from_status(coordinator.data)
+    assert coordinator.display_position == pytest.approx(ahead)
+    coordinator.async_set_updated_data(make_status(state="stopped", position=position))
+    coordinator._sync_position_simulation_from_status(coordinator.data)
+    assert coordinator.display_position == position
+    assert coordinator.display_position_estimated is False
+    await coordinator.async_shutdown()
+
+
+async def test_recorded_cycle_has_no_backwards_corrections_while_moving(hass, monkeypatch):
+    coordinator, clock = _coordinator(hass, monkeypatch)
+    samples = json.loads((Path(__file__).parent / "fixtures/position_cycle_b13.json").read_text())
+    previous_state = "closed"
+    previous = 0.0
+    for sample in samples:
+        end = 100 + sample["seconds"]
+        while clock[0] + 0.25 < end:
+            clock[0] += 0.25
+            current = coordinator.display_position
+            if previous_state == "opening":
+                assert current >= previous
+            elif previous_state == "closing":
+                assert current <= previous
+            previous = current
+        clock[0] = end
+        status = make_status(state=sample["state"], position=sample["position"])
+        coordinator.async_set_updated_data(status)
+        coordinator._sync_position_simulation_from_status(status)
+        current = coordinator.display_position
+        if sample["state"] == previous_state == "opening":
+            assert current >= previous
+        elif sample["state"] == previous_state == "closing":
+            assert current <= previous
+        assert coordinator.data.position == sample["position"]
+        previous, previous_state = current, sample["state"]
+    await coordinator.async_shutdown()
 
 
 def _coordinator(hass, monkeypatch):
@@ -37,7 +95,7 @@ def _coordinator(hass, monkeypatch):
     ("opening", 83.1, 85.6, 2.31),
     ("closing", 14.1, 12.5, 2.17),
 ])
-async def test_recorded_slowdown_keeps_prediction_behind_next_reading(hass, monkeypatch, state, anchor, next_position, seconds):
+async def test_recorded_slowdown_does_not_rewind_the_display(hass, monkeypatch, state, anchor, next_position, seconds):
     coordinator, clock = _coordinator(hass, monkeypatch)
     action = "open" if state == "opening" else "close"
     coordinator._observed_position_speed_percent_per_second[action] = 6.7
@@ -45,11 +103,12 @@ async def test_recorded_slowdown_keeps_prediction_behind_next_reading(hass, monk
     clock[0] += seconds
     predicted = coordinator.display_position
     if action == "open":
-        assert anchor < predicted <= next_position
+        assert anchor < predicted
     else:
-        assert next_position <= predicted < anchor
+        assert predicted < anchor
     coordinator._sync_position_simulation_from_status(make_status(state=state, position=next_position))
-    assert coordinator.display_position == next_position
+    expected = max(predicted, next_position) if action == "open" else min(predicted, next_position)
+    assert coordinator.display_position == expected
     await coordinator.async_shutdown()
 
 
@@ -76,14 +135,15 @@ async def test_a_fast_burst_does_not_erase_recent_slower_motion(hass, monkeypatc
     await coordinator.async_shutdown()
 
 
-async def test_prediction_continues_past_real_reading_but_eases_as_data_ages(hass, monkeypatch):
+async def test_prediction_continues_at_a_steady_speed_between_readings(hass, monkeypatch):
     coordinator, clock = _coordinator(hass, monkeypatch)
     coordinator._sync_position_simulation_from_status(make_status(state="opening", position=50.0))
     clock[0] += 1
     first = coordinator.display_position
     clock[0] += 3
     second = coordinator.display_position
-    assert 50.0 < first < second < 53.0
+    assert first == pytest.approx(53.5)
+    assert second == pytest.approx(63.9)
     await coordinator.async_shutdown()
 
 

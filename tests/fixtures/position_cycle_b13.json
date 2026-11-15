@@ -1,0 +1,232 @@
+[
+  {
+    "seconds": 0.0,
+    "state": "opening",
+    "position": 0.0
+  },
+  {
+    "seconds": 1.035746,
+    "state": "opening",
+    "position": 0.2
+  },
+  {
+    "seconds": 1.226642,
+    "state": "opening",
+    "position": 1.8
+  },
+  {
+    "seconds": 2.339139,
+    "state": "opening",
+    "position": 7.9
+  },
+  {
+    "seconds": 4.552202,
+    "state": "opening",
+    "position": 14.2
+  },
+  {
+    "seconds": 5.028371,
+    "state": "opening",
+    "position": 14.2
+  },
+  {
+    "seconds": 5.043738,
+    "state": "opening",
+    "position": 14.2
+  },
+  {
+    "seconds": 5.217016,
+    "state": "opening",
+    "position": 26.7
+  },
+  {
+    "seconds": 6.233948,
+    "state": "opening",
+    "position": 32.7
+  },
+  {
+    "seconds": 8.590626,
+    "state": "opening",
+    "position": 39.0
+  },
+  {
+    "seconds": 9.10029,
+    "state": "opening",
+    "position": 39.0
+  },
+  {
+    "seconds": 9.212228,
+    "state": "opening",
+    "position": 51.4
+  },
+  {
+    "seconds": 10.227204,
+    "state": "opening",
+    "position": 57.5
+  },
+  {
+    "seconds": 11.24687,
+    "state": "opening",
+    "position": 63.8
+  },
+  {
+    "seconds": 14.277245,
+    "state": "opening",
+    "position": 70.1
+  },
+  {
+    "seconds": 14.493592,
+    "state": "opening",
+    "position": 81.6
+  },
+  {
+    "seconds": 16.78713,
+    "state": "opening",
+    "position": 85.1
+  },
+  {
+    "seconds": 17.197828,
+    "state": "opening",
+    "position": 85.1
+  },
+  {
+    "seconds": 18.251711,
+    "state": "opening",
+    "position": 91.0
+  },
+  {
+    "seconds": 20.312359,
+    "state": "opening",
+    "position": 92.8
+  },
+  {
+    "seconds": 21.286216,
+    "state": "opening",
+    "position": 96.2
+  },
+  {
+    "seconds": 22.23502,
+    "state": "open",
+    "position": 96.2
+  },
+  {
+    "seconds": 24.411414,
+    "state": "open",
+    "position": 100.0
+  },
+  {
+    "seconds": 29.817944,
+    "state": "closing",
+    "position": 100.0
+  },
+  {
+    "seconds": 30.498647,
+    "state": "closing",
+    "position": 100.0
+  },
+  {
+    "seconds": 32.756032,
+    "state": "closing",
+    "position": 98.2
+  },
+  {
+    "seconds": 33.260962,
+    "state": "closing",
+    "position": 98.2
+  },
+  {
+    "seconds": 34.288201,
+    "state": "closing",
+    "position": 79.8
+  },
+  {
+    "seconds": 35.262677,
+    "state": "closing",
+    "position": 73.8
+  },
+  {
+    "seconds": 38.170454,
+    "state": "closing",
+    "position": 67.5
+  },
+  {
+    "seconds": 39.275206,
+    "state": "closing",
+    "position": 49.1
+  },
+  {
+    "seconds": 40.295272,
+    "state": "closing",
+    "position": 42.8
+  },
+  {
+    "seconds": 42.683293,
+    "state": "closing",
+    "position": 36.7
+  },
+  {
+    "seconds": 43.166333,
+    "state": "closing",
+    "position": 36.7
+  },
+  {
+    "seconds": 43.30365,
+    "state": "closing",
+    "position": 25.0
+  },
+  {
+    "seconds": 44.320047,
+    "state": "closing",
+    "position": 20.4
+  },
+  {
+    "seconds": 46.850431,
+    "state": "closing",
+    "position": 16.9
+  },
+  {
+    "seconds": 47.296081,
+    "state": "closing",
+    "position": 16.9
+  },
+  {
+    "seconds": 48.316549,
+    "state": "closing",
+    "position": 10.4
+  },
+  {
+    "seconds": 51.015387,
+    "state": "closing",
+    "position": 8.7
+  },
+  {
+    "seconds": 52.322866,
+    "state": "closing",
+    "position": 3.5
+  },
+  {
+    "seconds": 53.338044,
+    "state": "closing",
+    "position": 1.8
+  },
+  {
+    "seconds": 56.14893,
+    "state": "closing",
+    "position": 0.1
+  },
+  {
+    "seconds": 56.498067,
+    "state": "closed",
+    "position": 0.1
+  },
+  {
+    "seconds": 56.698132,
+    "state": "closed",
+    "position": 0.1
+  },
+  {
+    "seconds": 58.382684,
+    "state": "closed",
+    "position": 0.0
+  }
+]

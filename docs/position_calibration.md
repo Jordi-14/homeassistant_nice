@@ -34,16 +34,17 @@ It can then move beyond the latest reported position at a conservative speed:
 80% of the lower available calibrated or recent observed speed. Recent slower
 samples limit short bursts, so learned speed does not remove this margin.
 
-Extrapolation gradually eases as the last reading gets older. It is limited to
-about half a second's extra travel at the initial prediction speed, rather than
-running indefinitely at that speed. The next real reading becomes the new
-anchor. For example, the display can advance beyond a reported 83.1%, while
-normally remaining below the next reported 85.6%.
+The display advances steadily, refreshing every quarter second. A reading
+farther along the movement advances the display immediately. Duplicate readings
+or readings behind the estimate do not move it backwards while the same
+movement continues. The underlying reported position remains unchanged and
+continues to drive position-target calculations. A confirmed stop or direction
+change can reconcile the display with the reported position.
 
 A status poll that started before a newer live update cannot replace its state
 or position. Fresh readings can still report a genuine stop or reversal.
 Position-target calculations prefer the real reported percentage over the
-deliberately lagging display value. Calibration measurements and motor settings
+estimated display value. Calibration measurements and motor settings
 are not changed by the animation margin.
 
 These measures reduce prediction overshoot. They cannot guarantee the gate's

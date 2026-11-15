@@ -719,7 +719,7 @@ async def test_stop_preserves_in_flight_estimated_position(
     instance._sync_position_simulation_from_status(moving)
     clock = 1.0
     held = instance.display_position
-    assert 10.0 < held < 11.0
+    assert held == pytest.approx(11.0)
 
     await instance._async_send_action("stop", refresh=False)
 
@@ -1050,7 +1050,7 @@ async def test_position_simulation_learns_speed_from_sparse_live_samples(
     assert instance.observed_position_speed_percent_per_second == {"open": 4.0}
     assert instance.position_simulation_speed_percent_per_second == 3.2
     now[0] = 107.0
-    assert 41.0 < instance._current_simulated_position() < 42.0
+    assert instance._current_simulated_position() == pytest.approx(46.4)
 
     await instance._async_cancel_position_simulation()
 
