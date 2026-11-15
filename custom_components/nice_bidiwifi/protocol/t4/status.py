@@ -12,7 +12,13 @@ from .dmp import (
     dmp_uint,
     status_from_register,
 )
+from .enums import RADIO_RECEIVER_TYPES
 from .maneuvers import decode_last_maneuvers
+
+
+def _receiver_type(code: int | None) -> str | None:
+    """Return the OXI receiver type name, or code_<n> for an unknown code."""
+    return None if code is None else RADIO_RECEIVER_TYPES.get(code, f"code_{code}")
 
 
 def status_from_dmp_registers(
@@ -107,4 +113,5 @@ def status_from_dmp_registers(
         oxi_hardware_version=dmp_ascii(registers.get("00/0A@00.0A")),
         oxi_firmware_version=dmp_ascii(registers.get("00/0B@00.0A")),
         oxi_description=dmp_ascii(registers.get("00/0C@00.0A")),
+        oxi_receiver_type=_receiver_type(dmp_uint(registers.get("0A/00@00.0A"))),
     )

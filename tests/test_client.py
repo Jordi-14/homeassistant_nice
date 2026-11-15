@@ -1464,10 +1464,12 @@ def test_oxi_identity_comes_from_std_group_00() -> None:
         "00/0A@00.0A": DmpResponse("", 0x00, 0x0A, value=b"672B"),
         "00/0B@00.0A": DmpResponse("", 0x00, 0x0B, value=b"BK00H"),
         "00/0C@00.0A": DmpResponse("", 0x00, 0x0C, value=b"Radio"),
+        "0A/00@00.0A": DmpResponse("", 0x0A, 0x00, value=b"\x01"),
     }
     status = status_from_dmp_registers(registers)
 
     assert status.oxi_detected is True
     assert (status.oxi_product, status.oxi_hardware_version) == ("OXIBD group", "672B")
     assert (status.oxi_firmware_version, status.oxi_description) == ("BK00H", "Radio")
+    assert status.oxi_receiver_type == "oxi"
     assert status_from_dmp_registers({}).oxi_detected is False
