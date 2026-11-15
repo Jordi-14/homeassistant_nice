@@ -47,9 +47,10 @@ async def test_duplicate_and_lagging_readings_keep_movement_continuous(hass, mon
     await coordinator.async_shutdown()
 
 
-async def test_recorded_cycle_has_no_backwards_corrections_while_moving(hass, monkeypatch):
+@pytest.mark.parametrize("fixture", ["position_cycle_b13.json", "position_cycle_b14.json"])
+async def test_recorded_cycle_has_no_backwards_corrections_while_moving(hass, monkeypatch, fixture):
     coordinator, clock = _coordinator(hass, monkeypatch)
-    samples = json.loads((Path(__file__).parent / "fixtures/position_cycle_b13.json").read_text())
+    samples = json.loads((Path(__file__).parent / "fixtures" / fixture).read_text())
     previous_state = "closed"
     previous = 0.0
     for sample in samples:
@@ -112,13 +113,13 @@ async def test_recorded_slowdown_does_not_rewind_the_display(hass, monkeypatch, 
     await coordinator.async_shutdown()
 
 
-async def test_both_speed_sources_keep_a_conservative_margin(hass, monkeypatch):
+async def test_calibration_is_the_fallback_until_a_position_band_is_learned(hass, monkeypatch):
     coordinator, _ = _coordinator(hass, monkeypatch)
-    assert coordinator._position_simulation_speed("open") == pytest.approx(3.464)
+    assert coordinator._position_simulation_speed("open") == pytest.approx(3.897)
     coordinator._observed_position_speed_percent_per_second["open"] = 10.0
-    assert coordinator._position_simulation_speed("open") == pytest.approx(3.464)
+    assert coordinator._position_simulation_speed("open") == pytest.approx(3.897)
     coordinator._observed_position_speed_percent_per_second["open"] = 2.0
-    assert coordinator._position_simulation_speed("open") == pytest.approx(1.6)
+    assert coordinator._position_simulation_speed("open") == pytest.approx(3.897)
     await coordinator.async_shutdown()
 
 
@@ -131,7 +132,7 @@ async def test_a_fast_burst_does_not_erase_recent_slower_motion(hass, monkeypatc
     coordinator._sync_position_simulation_from_status(make_status(state="opening", position=31.0))
     clock[0] += 0.25
     coordinator._sync_position_simulation_from_status(make_status(state="opening", position=32.0))
-    assert coordinator.position_simulation_speed_percent_per_second <= 1.6
+    assert coordinator.position_simulation_speed_percent_per_second < 3.0
     await coordinator.async_shutdown()
 
 
@@ -142,8 +143,8 @@ async def test_prediction_continues_at_a_steady_speed_between_readings(hass, mon
     first = coordinator.display_position
     clock[0] += 3
     second = coordinator.display_position
-    assert first == pytest.approx(53.5)
-    assert second == pytest.approx(63.9)
+    assert first == pytest.approx(53.9)
+    assert second == pytest.approx(65.6)
     await coordinator.async_shutdown()
 
 

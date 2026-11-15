@@ -418,6 +418,7 @@ class FakeCoordinator:
         self.setting_info = {}
         self.register_info = {}
         self.controller_configuration = None
+        self.movement_speed_profile = {}
         self.capabilities = None
         self.status_polling_supported = True
         self.last_update_success = True

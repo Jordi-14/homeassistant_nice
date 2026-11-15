@@ -72,6 +72,7 @@ class CalibrationProfile(TypedDict, total=False):
     targets: list[int]
     bounds: dict[str, Any]
     travel_speed: dict[str, dict[str, Any]]
+    movement_speed_profile: dict[str, Any]
     samples: dict[str, list[CalibrationSample]]
     events: list[CalibrationEvent]
 

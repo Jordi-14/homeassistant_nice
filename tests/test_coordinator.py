@@ -1012,7 +1012,7 @@ async def test_position_simulation_uses_calibrated_travel_speed(
     await instance._async_send_action("open", refresh=False)
 
     assert instance.position_simulation_action == "open"
-    assert instance.position_simulation_speed_percent_per_second == 4.0
+    assert instance.position_simulation_speed_percent_per_second == 4.5
 
     await instance._async_cancel_position_simulation()
 
@@ -1052,9 +1052,9 @@ async def test_position_simulation_learns_speed_from_sparse_live_samples(
     )
 
     assert instance.observed_position_speed_percent_per_second == {"open": 4.0}
-    assert instance.position_simulation_speed_percent_per_second == 3.2
+    assert instance.position_simulation_speed_percent_per_second == 3.6
     now[0] = 107.0
-    assert instance._current_simulated_position() == pytest.approx(46.4)
+    assert instance._current_simulated_position() == pytest.approx(47.2)
 
     await instance._async_cancel_position_simulation()
 

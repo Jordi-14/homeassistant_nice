@@ -214,7 +214,7 @@ class NiceBidiDataUpdateCoordinator(
         self.last_command_result: NiceCommandResult | None = None
         self.last_error: str | None = None
         self.last_successful_update: datetime | None = None
-        self.position_controller._init_position_state()
+        self.position_controller._init_position_state(hass, entry)
         self._extended_status_cache: NiceBidiStatus | None = None
         # Value format (DMP INFO) of each writable setting, read once from the controller.
         self.setting_info: dict[str, DmpInfo] = {}
@@ -992,6 +992,7 @@ class NiceBidiDataUpdateCoordinator(
         # a still-valid issue is recreated by the first poll after setup
         ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
         await self._async_cancel_background_tasks(calibration_reason="shutdown")
+        await self.async_save_movement_profile()
         if self._setting_info_task is not None:
             # it must not open a new session on the closed client
             self._setting_info_task.cancel()

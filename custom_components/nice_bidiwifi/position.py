@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections import deque
 from contextlib import suppress
 from dataclasses import replace
 from datetime import timedelta
@@ -11,6 +10,7 @@ import logging
 import time
 
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.storage import Store
 
 from .calibration_constants import CALIBRATION_STATE_RUNNING
 from .client import (
@@ -29,6 +29,7 @@ from .const import DOMAIN, ERROR_UPDATE_INTERVAL, IDLE_UPDATE_INTERVAL, MOVING_U
 from .controllers.base import OwnerBoundController
 from .models.events import NiceEvent
 from .models.position import NicePosition, resolve_position
+from .movement_profile import MovementProfile, advance, speed_at
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,8 +40,7 @@ POST_COMMAND_FAST_POLL_SECONDS = 60.0
 RECENT_STOP_STATUS_OVERRIDE_SECONDS = 20.0
 POSITION_SIMULATION_TICK_SECONDS = 0.25
 POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND = 1.0
-POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR = 0.8
-POSITION_OBSERVED_SPEED_WINDOW = 3
+POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR = 0.9
 POSITION_OBSERVED_SPEED_MIN_DELTA_PERCENT = 0.5
 POSITION_OBSERVED_SPEED_MIN_INTERVAL_SECONDS = 0.25
 POSITION_OBSERVED_SPEED_MAX_INTERVAL_SECONDS = 30.0
@@ -52,10 +52,15 @@ POSITION_TARGET_LIVE_POSITION_TOLERANCE = 0.5
 POSITION_TARGET_LIVE_SPEED_MARGIN = 3.0
 
 
+def movement_profile_store(hass, entry_id: str) -> Store:
+    """Keep learned movement speeds separate from calibrated stop thresholds."""
+    return Store(hass, 1, f"{DOMAIN}.movement_profile.{entry_id}")
+
+
 class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordinator"]):
     """Position display, simulation, and target-position behavior."""
 
-    def _init_position_state(self) -> None:
+    def _init_position_state(self, hass, entry) -> None:
         """Initialize position-related runtime state."""
         self._recent_stop_command_monotonic: float | None = None
         self._recent_stop_started_from_motion = False
@@ -75,7 +80,53 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         self._position_simulation_speed_percent_per_second: float | None = None
         self._position_observation: tuple[str, float, float] | None = None
         self._observed_position_speed_percent_per_second: dict[str, float] = {}
-        self._observed_position_speed_samples: dict[str, deque[float]] = {}
+        self._movement_profile = MovementProfile()
+        self._movement_profile_store = movement_profile_store(hass, entry.entry_id)
+        self._movement_profile_dirty = False
+        self._position_simulation_speed_curve: tuple[float, ...] | None = None
+
+    async def async_load_movement_profile(self) -> None:
+        """Restore passive learning, or seed it from a saved calibration."""
+        try:
+            data = await self._movement_profile_store.async_load()
+        except Exception:  # optional learning must not prevent setup
+            _LOGGER.warning("Could not load Nice movement speed profile", exc_info=True)
+            data = None
+        if data is None and self.calibration_profile:
+            data = self.calibration_profile.get("movement_speed_profile")
+        self._movement_profile.load(data)
+
+    def _schedule_movement_profile_save(self) -> None:
+        self._movement_profile_dirty = True
+        snapshot = self._movement_profile.export()
+        self._movement_profile_store.async_delay_save(lambda: snapshot, 30)
+
+    async def async_save_movement_profile(self) -> None:
+        """Flush completed/partial band measurements when unloading."""
+        self._movement_profile_dirty |= self._movement_profile.finish()
+        if self._movement_profile_dirty:
+            try:
+                await self._movement_profile_store.async_save(self._movement_profile.export())
+                self._movement_profile_dirty = False
+            except Exception:
+                _LOGGER.warning("Could not save Nice movement speed profile", exc_info=True)
+
+    @property
+    def movement_speed_profile(self) -> dict:
+        """Measured speeds before the 90% animation margin, by direction and band."""
+        return self._movement_profile.summary()
+
+    def _learn_movement_speed(self, status: NiceBidiStatus) -> None:
+        changed = False
+        for action, setting in (("open", status.opening_speed), ("close", status.closing_speed)):
+            changed |= self._movement_profile.setting_changed(action, setting)
+        action = self._motion_action_from_state(status.state)
+        if action is not None and status.position is not None:
+            changed |= self._movement_profile.observe(action, status.position, time.monotonic())
+        elif status.state in {STATE_STOPPED, STATE_PARTIALLY_OPEN, STATE_OPEN, STATE_CLOSED}:
+            changed |= self._movement_profile.finish()
+        if changed:
+            self._schedule_movement_profile_save()
 
     async def _async_cancel_position_target(self) -> None:
         """Cancel a pending target-position watcher."""
@@ -315,6 +366,11 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         if not self.display_position_estimated:
             return None
         speed = self._position_simulation_speed_percent_per_second
+        curve = self._position_simulation_speed_curve
+        if curve is not None:
+            position = self._current_simulated_position()
+            if position is not None:
+                speed = speed_at(position, curve)
         return round(speed, 2) if speed is not None else None
 
     @property
@@ -373,11 +429,12 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             return
 
         now = time.monotonic()
-        speed = self._position_simulation_speed(action)
+        curve = self._position_speed_curve(action)
+        speed = speed_at(anchor, curve)
         target = None if target_position is None else max(0.0, min(100.0, float(target_position)))
         limit = 100.0 if action == "open" and target is None else 0.0 if target is None else target
         distance = abs(limit - anchor)
-        expected_seconds = distance / speed if speed > 0 else 0
+        expected_seconds = distance / min(curve)
         deadline = now + max(
             POSITION_SIMULATION_START_GRACE_SECONDS,
             expected_seconds + POSITION_SIMULATION_TIMEOUT_PADDING_SECONDS,
@@ -391,6 +448,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         self._position_simulation_confirmed_moving = False
         self._position_simulation_target_position = target
         self._position_simulation_speed_percent_per_second = speed
+        self._position_simulation_speed_curve = curve
         self._ensure_position_simulation_task()
         self.async_update_listeners()
 
@@ -433,8 +491,9 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             return anchor
 
         elapsed = max(0.0, time.monotonic() - anchor_time)
+        curve = self._position_simulation_speed_curve
+        calculated = advance(anchor, elapsed, action, curve) if curve is not None else anchor + (1 if action == "open" else -1) * speed * elapsed
         if action == "open":
-            calculated = min(100.0, anchor + (speed * elapsed))
             target = self._position_simulation_target_position
             if target is None:
                 cap = 100.0 if anchor >= 100.0 else max(99.0, anchor)
@@ -442,7 +501,6 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
                 cap = target if anchor < target else anchor
             return max(0.0, min(calculated, cap))
 
-        calculated = max(0.0, anchor - (speed * elapsed))
         target = self._position_simulation_target_position
         if target is None:
             floor = 0.0 if anchor <= 0.0 else min(1.0, anchor)
@@ -500,6 +558,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
 
     def _observe_position_speed(self, status: NiceBidiStatus) -> None:
         """Learn movement speed from consecutive live position samples."""
+        self._learn_movement_speed(status)
         action = self._motion_action_from_state(status.state)
         position = status.position
         if action is None or position is None:
@@ -510,7 +569,6 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         previous = self._position_observation
         if previous is None or previous[0] != action:
             self._position_observation = (action, position, now)
-            self._observed_position_speed_samples[action] = deque(maxlen=POSITION_OBSERVED_SPEED_WINDOW)
             return
 
         _, previous_position, previous_time = previous
@@ -528,7 +586,6 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         )
         if distance < 0:
             self._position_observation = (action, position, now)
-            self._observed_position_speed_samples[action].clear()
             return
         if distance == 0:
             return
@@ -539,7 +596,6 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         self._position_observation = (action, position, now)
         if not 0 < speed <= POSITION_OBSERVED_SPEED_MAX_PERCENT_PER_SECOND:
             return
-        self._observed_position_speed_samples[action].append(speed)
         previous_speed = self._observed_position_speed_percent_per_second.get(action)
         if previous_speed is not None:
             smoothing = POSITION_OBSERVED_SPEED_SMOOTHING_FACTOR
@@ -567,11 +623,12 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             displayed = self._current_simulated_position()
             if displayed is not None:
                 position = max(position, displayed) if action == "open" else min(position, displayed)
-        speed = self._position_simulation_speed(action)
+        curve = self._position_speed_curve(action)
+        speed = speed_at(position, curve)
         target = self._position_simulation_target_position if keep_target else None
         limit = 100.0 if action == "open" and target is None else 0.0 if target is None else target
         distance = abs(limit - position)
-        expected_seconds = distance / speed if speed > 0 else 0
+        expected_seconds = distance / min(curve)
         self._position_simulation_action = action
         self._position_simulation_anchor_position = max(0.0, min(100.0, position))
         self._position_simulation_anchor_monotonic = now
@@ -584,6 +641,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         self._position_simulation_confirmed_moving = confirmed_moving
         self._position_simulation_target_position = target
         self._position_simulation_speed_percent_per_second = speed
+        self._position_simulation_speed_curve = curve
         self._ensure_position_simulation_task()
 
     def _clear_position_simulation(self, *, notify: bool = True) -> None:
@@ -598,6 +656,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         self._position_simulation_confirmed_moving = False
         self._position_simulation_target_position = None
         self._position_simulation_speed_percent_per_second = None
+        self._position_simulation_speed_curve = None
         if task is not None and not task.done() and task is not asyncio.current_task():
             task.cancel()
         if notify:

@@ -240,6 +240,7 @@ async def async_get_config_entry_diagnostics(
             "history": [event.as_diagnostics() for event in coordinator.event_history],
         },
         "status": {
+            "movement_speed_profile": coordinator.movement_speed_profile,
             "state": status.state if status else None,
             "position": status.position if status else None,
             "current_position": status.current_position if status else None,

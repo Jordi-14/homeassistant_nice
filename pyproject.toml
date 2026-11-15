@@ -1,6 +1,6 @@
 [project]
 name = "homeassistant-nice-bidiwifi"
-version = "0.8.1b15"
+version = "0.8.1b16"
 requires-python = ">=3.13"
 license = "MIT"
 license-files = ["LICENSE", "NOTICE"]

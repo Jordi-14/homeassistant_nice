@@ -149,6 +149,7 @@ class NiceBidiCover(NiceCoordinatorEntity, CoverEntity):
             "position_simulation_speed_percent_per_second": (
                 self.coordinator.position_simulation_speed_percent_per_second
             ),
+            "movement_speed_profile": self.coordinator.movement_speed_profile,
             "closed_position_raw": status.closed_position,
             "open_position_raw": status.open_position,
             "position_calibration_state": self.coordinator.calibration_state,

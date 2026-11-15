@@ -243,6 +243,14 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         task = asyncio.current_task()
         try:
             profile = await self._async_build_position_calibration()
+            # Reuse actual readings gathered by the existing calibration movements.
+            # A new scalar scale invalidates speeds collected with the older bounds.
+            if profile.get("mode") == "live_scalar" and profile.get("bounds") != (self.calibration_profile or {}).get("bounds"):
+                self._movement_profile.reset("open")
+                self._movement_profile.reset("close")
+            self._movement_profile.finish()
+            profile["movement_speed_profile"] = self._movement_profile.export()
+            self._schedule_movement_profile_save()
             self._add_calibration_event("run", "Position calibration completed")
             profile["events"] = list(self._calibration_events)
             self.calibration_profile = profile
@@ -2193,20 +2201,19 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         return abs(float(target) - float(current)) / speed
 
     def _position_simulation_speed(self, action: str) -> float:
-        """Bias extrapolation below calibrated and recent observed speeds."""
-        candidates = []
-        observed_speed = self._observed_position_speed_percent_per_second.get(action)
-        if observed_speed is not None:
-            candidates.append(observed_speed)
-        recent = self._observed_position_speed_samples.get(action)
-        if recent:
-            candidates.append(min(recent))
+        """Current display speed using a local band, with the full-travel fallback."""
+        from .movement_profile import speed_at
+
+        position = self.data.position if self.data and self.data.position is not None else 50.0
+        return speed_at(position, self._position_speed_curve(action))
+
+    def _position_speed_curve(self, action: str) -> tuple[float, ...]:
+        """Do not let a startup sample restrict an already learned cruising band."""
         calibrated_speed = self._calibrated_travel_speed_percent_per_second(action)
-        if calibrated_speed is not None:
-            candidates.append(calibrated_speed)
-        if not candidates:
-            return POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND
-        return min(candidates) * POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR
+        fallback = calibrated_speed or self._observed_position_speed_percent_per_second.get(action)
+        if fallback is None:
+            fallback = POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND / POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR
+        return self._movement_profile.curve(action, fallback, POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR)
 
     def _calibrated_travel_speed_percent_per_second(self, action: str) -> float | None:
         """Return measured full-travel speed from calibration, with legacy fallback."""

@@ -57,6 +57,9 @@ class FakeCoordinator:
     async def async_load_limits_baseline(self) -> None:
         """Accept limits loading."""
 
+    async def async_load_movement_profile(self) -> None:
+        """Accept optional passive speed learning."""
+
     async def async_config_entry_first_refresh(self) -> None:
         """Record first refresh."""
         self.refreshed = True

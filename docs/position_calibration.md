@@ -30,9 +30,33 @@ clearly marked cached or simulated display value.
 ### Conservative animation between readings
 
 After a command, the percentage waits for the controller to report movement.
-It can then move beyond the latest reported position at a conservative speed:
-80% of the lower available calibrated or recent observed speed. Recent slower
-samples limit short bursts, so learned speed does not remove this margin.
+It can then move beyond the latest reported position at 90% of the estimated
+speed for that part of the journey. Opening and closing are learned separately
+in six position bands: 0-10%, 10-20%, 20-50%, 50-80%, 80-90%, and 90-100%.
+Speeds blend continuously between band centers, so a slow startup does not
+limit cruising speed and crossing a band does not cause an abrupt jump.
+
+The learner uses reported positions and their elapsed time, never displayed
+estimates. Duplicate positions, backward readings, very short reply bursts,
+implausible speeds and gaps spanning more than two bands are not used to train
+band speeds. Each movement contributes at most one sample per band, with at
+least two useful intervals and sufficient distance covered. The median of up
+to seven recent movements is used. Established bands reject large outliers;
+an unlearned band can use a provisional estimate from the current movement.
+Until enough data exists, it falls back to the full-travel calibrated speed,
+then the observed directional speed, then the existing 1%/second fallback.
+
+Profiles are saved across restarts separately from calibrated stop thresholds.
+Changing a reported motor-speed setting invalidates only that direction's
+learned speeds. The `movement_speed_profile` cover attribute and diagnostics
+show measured speeds before the 90% margin and the sample count of each band.
+
+Calibration feeds the same learner from its existing movement and target tests,
+even while display animation is disabled. It adds no extra gate movements.
+Completed calibration also saves a profile snapshot for recovery. A scalar
+calibration that changes the position scale discards profiles learned with the
+old scale; subsequent normal movements rebuild them. Existing installations
+can simply learn from normal use without repeating calibration.
 
 The display advances steadily, refreshing every quarter second. A reading
 farther along the movement advances the display immediately. Duplicate readings

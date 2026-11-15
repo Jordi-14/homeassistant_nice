@@ -22,6 +22,7 @@ from .const import (
 )
 from .models.config import ConnectionMode
 from .models.discovery import normalize_device_id
+from .position import movement_profile_store
 from .runtime import NiceRuntimeData, get_coordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -137,6 +138,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
     await coordinator.async_load_calibration()
+    await coordinator.async_load_movement_profile()
     await coordinator.async_load_limits_baseline()
     await coordinator.async_config_entry_first_refresh()
 
@@ -164,3 +166,4 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Drop the controller-limits repair and its stored baseline."""
     ir.async_delete_issue(hass, DOMAIN, f"controller_limits_changed_{entry.entry_id}")
     await controller_limits_store(hass, entry.entry_id).async_remove()
+    await movement_profile_store(hass, entry.entry_id).async_remove()
