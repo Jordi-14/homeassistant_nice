@@ -12,6 +12,7 @@ from .dmp import (
     dmp_uint,
     status_from_register,
 )
+from .enums import RADIO_RECEIVER_TYPES
 from .maneuvers import decode_last_maneuvers
 from .options import (
     MAINTENANCE_MODES,
@@ -56,6 +57,21 @@ def _motor_temperature(data: bytes | None) -> int | None:
         return None
     raw = int.from_bytes(data[14:16], "big", signed=True)
     return raw - 9 if raw >= MIN_RAW_TEMPERATURE else None
+
+
+def _coding_type(value: int | None) -> str | None:
+    """RadioCfgCodingType.getCodingType: active-low bits, 7 = defined, 4 = FLO, 6 = HCS, 5 = FLOR."""
+    if value is None or value > 0xFF or value & 0x80:
+        return None
+    for bit, name in ((0x10, "flo"), (0x40, "hcs"), (0x20, "flor")):
+        if not value & bit:
+            return name
+    return None
+
+
+def _receiver_type(code: int | None) -> str | None:
+    """Return the OXI receiver type name, or code_<n> for an unknown code."""
+    return None if code is None else RADIO_RECEIVER_TYPES.get(code, f"code_{code}")
 
 
 def status_from_dmp_registers(
@@ -155,9 +171,11 @@ def status_from_dmp_registers(
             if diagnostic_parameters is not None
             else None
         ),
-        oxi_detected=any(key.startswith("0A/") for key in registers),
-        oxi_product=dmp_ascii(registers.get("0A/09@00.0A")),
-        oxi_hardware_version=dmp_ascii(registers.get("0A/0A@00.0A")),
-        oxi_firmware_version=dmp_ascii(registers.get("0A/0B@00.0A")),
-        oxi_description=dmp_ascii(registers.get("0A/0C@00.0A")),
+        oxi_detected=any(key.endswith("@00.0A") for key in registers),
+        oxi_product=dmp_ascii(registers.get("00/09@00.0A")),
+        oxi_hardware_version=dmp_ascii(registers.get("00/0A@00.0A")),
+        oxi_firmware_version=dmp_ascii(registers.get("00/0B@00.0A")),
+        oxi_description=dmp_ascii(registers.get("00/0C@00.0A")),
+        oxi_receiver_type=_receiver_type(dmp_uint(registers.get("0A/00@00.0A"))),
+        oxi_coding_type=_coding_type(dmp_uint(registers.get("0A/41@00.0A"))),
     )

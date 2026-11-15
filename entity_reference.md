@@ -267,7 +267,7 @@ current device profile.
 | Binary sensor | Slowdown enabled | `slowdown` | BusT4 `04/A2` (decelerations), read only. | Hidden | Disabled | Read-only mirror of a controller setting. |
 | Sensor | Last 8 maneuvers | `last_maneuvers` | Number of the last 8 maneuvers that did not end `ok`; unknown slots are not counted, decoded from `04/DA`; attributes list the 8 outcomes (vendor order, newest slot not confirmed) and the obstacle count (codes 3 and 10). | Hidden | Enabled | Replaces the removed stop-reason sensor; the slot order must be checked on hardware. |
 | Sensor | Diagnostics parameters | `diagnostics_parameters` | Raw `04/D2` diagnostics parameter bytes for future decoding. `04/D4` (inverter diagnostics) uses the same layout; only the probe script reads it. | Hidden | Disabled | Raw developer/debug data. |
-| Sensor | OXI product | `oxi_product` | Product string from the OXI/radio endpoint when available locally. | Hidden | Disabled | Optional metadata that is often unavailable. |
+| Sensor | OXI product | `oxi_product` | Product string of the OXI/radio receiver (`00/09` STD_PRODUCT at address `00.0A`), e.g. `OXIBD group`. | Hidden | Disabled | Optional metadata; empty when no OXI is installed. |
 | Sensor | OXI firmware | `oxi_firmware` | Firmware string from the OXI/radio endpoint when available locally. | Hidden | Disabled | Optional metadata that is often unavailable. |
 | Sensor | OXI hardware | `oxi_hardware` | Hardware string from the OXI/radio endpoint when available locally. | Hidden | Disabled | Optional metadata that is often unavailable. |
 | Sensor | OXI description | `oxi_description` | Description string from the OXI/radio endpoint when available locally. | Hidden | Disabled | Optional metadata that is often unavailable. |

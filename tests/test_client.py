@@ -1524,3 +1524,26 @@ def test_status_from_dmp_registers_decodes_last_maneuvers() -> None:
     status = status_from_dmp_registers(_dmp_registers(rDA=bytes([0, 3, 0, 0, 0, 0, 0, 0])))
 
     assert status.last_maneuvers == ("ok", "obstacle_detected") + ("ok",) * 6
+
+
+def test_oxi_identity_comes_from_std_group_00() -> None:
+    """OXI replies seen on 2026-11-15: STD group 00 has the identity, group 0A answers 0xFD (no value)."""
+    registers = {
+        "00/09@00.0A": DmpResponse("", 0x00, 0x09, value=b"OXIBD group"),
+        "00/0A@00.0A": DmpResponse("", 0x00, 0x0A, value=b"672B"),
+        "00/0B@00.0A": DmpResponse("", 0x00, 0x0B, value=b"BK00H"),
+        "00/0C@00.0A": DmpResponse("", 0x00, 0x0C, value=b"Radio"),
+        "0A/00@00.0A": DmpResponse("", 0x0A, 0x00, value=b"\x01"),
+        "0A/41@00.0A": DmpResponse("", 0x0A, 0x41, value=b"\x5f"),
+    }
+    status = status_from_dmp_registers(registers)
+
+    assert status.oxi_detected is True
+    assert (status.oxi_product, status.oxi_hardware_version) == ("OXIBD group", "672B")
+    assert (status.oxi_firmware_version, status.oxi_description) == ("BK00H", "Radio")
+    assert status.oxi_receiver_type == "oxi"
+    assert status.oxi_coding_type == "flor"  # 0x5F: bit 7 clear (defined), bit 5 clear
+    assert status_from_dmp_registers({}).oxi_detected is False
+    for raw, coding in ((b"\xff", None), (b"\x6f", "flo"), (b"\x3f", "hcs")):
+        reply = {"0A/41@00.0A": DmpResponse("", 0x0A, 0x41, value=raw)}
+        assert status_from_dmp_registers(reply).oxi_coding_type == coding

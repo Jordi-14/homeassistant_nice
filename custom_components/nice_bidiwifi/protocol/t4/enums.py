@@ -269,3 +269,26 @@ BLUEBUS_DEVICE_STATUS: dict[int, str] = {
     13: "sl_anomaly",
 }
 BLUEBUS_FAULT_STATUSES = frozenset({2, 3, 12, 13})
+
+# 0A/00 RADIO_DEVICE (MyNice Pro ListDevice RAD_*, wire value = 3rd constructor argument)
+RADIO_RECEIVER_TYPES: dict[int, str] = {
+    1: "oxi",
+    2: "oxit",
+    3: "ox2",
+    4: "ox2t",
+    5: "ox4",
+    6: "ox4t",
+    7: "oxifm",
+    8: "oxitfm",
+    9: "ox2fm",
+    10: "ox2tfm",
+    11: "smxia",
+    12: "bidi_integrated_cm",
+    13: "oxibdo",
+    14: "bidi_integrated_cmo",
+    15: "oxibdoa",
+    16: "bidi_integrated_cmoa",
+    17: "mono_integrated_low_cost",
+    18: "oxikr",
+    32: "oxiofm",
+}
