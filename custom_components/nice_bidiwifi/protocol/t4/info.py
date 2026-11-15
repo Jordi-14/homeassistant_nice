@@ -57,3 +57,22 @@ def decode_dmp_info(data: bytes | None) -> DmpInfo | None:
     scale_at = offset + 3 * size
     scale = int.from_bytes(data[scale_at : scale_at + 2], "big") if len(data) >= scale_at + 2 else None
     return replace(info, minimum=number(0), maximum=number(1), step=number(2), scale=scale)
+
+
+def scaled_value(raw: int | None, info: DmpInfo | None) -> float | int | None:
+    """Return the value as the app shows it: raw / scale with the divide flag, raw * scale with multiply.
+
+    MyNice Pro StepCounterView.getScaledNum; flags from decompileInfo: divide = bit 4 without bit 6,
+    multiply = bit 5 without bit 6. Without INFO the scale is unknown, so None.
+    """
+    if raw is None or info is None:
+        return None
+    if info.flags & 0x40 or not info.flags & 0x30:
+        return raw
+    if not info.scale:
+        return None  # scaled, but the scale is missing: unknown rather than 10x wrong
+    if info.flags & 0x10:
+        return raw / info.scale
+    if info.flags & 0x20:
+        return raw * info.scale
+    return raw

@@ -416,6 +416,7 @@ class FakeCoordinator:
         self.data = make_status()
         self.device_info = make_device_info()
         self.setting_info = {}
+        self.register_info = {}
         self.capabilities = None
         self.status_polling_supported = True
         self.last_update_success = True

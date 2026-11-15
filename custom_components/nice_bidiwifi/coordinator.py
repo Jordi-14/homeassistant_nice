@@ -150,6 +150,8 @@ def _unknown_status() -> NiceBidiStatus:
 LIMITS_STORAGE_VERSION = 1
 # normal open positions vary by ~5 % (5024-5271); the fault left 39, 66 and 3018 (-42 %)
 LIMITS_DROP_RATIO = 0.75
+# Read-only registers shown with the scale from their INFO (electric lock, suction cup, starting torque time).
+SCALED_REGISTERS = ((0x04, 0x5A), (0x04, 0x5C), (0x04, 0x91))
 
 
 def controller_limits_store(hass: HomeAssistant, entry_id: str) -> Store:
@@ -213,6 +215,8 @@ class NiceBidiDataUpdateCoordinator(
         self._extended_status_cache: NiceBidiStatus | None = None
         # Value format (DMP INFO) of each writable setting, read once from the controller.
         self.setting_info: dict[str, DmpInfo] = {}
+        # INFO of read-only registers whose value needs the controller's scale, keyed "GG/PP".
+        self.register_info: dict[str, DmpInfo] = {}
         self._setting_info_task: asyncio.Task | None = None
         self._setting_info_attempts = 0
         self._extended_status_next_refresh_monotonic = 0.0
@@ -342,33 +346,33 @@ class NiceBidiDataUpdateCoordinator(
         successful poll resumes it with the settings that are still missing. After an error
         or a missing reply the next poll tries again, at most SETTING_INFO_ATTEMPTS times.
         """
-        for setting in SETTINGS.values():
-            if setting.key in self.setting_info:
+        targets = [
+            (self.setting_info, setting.key, setting.group, setting.parameter)
+            for setting in SETTINGS.values()
+        ] + [
+            (self.register_info, f"{group:02X}/{parameter:02X}", group, parameter)
+            for group, parameter in SCALED_REGISTERS
+        ]
+        for store, key, group, parameter in targets:
+            if key in store:
                 continue
             try:
                 info = await self.hass.async_add_executor_job(
-                    partial(
-                        self.client.read_dmp_info,
-                        setting.group,
-                        setting.parameter,
-                        preemptible=True,
-                    )
+                    partial(self.client.read_dmp_info, group, parameter, preemptible=True)
                 )
             except NiceReadPreemptedError:
-                _LOGGER.debug("Nice setting INFO read yielded to a command; resuming later")
+                _LOGGER.debug("Nice INFO read yielded to a command; resuming later")
                 self._setting_info_task = None
                 return
             except Exception as err:  # noqa: BLE001 - optional metadata, static limits stay in use
-                _LOGGER.debug("Nice setting INFO not available: %r", err)
+                _LOGGER.debug("Nice INFO not available: %r", err)
                 break
             if info is not None:
-                self.setting_info[setting.key] = info
-        _LOGGER.debug("Nice setting INFO read for %d settings", len(self.setting_info))
+                store[key] = info
+        loaded = len(self.setting_info) + len(self.register_info)
+        _LOGGER.debug("Nice INFO read for %d of %d registers", loaded, len(targets))
         self._setting_info_attempts += 1
-        if (
-            len(self.setting_info) < len(SETTINGS)
-            and self._setting_info_attempts < SETTING_INFO_ATTEMPTS
-        ):
+        if loaded < len(targets) and self._setting_info_attempts < SETTING_INFO_ATTEMPTS:
             self._setting_info_task = None
         self.async_update_listeners()
 

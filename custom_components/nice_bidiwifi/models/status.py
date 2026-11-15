@@ -75,6 +75,22 @@ class NiceStatus:
     input_2_function: str | None = None
     input_3_function: str | None = None
     input_4_function: str | None = None
+    partial_open_mode: str | None = None
+    open_mode: str | None = None
+    close_mode: str | None = None
+    stop_mode: str | None = None
+    photo_closing_reaction: str | None = None
+    photo_opening_reaction: str | None = None
+    photo_3_reaction: str | None = None
+    alt_opening_reaction: str | None = None
+    alt_closing_reaction: str | None = None
+    obstacle_opening_reaction: str | None = None
+    obstacle_closing_reaction: str | None = None
+    electric_lock_time: int | None = None
+    suction_cup_time: int | None = None
+    starting_torque_time: int | None = None
+    starting_torque: bool | None = None
+    slave_mode: bool | None = None
     last_maneuvers: tuple[str, ...] | None = None
     # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log flag; see coordinator.py:_cache_extended_status.
     last_maneuvers_stale: bool | None = None

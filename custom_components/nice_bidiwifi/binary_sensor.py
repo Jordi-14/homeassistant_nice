@@ -115,6 +115,22 @@ BINARY_SENSORS: tuple[NiceBidiBinarySensorEntityDescription, ...] = (
         value_fn=lambda status: status.slowdown,
     ),
     NiceBidiBinarySensorEntityDescription(
+        key="starting_torque",
+        name="Starting torque",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        value_fn=lambda status: status.starting_torque,
+    ),
+    NiceBidiBinarySensorEntityDescription(
+        key="slave_mode",
+        name="Slave mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        value_fn=lambda status: status.slave_mode,
+    ),
+    NiceBidiBinarySensorEntityDescription(
         key="input_1",
         name="Input 1 enabled",
         entity_category=EntityCategory.DIAGNOSTIC,

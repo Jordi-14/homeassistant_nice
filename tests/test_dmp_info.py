@@ -10,6 +10,7 @@ from custom_components.nice_bidiwifi.protocol.t4.info import (
     DMP_INFO_FLAGS,
     DmpInfo,
     decode_dmp_info,
+    scaled_value,
 )
 
 
@@ -66,3 +67,20 @@ def test_info_read_frame_uses_info_flags() -> None:
     assert get[11] == 0x99
     assert info[11] == 0x89
     assert [i for i, (a, b) in enumerate(zip(get, info, strict=True)) if a != b] == [11, 14]
+
+
+@pytest.mark.parametrize(
+    ("raw", "hex_info", "expected"),
+    [
+        (20, "01001111016401000a", 2.0),  # 04/5A divide, scale 10
+        (20, "01001121016401000a", 200),  # multiply
+        (30, "01001101 00fa01", 30),  # no scale
+        (20, "01001111016401", None),  # divide flag but the scale bytes are missing
+        (17, "0100f561021011", 17),  # option list: never scaled
+        (20, None, None),  # INFO unknown
+    ],
+)
+def test_scaled_value(raw, hex_info, expected) -> None:
+    """Test the app's scaling (StepCounterView.getScaledNum)."""
+    info = decode_dmp_info(bytes.fromhex(hex_info.replace(" ", ""))) if hex_info else None
+    assert scaled_value(raw, info) == expected
