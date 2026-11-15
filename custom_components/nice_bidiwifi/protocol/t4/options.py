@@ -32,8 +32,10 @@ OUTPUT_FUNCTIONS = {
 
 # 04/71-04/74 input functions: INFO function byte 0xF2 = ListDeviceCommand; wire code -> command through
 # the table in T4Value_init (libnative-lib.so @0xe678, table @0x7e0c, default device profile).
+# This is the input command list, not the EvtMovCommand event list (that one alternates
+# open/close partial 1-3); both orders are from the app.
 INPUT_FUNCTIONS = {
-    0x00: "none",
+    0x00: "none",  # RST: no command
     0x01: "step_by_step",
     0x02: "stop",
     0x03: "open",
@@ -60,6 +62,7 @@ INPUT_FUNCTIONS = {
     0x18: "slave_close",
     0x19: "unblock_and_open",
     0x1A: "unblock_and_close",
+    # ACND_ON/OFF: enable/disable BlueBus photo commands and inputs set as "condominium open"
     0x1B: "condominium_open_on",
     0x1C: "condominium_open_off",
     0x1D: "loop_on",
