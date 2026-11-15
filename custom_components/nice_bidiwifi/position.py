@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from contextlib import suppress
 from dataclasses import replace
 from datetime import timedelta
 import logging
+import math
 import time
 
 from homeassistant.exceptions import HomeAssistantError
@@ -38,7 +40,11 @@ POST_COMMAND_FAST_POLL_SECONDS = 60.0
 RECENT_STOP_STATUS_OVERRIDE_SECONDS = 20.0
 POSITION_SIMULATION_TICK_SECONDS = 1.0
 POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND = 1.0
-POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR = 1.0
+POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR = 0.8
+# Predict a short distance beyond a reading, easing rather than running ahead
+# indefinitely when the next real update is delayed.
+POSITION_SIMULATION_EXTRAPOLATION_SECONDS = 0.5
+POSITION_OBSERVED_SPEED_WINDOW = 3
 POSITION_OBSERVED_SPEED_MIN_DELTA_PERCENT = 0.5
 POSITION_OBSERVED_SPEED_MIN_INTERVAL_SECONDS = 0.25
 POSITION_OBSERVED_SPEED_MAX_INTERVAL_SECONDS = 30.0
@@ -73,6 +79,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         self._position_simulation_speed_percent_per_second: float | None = None
         self._position_observation: tuple[str, float, float] | None = None
         self._observed_position_speed_percent_per_second: dict[str, float] = {}
+        self._observed_position_speed_samples: dict[str, deque[float]] = {}
 
     async def _async_cancel_position_target(self) -> None:
         """Cancel a pending target-position watcher."""
@@ -312,6 +319,10 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         if not self.display_position_estimated:
             return None
         speed = self._position_simulation_speed_percent_per_second
+        anchor_time = self._position_simulation_anchor_monotonic
+        if speed is not None and anchor_time is not None and self._position_simulation_confirmed_moving:
+            elapsed = max(0.0, time.monotonic() - anchor_time)
+            speed *= math.exp(-elapsed / POSITION_SIMULATION_EXTRAPOLATION_SECONDS)
         return round(speed, 2) if speed is not None else None
 
     @property
@@ -359,7 +370,11 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         """Start or restart optimistic position animation after a movement command."""
         if not self.position_reporting_observed:
             return
-        anchor = self._current_simulated_position()
+        anchor = None
+        if action != self._position_simulation_action and self.data is not None:
+            anchor = self.data.position
+        if anchor is None:
+            anchor = self._current_simulated_position()
         if anchor is None:
             anchor = self.display_position
         if anchor is None:
@@ -422,8 +437,12 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         speed = self._position_simulation_speed_percent_per_second
         if action is None or anchor is None or anchor_time is None or speed is None:
             return None
+        if not self._position_simulation_confirmed_moving:
+            return anchor
 
         elapsed = max(0.0, time.monotonic() - anchor_time)
+        horizon = POSITION_SIMULATION_EXTRAPOLATION_SECONDS
+        elapsed = -horizon * math.expm1(-elapsed / horizon)
         if action == "open":
             calculated = min(100.0, anchor + (speed * elapsed))
             target = self._position_simulation_target_position
@@ -461,6 +480,8 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
                 if self._position_simulation_action is None:
                     self._start_position_simulation(real_action)
                 if self._position_simulation_action == real_action:
+                    if not self._position_simulation_confirmed_moving:
+                        self._position_simulation_anchor_monotonic = time.monotonic()
                     self._position_simulation_confirmed_moving = True
                 return
             if status.state in {STATE_STOPPED, STATE_PARTIALLY_OPEN}:
@@ -499,6 +520,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         previous = self._position_observation
         if previous is None or previous[0] != action:
             self._position_observation = (action, position, now)
+            self._observed_position_speed_samples[action] = deque(maxlen=POSITION_OBSERVED_SPEED_WINDOW)
             return
 
         _, previous_position, previous_time = previous
@@ -514,8 +536,11 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             if action == "open"
             else previous_position - position
         )
-        if distance <= 0:
+        if distance < 0:
             self._position_observation = (action, position, now)
+            self._observed_position_speed_samples[action].clear()
+            return
+        if distance == 0:
             return
         if distance < POSITION_OBSERVED_SPEED_MIN_DELTA_PERCENT:
             return
@@ -524,6 +549,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         self._position_observation = (action, position, now)
         if not 0 < speed <= POSITION_OBSERVED_SPEED_MAX_PERCENT_PER_SECOND:
             return
+        self._observed_position_speed_samples[action].append(speed)
         previous_speed = self._observed_position_speed_percent_per_second.get(action)
         if previous_speed is not None:
             smoothing = POSITION_OBSERVED_SPEED_SMOOTHING_FACTOR
@@ -655,11 +681,11 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         await self._async_cancel_post_command_refresh()
         target = max(0, min(100, target_position))
         status = self.data
-        current = self.display_position
+        current = status.position if status is not None and status.position is not None else self.display_position
         if status is None or current is None:
             await self.async_request_refresh()
             status = self.data
-            current = self.display_position
+            current = status.position if status is not None and status.position is not None else self.display_position
         if status is None or current is None:
             raise HomeAssistantError("Nice position is not available")
 
