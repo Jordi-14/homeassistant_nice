@@ -66,6 +66,22 @@ def _child_text(node: ET.Element | None, path: str) -> str | None:
     return value.strip() if value and value.strip() else None
 
 
+# STATUS fields kept as raw text: module clock (local time, no zone) and the two event counters.
+NHK_STATUS_FIELDS = {
+    "NHK/InterfaceDate": "./Interface/Date",
+    "NHK/InterfaceLastEvent": "./Interface/Events/LastEvent",
+}
+
+
+NHK_STATUS_FIELD_KEYS = frozenset({*NHK_STATUS_FIELDS, "NHK/DeviceLastEvent"})
+
+
+def _status_fields(root: ET.Element, device: ET.Element | None) -> dict[str, str]:
+    fields = {key: _child_text(root, path) for key, path in NHK_STATUS_FIELDS.items()}
+    fields["NHK/DeviceLastEvent"] = _child_text(device, "./Events/LastEvent")
+    return {key: value for key, value in fields.items() if value is not None}
+
+
 def parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceStatus | None:
     """Parse one STATUS or CHANGE XML document."""
     try:
@@ -86,7 +102,7 @@ def parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceStatus | No
         if not is_unknown_status(raw_state):
             raise NiceProtocolError(f"Unsupported NHK DoorStatus value: {raw_state}")
         obstacle = bool_value(raw_obstruct)
-        registers = {"NHK/DoorStatus": raw_state}
+        registers = {"NHK/DoorStatus": raw_state, **_status_fields(root, device)}
         if raw_obstruct is not None:
             registers["NHK/Obstruct"] = raw_obstruct
         return NiceStatus(
@@ -102,7 +118,7 @@ def parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceStatus | No
         return None
 
     obstacle = bool_value(raw_obstruct)
-    registers = {"NHK/DoorStatus": raw_state or state}
+    registers = {"NHK/DoorStatus": raw_state or state, **_status_fields(root, device)}
     if raw_obstruct is not None:
         registers["NHK/Obstruct"] = raw_obstruct
     return NiceStatus(
