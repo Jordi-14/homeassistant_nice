@@ -2,8 +2,9 @@
 
 Layout from MyNice Pro decompileInfo (libnative-lib.so @0x22ba8), checked against INFO replies of a ROBUSR10:
 byte 0 = value size (bits 0-6) and little-endian flag (bit 7), byte 1 = data format, byte 2 = function,
-byte 3 = flags. Flag bit 7 adds an index of (flags & 3) bytes. Flag bit 6 = a list follows (count, then one
-byte per entry); with bit 5 the list holds the allowed option codes. Without bit 6: min, max, step
+byte 3 = flags. Flag bit 7 adds an index of (flags & 3) bytes. Flag bit 6 = a list follows (count, then the
+entries); with bit 5 the list holds the allowed option codes (one byte each), without it one value of `size`
+bytes per field (04/D1 installed bits, 04/D2 scales). Without bit 6: min, max, step
 (size bytes each) and an optional 2-byte scale.
 """
 
@@ -28,6 +29,8 @@ class DmpInfo:
     scale: int | None = None
     options: tuple[int, ...] | None = None
     array_size: int | None = None
+    # bit-6 list without option codes: one value of `size` bytes per field (04/D1 present bits, 04/D2 scales)
+    values: tuple[int, ...] | None = None
 
 
 def decode_dmp_info(data: bytes | None) -> DmpInfo | None:
@@ -42,8 +45,17 @@ def decode_dmp_info(data: bytes | None) -> DmpInfo | None:
     if flags & 0x80 and len(data) >= offset:
         info = replace(info, array_size=int.from_bytes(data[4:offset], "big"))
     if flags & 0x40:
-        if not flags & 0x20 or len(data) <= offset:
+        if len(data) <= offset:
             return info
+        if not flags & 0x20:
+            width = size or 1
+            raw = data[offset + 1 : offset + 1 + data[offset] * width]
+            if len(raw) != data[offset] * width:
+                return info  # cut-off list: header only, as before
+            values = tuple(
+                int.from_bytes(raw[i : i + width], order) for i in range(0, len(raw), width)
+            )
+            return replace(info, values=values or None)
         count = data[offset]
         options = tuple(data[offset + 1 : offset + 1 + count])
         if len(options) != count:

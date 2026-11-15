@@ -152,6 +152,8 @@ async def test_configuration_retry_keeps_loaded_setting_and_time_metadata(hass: 
         for setting in coordinator_module.SETTINGS.values()
     }
     client.dmp_info.update(dict.fromkeys(coordinator_module.SCALED_REGISTERS, scaled))
+    diagnostic = decode_dmp_info(bytes.fromhex("010000400101"))
+    client.dmp_info.update(dict.fromkeys(coordinator_module.DIAGNOSTIC_INFO_REGISTERS, diagnostic))
     client.dmp_info[(0x04, 0x03)] = decode_dmp_info(bytes.fromhex("0903078103"))
     values = {1: b"\x01RBA3R10"}
     client.read_dmp_indexed = lambda group, parameter, index, preemptible=False: values.get(index)
@@ -161,7 +163,9 @@ async def test_configuration_retry_keeps_loaded_setting_and_time_metadata(hass: 
     await instance._async_load_setting_info()
 
     assert len(instance.setting_info) == len(coordinator_module.SETTINGS)
-    assert instance.register_info == {"04/5A": scaled, "04/5C": scaled, "04/91": scaled}
+    assert instance.register_info == {
+        "04/5A": scaled, "04/5C": scaled, "04/91": scaled, "04/D1": diagnostic, "04/D2": diagnostic
+    }
     assert instance.controller_configuration is None
     assert instance._setting_info_task is None
     first_reads = len(client.dmp_info_reads)
@@ -173,7 +177,7 @@ async def test_configuration_retry_keeps_loaded_setting_and_time_metadata(hass: 
 
     assert instance.controller_configuration == "RBA3R10, RB600"
     assert client.dmp_info_reads[first_reads:] == [(0x04, 0x03, True)]
-    assert len(instance.register_info) == 3
+    assert len(instance.register_info) == 5
     assert instance._setting_info_task is completed_task
 
 

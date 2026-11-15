@@ -35,6 +35,8 @@ from .entities.factory import (
 )
 from .entity import NiceCoordinatorEntity
 from .protocol.t4.info import scaled_value
+from .protocol.t4.bluebus import decode_bluebus_gate
+from .protocol.t4.io import decode_hardware_diagnostic, decode_io_diagnostic
 from .protocol.t4.enums import (
     AUTOMATION_STATUS_DIAGNOSTICS,
     AUTOMATION_STATUS_OBSTACLE_CODES,
@@ -79,6 +81,17 @@ def _bluebus_fault_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | No
 def _status_field(name: str, coordinator: NiceBidiDataUpdateCoordinator) -> Any:
     status = _status(coordinator)
     return getattr(status, name) if status else None
+
+
+def _decoded_register(coordinator: NiceBidiDataUpdateCoordinator, key: str, decode) -> dict:
+    """Return a diagnostics register decoded with its INFO (installed items, percent scale)."""
+    status = _status(coordinator)
+    raw = status.registers.get(key) if status else None
+    try:
+        data = bytes.fromhex(raw) if raw else None
+    except ValueError:
+        return {}
+    return decode(data, coordinator.register_info.get(key)) or {}
 
 
 def _scaled_field(
@@ -828,6 +841,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
             if _status(coordinator)
             else None
         ),
+        extra_attributes_fn=lambda coordinator: _decoded_register(
+            coordinator, "04/D1", decode_io_diagnostic
+        ),
     ),
     NiceBidiSensorEntityDescription(
         key="bluebus_devices",
@@ -841,6 +857,22 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
             if _status(coordinator)
             else {}
         ),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="bluebus_gate_state",
+        name="BlueBus gate state",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gate",
+        value_fn=lambda coordinator: _decoded_register(
+            coordinator, "04/D0", decode_bluebus_gate
+        ).get("state"),
+        extra_attributes_fn=lambda coordinator: {
+            key: value
+            for key, value in _decoded_register(coordinator, "04/D0", decode_bluebus_gate).items()
+            if key != "state"
+        },
     ),
     NiceBidiSensorEntityDescription(
         key="controller_errors",
@@ -879,6 +911,9 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
             _status(coordinator).diagnostics_parameters
             if _status(coordinator)
             else None
+        ),
+        extra_attributes_fn=lambda coordinator: _decoded_register(
+            coordinator, "04/D2", decode_hardware_diagnostic
         ),
     ),
     NiceBidiSensorEntityDescription(

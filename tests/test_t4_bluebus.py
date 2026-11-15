@@ -35,7 +35,9 @@ def test_short_or_missing() -> None:
         (_data(b2=1, b6=1), {"photo": "not_working"}),
         (_data(b2=1, b10=1, b0=0x08), {"photo": "in_error"}),
         (_data(b2=1), {"photo": "off"}),
-        (_data(b4=0x60, b6=0x20, b10=0x20, b0=0x08), {}),  # PHOTO OPEN not listed
+        # PHOTO OPEN / II: installed byte 4 bits 5-6, not-working mask on byte 8, status byte 0x15 (@0xf31c, @0xf3b8)
+        (_data(b4=0x60, b8=0x20), {"photo_open": "not_working", "photo_open_ii": "off"}),
+        (_data(b2=1, b12=0x80), {"photo": "stand_by"}),  # signed byte 12 < 0 (@0x211f8)
         (_data(b4=1, b21=0), {"cmd_1": "off"}),
         (_data(b4=1, b21=1), {"cmd_1": "on"}),
         (_data(b4=1, b21=0x40), {"cmd_1": "on"}),
@@ -81,3 +83,33 @@ def test_decode_last_maneuvers() -> None:
     )
     assert decode_last_maneuvers(None) is None
     assert decode_last_maneuvers(bytes([3] * 8 + [3])) == ("obstacle_detected",) * 8
+
+
+@pytest.mark.parametrize(
+    ("byte0", "byte12", "state", "moving"),
+    [
+        # ROBUSR10 replies, 2026-11-15 (cycles 11-13): byte 0 / byte 12 with 04/01 in the same poll
+        (0x11, 0x01, "closed", False),
+        (0x11, 0x02, "open", False),
+        (0x10, 0x04, "closing", True),
+        (0x10, 0x08, "opening", True),
+        (0x11, 0x00, "stopped", False),
+        (0x11, 0x03, "code_3", False),
+    ],
+)
+def test_gate_state(byte0: int, byte12: int, state: str, moving: bool) -> None:
+    from custom_components.nice_bidiwifi.protocol.t4.bluebus import decode_bluebus_gate
+
+    decoded = decode_bluebus_gate(_data(b0=byte0, b12=byte12))
+    assert decoded == {"state": state, "moving": moving, "stand_by": False, "raw": byte12}
+
+
+def test_gate_state_stand_by_and_missing() -> None:
+    from custom_components.nice_bidiwifi.protocol.t4.bluebus import decode_bluebus_gate
+
+    closed = bytes.fromhex("1100810000000000000000" "7f010000000000000100c00000000000")  # cycle 12, closed
+    assert decode_bluebus_gate(closed)["state"] == "closed"
+    assert decode_bluebus_devices(closed) == {"photo": "on"}
+    assert decode_bluebus_gate(_data(b0=0x11, b12=0x81))["stand_by"] is True
+    assert decode_bluebus_gate(SAMPLE[:24]) is None
+    assert decode_bluebus_gate(b"\xff" * 27) is None

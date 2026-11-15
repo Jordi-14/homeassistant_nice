@@ -29,7 +29,13 @@ from custom_components.nice_bidiwifi.protocol.t4.info import (
         # 04/86 reclose-after-photo mode: option list
         ("0100f561 02 1011", DmpInfo(1, 0x00, 0xF5, 0x61, options=(0x10, 0x11))),
         # 04/D1: list without bit 5 is a mask, not options
-        ("0181e1410e 0f074300 0dffffff ff3c1fff 0100", DmpInfo(1, 0x81, 0xE1, 0x41)),
+        (
+            "0181e1410e 0f074300 0dffffff ff3c1fff 0100",
+            DmpInfo(
+                1, 0x81, 0xE1, 0x41,
+                values=(0x0F, 0x07, 0x43, 0x00, 0x0D, 0xFF, 0xFF, 0xFF, 0xFF, 0x3C, 0x1F, 0xFF, 0x01, 0x00),
+            ),
+        ),
         # 04/03: indexed (bit 7), too short for min/max
         ("0903078103", DmpInfo(9, 0x03, 0x07, 0x81, array_size=3)),
     ],
@@ -99,3 +105,9 @@ def test_scaled_value(raw, hex_info, expected) -> None:
     """Test the app's scaling (StepCounterView.getScaledNum)."""
     info = decode_dmp_info(bytes.fromhex(hex_info.replace(" ", ""))) if hex_info else None
     assert scaled_value(raw, info) == expected
+
+
+def test_cut_off_value_list_keeps_the_header() -> None:
+    """A bit-6 list (no option codes) that is cut off gives the header INFO, as before the values field."""
+    info = decode_dmp_info(bytes.fromhex("0281e2410e8000"))
+    assert info is not None and info.values is None and info.flags == 0x41

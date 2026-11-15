@@ -153,6 +153,8 @@ LIMITS_STORAGE_VERSION = 1
 LIMITS_DROP_RATIO = 0.75
 # Read-only registers shown with the scale from their INFO (electric lock, suction cup, starting torque time).
 SCALED_REGISTERS = ((0x04, 0x5A), (0x04, 0x5C), (0x04, 0x91))
+# INFO of 04/D1 (installed inputs/outputs) and 04/D2 (available fields, percent scale)
+DIAGNOSTIC_INFO_REGISTERS = ((0x04, 0xD1), (0x04, 0xD2))
 
 
 def controller_limits_store(hass: HomeAssistant, entry_id: str) -> Store:
@@ -372,7 +374,7 @@ class NiceBidiDataUpdateCoordinator(
             for setting in SETTINGS.values()
         ] + [
             (self.register_info, f"{group:02X}/{parameter:02X}", group, parameter)
-            for group, parameter in SCALED_REGISTERS
+            for group, parameter in SCALED_REGISTERS + DIAGNOSTIC_INFO_REGISTERS
         ]
         for store, key, group, parameter in targets:
             if key in store:
