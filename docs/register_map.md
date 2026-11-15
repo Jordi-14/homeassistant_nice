@@ -118,3 +118,82 @@ integration joins the texts with `, ` and stops at the first missing element.
 
 The app reads and joins the elements (✓); the meaning of each one is a *guess* from the two values.
 A reply whose index byte does not match the request is ignored (#61).
+
+## B. State and position
+
+### 04/01 — Automation state
+
+| Access | Size | INFO | Read | Entity |
+| --- | --- | --- | --- | --- |
+| GET | 4 | `F0` | poll | `cover` state (`state_source: dmp_04_01`) |
+
+| Byte | Meaning | App code | Confirmed on |
+| --- | --- | --- | --- |
+| 0 | state, `EVT_CHANGE_STATE` table in `protocol/t4/enums.py`: `01` stopped, `02` opening, `03` closing, `04` open, `05` closed, `07` stopped in pause time, `10`-`12` stopped in partial 1-3 | ✓ | ROBUSR10 FG01h (`01`-`05`) |
+| 1 | `ff` in every read | — | ROBUSR10 FG01h; meaning unknown |
+| 2 | `00`; `02` or `03` seen in some reads after a photocell reversal | — | ROBUSR10 FG01h; meaning unknown |
+| 3 | `00` in every read | — | ROBUSR10 FG01h; meaning unknown |
+
+Example: `04 ff 00 00` = open.
+
+### 04/02 — State change event
+
+| Access | Size | INFO | Read | Entity |
+| --- | --- | --- | --- | --- |
+| live event and controller history (`T4_LOGS`); GET answers `FD` | ≥ 2 | `FD` | live | `protocol_event`, `last_state_change_cause` |
+
+| Byte | Meaning | App code | Confirmed on |
+| --- | --- | --- | --- |
+| 0 | new state, same table as 04/01 byte 0 plus events such as `83` opening from command, `88` stopped for command arrival, `91` force limiter intervention | ✓ | ROBUSR10 FG01h (`05`, `83`, `88`, `91`) |
+| 1 | cause, `EVT_STATE_CAUSE` table in `protocol/t4/enums.py` | ✓ | ROBUSR10 FG01h |
+
+Seen on the ROBUSR10:
+
+- A photocell reversal gives `83 00` (opening from command, cause *none*), not
+  a photocell cause. A remote-control reversal gives no 04/02 at all.
+- Cause `19` (*oview*) came with stops that Home Assistant did not send, so it
+  does not mean "stopped by Home Assistant".
+- When the leaf hit an obstacle: `91 00` (force limiter), then `83 00`.
+
+### Encoder positions
+
+All are 2-byte big-endian unsigned values. INFO on the ROBUSR10:
+`02 25 14 01 00 00 ff ff 00 18` (range 0-65535, step 24). The step 24 is only the
++/- increment of the MyNice Pro input field; the controller accepted a write of
+1001 to a partial position.
+
+| Register | Name | Read | Entity | Example (ROBUSR10) | App code | Confirmed on |
+| --- | --- | --- | --- | --- | --- | --- |
+| 04/10 | transformation ratio | extended | `transformation_ratio` | `03 e8` = 1000 | ✓ | ROBUSR10 FG01h (value) |
+| 04/11 | current position | poll | `cover` position, `current_encoder_position` | `14 73` = 5235 when open | ✓ | ROBUSR10 FG01h |
+| 04/12 | maximum open position | extended | `max_open_position` | `14 73` = 5235 | ✓ | ROBUSR10 FG01h |
+| 04/13 | minimum closing position | extended | `min_closing_position` | `00 00` | ✓ | ROBUSR10 FG01h (value) |
+| 04/18 | open position (end of travel) | poll | position scale | `14 73` = 5235 | ✓ | ROBUSR10 FG01h |
+| 04/19 | closed position (end of travel) | poll | position scale | `00 00` | ✓ | ROBUSR10 FG01h |
+| 04/21 | partial open 1 position | extended | `partial_open_1_position` | `03 e8` = 1000 | ✓ | ROBUSR10 FG01h |
+| 04/22 | partial open 2 position | extended | `partial_open_2_position` | `0b b8` = 3000 | ✓ | ROBUSR10 FG01h |
+| 04/23 | partial open 3 position | extended | `partial_open_3_position` | `0f a0` = 4000 | ✓ | ROBUSR10 FG01h |
+| 04/24 | opening slowdown position | extended | `opening_slowdown_position` | `01 f4` = 500 | ✓ | ROBUSR10 FG01h (value) |
+| 04/25 | closing slowdown position | extended | `closing_slowdown_position` | `01 f4` = 500 | ✓ | ROBUSR10 FG01h (value) |
+
+The position in percent is `(04/11 − 04/19) / (04/18 − 04/19) × 100`. On the
+ROBUSR10 the open position moved by about ±100 counts between cycles (for
+example 5224, 5235, 5239).
+
+"(value)" means the value was read, but its effect on the gate was not tested.
+
+### 04/40 — Live position
+
+| Access | Size | INFO | Read | Entity |
+| --- | --- | --- | --- | --- |
+| live event only; GET answers `FD` | 2 or more | `FD` | live | `cover` position between polls |
+
+The value format depends on the controller:
+
+| Format | Confirmed on |
+| --- | --- |
+| raw encoder count; the integration divides by the open position (04/18) | ROBUSR10 FG01h (#56: 135 of 135 events within ±2 %) |
+| raw scalar `0..7000` | RBA4R10 (#14) |
+| percent | controllers behind a CU_WIFI interface |
+
+See [position_calibration.md](position_calibration.md) for how each format is used.
