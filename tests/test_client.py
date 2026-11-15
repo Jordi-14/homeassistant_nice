@@ -1638,3 +1638,20 @@ def test_indexed_read_rejects_a_reply_for_another_element() -> None:
 
     assert client._read_dmp_indexed_locked(0x04, 0x03, 2) is None
     assert client._read_dmp_indexed_locked(0x04, 0x03, 1) == bytes.fromhex("0152424133")
+
+
+def test_indexed_read_skips_a_late_element_before_the_requested_one() -> None:
+    """Review of #61: a late element 1 reply followed by element 2 must still return element 2."""
+
+    class LateThenRightClient(NiceBidiClient):
+        def _t4_request_locked(self, protocol, plain_payload, daddr, dendpoint, tout_ms):
+            return b"<Response />", [
+                _dmp_response(0x04, 0x03, bytes.fromhex("0152424133")),
+                _dmp_response(0x04, 0x03, bytes.fromhex("02464730316800")),
+            ]
+
+    client = LateThenRightClient(
+        "192.0.2.10", 443, NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF")
+    )
+
+    assert client._read_dmp_indexed_locked(0x04, 0x03, 2) == bytes.fromhex("02464730316800")

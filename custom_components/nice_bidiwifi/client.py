@@ -727,11 +727,9 @@ class NiceBidiClient:
     def _read_dmp_indexed_locked(
         self, group: int, parameter: int, index: int, *, preemptible: bool = False
     ) -> bytes | None:
-        value = self._read_dmp_value_locked(
+        return self._read_dmp_value_locked(
             group, parameter, index=index, operation=0x19, preemptible=preemptible
         )
-        # the reply starts with its element index; a late reply of another element is not it
-        return value if value and value[0] == index else None
 
     def _read_dmp_value_locked(
         self,
@@ -758,8 +756,12 @@ class NiceBidiClient:
             return None
         for plain in plains:
             parsed = decode_dmp_response(plain)
-            if (parsed.group, parsed.parameter, parsed.operation) == (group, parameter, operation):
-                return parsed.value
+            if (parsed.group, parsed.parameter, parsed.operation) != (group, parameter, operation):
+                continue
+            # an indexed reply starts with its element index; a late reply of another element is not it
+            if index is not None and not (parsed.value and parsed.value[0] == index):
+                continue
+            return parsed.value
         return None
 
     def _write_dmp_register_locked(
