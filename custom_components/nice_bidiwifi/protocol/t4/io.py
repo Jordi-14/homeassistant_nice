@@ -44,6 +44,8 @@ IO_BITS: tuple[tuple[int, int, str], ...] = (
     (9, 2, "standby"),
     (9, 3, "battery"),
     (9, 5, "automatic_opening"),
+    # 45 seen 1 in all 489 samples of a ROBUSR10 (2026-11-15), with output 1 (flashing light) on and off,
+    # so it is not "output active"; the app shows only ON/OFF. Meaning unknown.
     (12, 0, "overload_output_1"),  # 45-51
     (12, 1, "overload_output_2"),
     (12, 2, "overload_output_3"),
@@ -55,9 +57,14 @@ IO_BITS: tuple[tuple[int, int, str], ...] = (
 
 # 04/D1 byte 5 (app id 30 "State Alt", table @0x8370, Diagnostic1 SA_*): type of the STOP/Alt input
 ALT_STATES = ("not_set", "b1", "b2", "nc", "no", "out_of_range", "sensitive_edge")
+# Seen level_2 in every sample (rest, motion, photocell reversal) of a ROBUSR10: likely the set level, not an alarm.
 # 04/D1 byte 11 & 3 (app id 44 "State limiter maneuver", table @0x838c, Diagnostic1 SLM_*: OK, L1, L2, Motor Alarm)
 LIMITER_STATES = ("ok", "level_1", "level_2", "motor_alarm")
 
+# Seen on a ROBUSR10 during motion (2026-11-15, ~1 sample/s): work_time_left 240 at the start, -1 per second, 0
+# at the stop; pause_time_left 30 after a photocell reversal; courtesy light 60 after a stop, counting down;
+# speed_m1 95-99 % opening and 71-84 % closing with settings 80/70, so a measured value, not the set point;
+# 17-19 % in the slow zone; torque_m1 50-60 % at the start, 20-45 % running; service voltage 34 at rest, 30-33 moving.
 # 04/D2 fields at offset 2 * index; "%" fields are scaled with M from INFO. None = already a sensor
 # (service voltage, motor temperature).
 HARDWARE_FIELDS: tuple[tuple[str | None, bool], ...] = (

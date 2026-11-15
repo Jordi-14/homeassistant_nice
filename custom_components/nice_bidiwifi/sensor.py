@@ -35,6 +35,7 @@ from .entities.factory import (
 )
 from .entity import NiceCoordinatorEntity
 from .protocol.t4.info import scaled_value
+from .protocol.t4.bluebus import decode_bluebus_gate
 from .protocol.t4.io import decode_hardware_diagnostic, decode_io_diagnostic
 from .protocol.t4.enums import (
     AUTOMATION_STATUS_DIAGNOSTICS,
@@ -856,6 +857,22 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
             if _status(coordinator)
             else {}
         ),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="bluebus_gate_state",
+        name="BlueBus gate state",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:gate",
+        value_fn=lambda coordinator: _decoded_register(
+            coordinator, "04/D0", decode_bluebus_gate
+        ).get("state"),
+        extra_attributes_fn=lambda coordinator: {
+            key: value
+            for key, value in _decoded_register(coordinator, "04/D0", decode_bluebus_gate).items()
+            if key != "state"
+        },
     ),
     NiceBidiSensorEntityDescription(
         key="controller_errors",

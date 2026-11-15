@@ -62,3 +62,26 @@ def decode_bluebus_devices(data: bytes | None) -> dict[str, str] | None:
         for name, kind, byte, mask, extra in _SLOTS
         if data[byte] & mask
     }
+
+
+# 04/D0 byte 12 bits 0-3: the gate state as the controller puts it on the bus; 0 = stopped between the ends.
+# SEEN on a ROBUSR10 (2026-11-15): every fresh read matched 04/01, also closed after 330 s at rest. The app uses
+# only bit 7 (stand-by, see _status). Byte 0 bit 0 was 1 at rest and 0 in every sample while moving.
+_GATE_STATES = {0x00: "stopped", 0x01: "closed", 0x02: "open", 0x04: "closing", 0x08: "opening"}
+
+
+def decode_bluebus_gate(data: bytes | None, info: object = None) -> dict[str, str | bool | int] | None:
+    """Return the 04/D0 gate state, moving flag and stand-by flag, or None without a full reply.
+
+    It repeats 04/01 on a healthy controller; a difference between the two shows a controller that
+    reports one state over BusT4 and another to its BlueBus devices.
+    """
+    if data is None or len(data) <= 24 or all(b == 0xFF for b in data):
+        return None
+    code = data[12] & 0x0F
+    return {
+        "state": _GATE_STATES.get(code, f"code_{code}"),
+        "moving": not data[0] & 0x01,
+        "stand_by": bool(data[12] & 0x80),
+        "raw": data[12],
+    }
