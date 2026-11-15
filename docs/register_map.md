@@ -64,6 +64,7 @@ values of the same format.
 - [D. Diagnostics](#d-diagnostics)
 - [E. OXI radio receiver](#e-oxi-radio-receiver)
 - [F. Commands and procedures](#f-commands-and-procedures)
+- [G. All group 04 parameters](#g-all-group-04-parameters)
 
 ## A. Identification
 
@@ -593,3 +594,254 @@ accident.
 | 04/0F | go to a position | `F0` | **yes** | — |
 | 04/B4 | reset the maintenance counter | on/off list | no | **no** |
 | 04/05, 04/09, 04/27, 04/2F, 04/3F | search devices, activate receiver, delete intermediate slowdown, reset encoder, delete maps | `FD` | — | — |
+
+## G. All group 04 parameters
+
+The full list of the 237 group 04 parameters that MyNice Pro 2.18 knows
+(`global_map_Commands` in `libnative-lib.so`, decoded in #54), with the names of
+the app. **INFO** and **GET** show how a ROBUSR10 FG01h answered a one-off
+read-only probe (`OK`, or the status code from *How to read this page*). Action
+registers (search, delete, reset, test, calibration) got no GET on purpose: "not
+sent". **Map** links the description on this page, when there is one.
+
+74 parameters answer GET or INFO with `OK` on the ROBUSR10; other models answer other sets.
+
+| Register | App name | App description | INFO | GET | Map |
+| --- | --- | --- | --- | --- | --- |
+| 04/00 | `CTRL_AUTOMATION_TYPE` | Type automation | F0 | OK | ✓ |
+| 04/01 | `CTRL_AUTOMATION_STATUS` | State automation | F0 | OK | ✓ |
+| 04/02 | `CTRL_AUTOMATION_SLAVE_STATUS` | Slave state automation | FD | FD | ✓ |
+| 04/03 | `CTRL_STR_VERSION_CONFIGURATION` | PCB version / configuration (only barriers) | OK | OK | ✓ |
+| 04/04 | `CTRL_STR_MODULAR_CU_VERSION` | Modular control unit board version | FD | FD |  |
+| 04/05 | `CTRL_SEARCH_DEVICES` | Search devices | FD | not sent |  |
+| 04/06 | `CTRL_FUNCTION_MODE` | Function mode | FD | FD |  |
+| 04/07 | `CTRL_RADIO_CONTROLS_MODE_2` | Radio controls mode 2 | FD | FD |  |
+| 04/08 | `CTRL_STR_COMMANDS` | Commands | OK | F1 | ✓ |
+| 04/09 | `CTRL_ACTIVATE_RECEIVER` | Activate receiver | FD | not sent |  |
+| 04/0A | `CTRL_SEARCH_BLUEBUS_DEVICES` | Search Bluebus devices | OK | not sent | ✓ |
+| 04/0B | `CTRL_SEARCH_POSITIONS` | Search positions | OK | not sent | ✓ |
+| 04/0C | `CTRL_DELETE_PARAMETERS` | Delete parameters | OK | not sent | ✓ |
+| 04/0D | `CTRL_INSTALLATIONS_TYPE` | Type of installation | FD | FD |  |
+| 04/0F | `CTRL_CMD_QUOTA` | Command go to position | F0 | not sent | ✓ |
+| 04/10 | `CTRL_TRANSFORMATION_RATIO` | Transformation ratio | OK | OK | ✓ |
+| 04/11 | `CTRL_POSITION_CURRENT` | Current position | OK | OK | ✓ |
+| 04/12 | `CTRL_POSITION_MAXIMUM_OPENING` | Maximum opening position | OK | OK | ✓ |
+| 04/13 | `CTRL_POSITION_MINIMUM_CLOSING` | Maximum closing position | OK | OK | ✓ |
+| 04/14 | `CTRL_INSTALLATION_FORCE` | Force used during quotes installation - multipage [1 = opening, 2 = closing] | FD | FD |  |
+| 04/15 | `CTRL_INSTALLATION_SPEED` | Speed used during quotes installation - multipage [1 = opening, 2 = closing] | FD | FD |  |
+| 04/16 | `CTRL_OUT_OF_SERVICE_STATUS` | CU Out of service status - managed by the installer for remote maintenance the CU returns back as in service after the timing defined by the relative period | FD | FD |  |
+| 04/17 | `CTRL_OUT_OF_SERVICE_PERIOD` | The period in seconds of the out of service status without any trigger | FD | FD |  |
+| 04/18 | `CTRL_POSITION_OPENING` | Opening position | OK | OK | ✓ |
+| 04/19 | `CTRL_POSITION_CLOSING` | Closing position | OK | OK | ✓ |
+| 04/1A | `CTRL_STR_POSITION_OPEN_PERSON` | Position open person | FD | FD |  |
+| 04/1B | `CTRL_PEDESTRIAN_POSITION_OPENING_1` | Pedestrian opening position 1 | FD | FD |  |
+| 04/1C | `CTRL_PEDESTRIAN_POSITION_OPENING_2` | Pedestrian opening position 2 | FD | FD |  |
+| 04/1D | `CTRL_PEDESTRIAN_POSITION_OPENING_3` | Pedestrian opening position 3 | FD | FD |  |
+| 04/1E | `CTRL_REALIGNMENT_OPN` | Position to reach in OPEN before execute a closing during realignment | FD | FD |  |
+| 04/1F | `CTRL_OPN_TOLLERANCE` | Limit switch stop tolerance for \ | FD | FD |  |
+| 04/20 | `CTRL_STR_POSITION_INTERMEDIATE` | Position intermediate | FD | FD |  |
+| 04/21 | `CTRL_INTERMEDIATE_POSITION_1` | Intermediate position 1 | OK | OK | ✓ |
+| 04/22 | `CTRL_INTERMEDIATE_POSITION_2` | Intermediate position 2 | OK | OK | ✓ |
+| 04/23 | `CTRL_INTERMEDIATE_POSITION_3` | Intermediate position 3 | OK | OK | ✓ |
+| 04/24 | `CTRL_DECELERATION_POSITION_OPENING` | Deceleration opening position | OK | OK | ✓ |
+| 04/25 | `CTRL_DECELERATION_POSITION_CLOSING` | Deceleration closing position | OK | OK | ✓ |
+| 04/26 | `CTRL_DECELERATION_POSITION_INTERMEDIATE` | Deceleration intermediate position | FD | FD |  |
+| 04/27 | `CTRL_INTERMEDIATE_DECELERATION_DELETE` | Delete intermediate deceleration | FD | not sent |  |
+| 04/28 | `CTRL_PHASE_SHIFT_OPENING` | Opening phase shift (M2 on M1) | FD | FD |  |
+| 04/29 | `CTRL_PHASE_SHIFT_CLOSING` | Closing phase shift (M1 on M2) | FD | FD |  |
+| 04/2A | `CTRL_DISCHARGING_OPENING` | Discharging opening | FD | FD |  |
+| 04/2B | `CTRL_DISCHARGING_CLOSING` | Discharging closing | FD | FD |  |
+| 04/2C | `CTRL_MANAGEMENT_DISCHARGING_OPENING` | Management discharging opening | FD | FD |  |
+| 04/2D | `CTRL_MANAGEMENT_DISCHARGING_CLOSING` | Management discharging closing | FD | FD |  |
+| 04/2E | `CTRL_POSITION_RECOVERY_FOR_SENSIBLE_BORDER` | Position recovery for sensible border | FD | FD |  |
+| 04/2F | `CTRL_RESET_ENCODER` | Reset encoder | FD | not sent |  |
+| 04/30 | `CTRL_WORKING_WITH_2_ENGINES` | Working with 2 engines | FD | FD |  |
+| 04/31 | `CTRL_QUANTITY_BRIEF_INVERSION` | Quantity brief inversion | FD | FD |  |
+| 04/32 | `CTRL_INITIAL_DECELERATION_DURING_OPENING` | Initial deceleration during opening | FD | FD |  |
+| 04/33 | `CTRL_INITIAL_DECELERATION_DURING_CLOSING` | Initial deceleration during closing | FD | FD |  |
+| 04/34 | `CTRL_BALANCING` | Balancing | FD | FD |  |
+| 04/35 | `CTRL_BRAKING_LEVEL` | Braking level | FD | FD |  |
+| 04/36 | `CTRL_BRAKE_MODE` | Brake mode | FD | FD |  |
+| 04/37 | `CTRL_TIME_FORCE_OPERATION` | Time force operation | FD | FD |  |
+| 04/38 | `CTRL_STR_SENSIBILITY_MANAGEMENT` | Sensibility management | FD | FD |  |
+| 04/39 | `CTRL_SENSITIVITY_OBSTACLE` | Obstacle sensitivity | FD | FD |  |
+| 04/3A | `CTRL_SENSITIVITY_OPENING` | Opening sensitivity | FD | FD |  |
+| 04/3B | `CTRL_SENSITIVITY_CLOSING` | Closing sensitivity | FD | FD |  |
+| 04/3C | `CTRL_SENSITIVITY_DECELERATION` | Deceleration sensitivity | FD | FD |  |
+| 04/3D | `CTRL_SENSITIVITY_DECELERATION_OPENING` | Deceleration opening sensitivity | FD | FD |  |
+| 04/3E | `CTRL_SENSITIVITY_DECELERATION_CLOSING` | Deceleration closing sensitivity | FD | FD |  |
+| 04/3F | `CTRL_DELETE_MAPS_IN_MEMORY` | Delete maps in memory | FD | not sent |  |
+| 04/40 | `CTRL_STR_SPEED_MANAGEMENT` | Speed management | FD | FD | ✓ |
+| 04/41 | `CTRL_SPEED_CRUISE` | Cruise speed | FD | FD |  |
+| 04/42 | `CTRL_SPEED_OPENING` | Opening speed | OK | OK | ✓ |
+| 04/43 | `CTRL_SPEED_CLOSING` | Closing speed | OK | OK | ✓ |
+| 04/44 | `CTRL_SPEED_DECELERATION` | Deceleration speed | FD | FD |  |
+| 04/45 | `CTRL_SPEED_DECELERATION_OPENING` | Deceleration opening speed | OK | OK | ✓ |
+| 04/46 | `CTRL_SPEED_DECELERATION_CLOSING` | Deceleration closing speed | OK | OK | ✓ |
+| 04/47 | `CTRL_STR_STRENGTH_MANAGEMENT` | Strength management | FD | FD |  |
+| 04/48 | `CTRL_FORCE_MANAGEMENT` | Management force (mode) | FD | FD |  |
+| 04/49 | `CTRL_FORCE_CRUISE` | Cruise force | FD | FD |  |
+| 04/4A | `CTRL_FORCE_OPENING` | Opening force | OK | OK | ✓ |
+| 04/4B | `CTRL_FORCE_CLOSING` | Closing force | OK | OK | ✓ |
+| 04/4C | `CTRL_DECELERATION_FORCE` | Deceleration force | FD | FD |  |
+| 04/4D | `CTRL_DECELERATION_FORCE_OPENING` | Deceleration opening force | FD | FD |  |
+| 04/4E | `CTRL_DECELERATION_FORCE_CLOSING` | Deceleration closing force | FD | FD |  |
+| 04/4F | `CTRL_MANUAL_FORCE` | Manual force | FD | FD |  |
+| 04/50 | `CTRL_OUTPUT` | Output | FD | FD |  |
+| 04/51 | `CTRL_OUTPUT_1` | Output 1 | OK | OK | ✓ |
+| 04/52 | `CTRL_OUTPUT_2` | Output 2 | OK | OK | ✓ |
+| 04/53 | `CTRL_OUTPUT_3` | Output 3 | FD | FD |  |
+| 04/54 | `CTRL_OUTPUT_4` | Output 4 | FD | FD |  |
+| 04/55 | `CTRL_OUTPUT_5` | Output 5 | FD | FD |  |
+| 04/56 | `CTRL_OUTPUT_6` | Output 6 | FD | FD |  |
+| 04/58 | `CTRL_TIME_SCA` | Time SCA | FD | FD |  |
+| 04/59 | `CTRL_TIME_FLASH` | Time FLASH | FD | FD |  |
+| 04/5A | `CTRL_TIME_ELECTRIC_LOCK` | Time eletric lock | OK | OK | ✓ |
+| 04/5B | `CTRL_TIME_COURTESY_LIGHT` | Time courtesy light | OK | OK | ✓ |
+| 04/5C | `CTRL_TIME_SUCTION_CUP` | Time suction cup | OK | OK | ✓ |
+| 04/5D | `CTRL_MODE_TRAFFIC_LIGHT_BLUEBUS` | Mode traffic light BlueBus | FD | FD |  |
+| 04/5E | `CTRL_ACCELERATION` | Acceleration | FD | FD |  |
+| 04/5F | `CTRL_DECELERATION` | Deceleration | FD | FD |  |
+| 04/60 | `CTRL_MODE_COMMAND` | Mode command | FD | FD |  |
+| 04/61 | `CTRL_MODE_COMMAND_STEPSTEP` | Mode command STEP-STEP | OK | OK | ✓ |
+| 04/62 | `CTRL_MODE_COMMAND_OPEN_PARTIAL` | Mode command PARTIAL OPEN | OK | OK | ✓ |
+| 04/63 | `CTRL_MODE_COMMAND_OPEN` | Mode command OPEN | OK | OK | ✓ |
+| 04/64 | `CTRL_MODE_COMMAND_CLOSE` | Mode command CLOSE | OK | OK | ✓ |
+| 04/65 | `CTRL_MODE_COMMAND_STOP` | Mode command STOP | OK | OK | ✓ |
+| 04/66 | `CTRL_MODE_DELAY_INVERSION_FOTO` | Mode delay inversion foto | FD | FD |  |
+| 04/67 | `CTRL_MODE_DELAY_INVERSION_RIB` | Command Mode delay reverse from safety edge | FD | FD |  |
+| 04/68 | `CTRL_MODE_COMMAND_PHOTO_CLOSE` | Mode command PHOTO CLOSE | OK | OK | ✓ |
+| 04/69 | `CTRL_MODE_COMMAND_PHOTO_OPEN` | Mode command PHOTO OPEN | OK | OK | ✓ |
+| 04/6A | `CTRL_MODE_COMMAND_PHOTO_3` | Mode command PHOTO 3 | OK | OK | ✓ |
+| 04/6B | `CTRL_MODE_COMMAND_ALT_OPEN` | Mode command ALT open | OK | OK | ✓ |
+| 04/6C | `CTRL_MODE_COMMAND_ALT_CLOSE` | Mode command ALT close | OK | OK | ✓ |
+| 04/6D | `CTRL_MODE_COMMAND_PHOTO_1` | Mode command PHOTO 1 | FD | FD |  |
+| 04/6E | `CTRL_MODE_COMMAND_ALT_PRECLOSING` | Mode command ALT pre closing | FD | FD |  |
+| 04/6F | `CTRL_MODE_COMMAND_EMERGENCY` | Mode command emergency | FD | FD |  |
+| 04/70 | `CTRL_STR_ENTRANCE` | Entrance | FD | FD |  |
+| 04/71 | `CTRL_INPUT_1` | Input 1 | OK | OK | ✓ |
+| 04/72 | `CTRL_INPUT_2` | Input 2 | OK | OK | ✓ |
+| 04/73 | `CTRL_INPUT_3` | Input 3 | OK | OK | ✓ |
+| 04/74 | `CTRL_INPUT_4` | Input 4 | OK | OK | ✓ |
+| 04/75 | `CTRL_INPUT_AUX_TYPE` | Input AUX type | FD | FD |  |
+| 04/76 | `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_DURING_OPENING` | Mode command n. reverse obstacle during opening | FD | FD |  |
+| 04/77 | `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_DURING_CLOSING` | Mode command n. reverse obstacle during closing | FD | FD |  |
+| 04/78 | `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_OPEN` | Mode command REV. OBSTACLES open | OK | OK | ✓ |
+| 04/79 | `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_CLOSE` | Mode command REV. OBSTACLES close | OK | OK | ✓ |
+| 04/7A | `CTRL_MODE_INPUT_RECLOSE_AFTER_PHOTO` | Mode input for Reclose after photo | FD | FD |  |
+| 04/7B | `CTRL_MODE_INPUT_PAUSE_TIME` | Mode input for Pause time | FD | FD |  |
+| 04/7C | `CTRL_INPUT_5` | Input 5 | FD | FD |  |
+| 04/7D | `CTRL_INPUT_6` | Input 6 | FD | FD |  |
+| 04/7F | `CTRL_BUZZER_ENABLE` | Buzzer enable | FD | FD |  |
+| 04/80 | `CTRL_AUTOMATIC_CLOSE` | Automatic close | OK | OK | ✓ |
+| 04/81 | `CTRL_PAUSE_TIME` | Pause time | OK | OK | ✓ |
+| 04/82 | `CTRL_AUTOMATIC_WORKING_1` | Automatic working 1 | FD | FD |  |
+| 04/83 | `CTRL_STR_CLOSE_AFTER_PHOTO` | Close after photo | FD | FD |  |
+| 04/84 | `CTRL_RECLOSE_AFTER_PHOTO` | Reclose after photo (activation) | OK | OK | ✓ |
+| 04/85 | `CTRL_RECLOSE_AFTER_PHOTO_TIME` | Time Reclose after photo | OK | OK | ✓ |
+| 04/86 | `CTRL_RECLOSE_AFTER_PHOTO_MODE` | Mode Reclose after photo | OK | OK | ✓ |
+| 04/87 | `CTRL_STR_CLOSE_ALWAYS` | Close Always | FD | FD |  |
+| 04/88 | `CTRL_ALWAYS_CLOSE` | Always close (activation) | OK | OK | ✓ |
+| 04/89 | `CTRL_ALWAYS_CLOSE_TIME` | Time Always close | OK | OK | ✓ |
+| 04/8A | `CTRL_ALWAYS_CLOSE_MODE` | Mode Always close | OK | OK | ✓ |
+| 04/8B | `CTRL_STR_STAND_BY` | Stand-byy | FD | FD |  |
+| 04/8C | `CTRL_STANDBY_ACTIVATION` | Stand-by (activation) | OK | OK | ✓ |
+| 04/8D | `CTRL_STANDBY_ACTIVATION_TIME` | Time Stand-by | OK | OK | ✓ |
+| 04/8E | `CTRL_STANDBY_ACTIVATION_MODE` | Mode Stand-by | OK | OK | ✓ |
+| 04/8F | `CTRL_STR_TORQUE` | Torque | FD | FD |  |
+| 04/90 | `CTRL_STARTING_TORQUE` | Starting torque (activation) | OK | OK | ✓ |
+| 04/91 | `CTRL_STARTING_TORQUE_TIME` | Time Starting torque | OK | OK | ✓ |
+| 04/92 | `CTRL_WATER_HAMMER` | Water hammer | FD | FD |  |
+| 04/93 | `CTRL_STR_PRE_FLASHING` | Pre-flashing | FD | FD |  |
+| 04/94 | `CTRL_PREFLASHING` | Preflashing (activation) | OK | OK | ✓ |
+| 04/95 | `CTRL_PREFLASHING_TIME_OPEN` | Time Preflashing open | OK | OK | ✓ |
+| 04/96 | `CTRL_TYPE_INVERSION` | Type inversion (brief or complete) | FD | FD |  |
+| 04/97 | `CTRL_COMPENSATION_SENSIBLE_BORDER` | Compensation sensible border | FD | FD |  |
+| 04/98 | `CTRL_MODE_SLAVE` | Mode slave | OK | OK | ✓ |
+| 04/99 | `CTRL_PREFLASHING_TIME_CLOSE` | Time Preflashing close | OK | OK | ✓ |
+| 04/9A | `CTRL_BLOCK_AUTOMATISM` | Block automatism | OK | OK | ✓ |
+| 04/9B | `CTRL_INTERNAL_RADIO_INH` | Internal radio switch | FD | FD |  |
+| 04/9C | `CTRL_KEY_LOCK` | Keylock | OK | OK | ✓ |
+| 04/9D | `CTRL_WEIGHT` | Weight | FD | FD |  |
+| 04/9E | `CTRL_HEATING` | Heating | FD | FD |  |
+| 04/9F | `CTRL_BURGLARY_MODE` | Anti-burglary Mode | FD | FD |  |
+| 04/A0 | `CTRL_ALWAYS_INVERT` | Always Invert | FD | FD |  |
+| 04/A1 | `CTRL_WIFI_MODULE_IS_PRESENT` | Wifi Module is present | FD | FD |  |
+| 04/A2 | `CTRL_DECELERATIONS` | Decelerations | OK | OK | ✓ |
+| 04/A3 | `CTRL_INVERT_MOVEMENT_DIRECTION` | Invert movement direction | FD | FD |  |
+| 04/A4 | `CTRL_POSITION_AMPEROMETRIC_EXCLUSION` | Position of amperometric exclusion | FD | FD |  |
+| 04/A5 | `CTRL_PULSES_SEGMENT_MAPPING` | Pulses per segment mapping | FD | FD |  |
+| 04/A6 | `CTRL_DISABLE_CONTROL` | Disable control | FD | FD |  |
+| 04/A7 | `CTRL_TIME_MAXIMUM_WORK` | Time maximum work | FD | FD |  |
+| 04/A8 | `CTRL_EMERGENCY_MODE` | Emergency mode | FD | FD |  |
+| 04/A9 | `CTRL_TEST_MODE` | Test mode | FD | not sent |  |
+| 04/AA | `CTRL_RESERVED_1` | Reserved 1 | FD | FD |  |
+| 04/AB | `CTRL_RESERVED_2` | Reserved 2 | FD | FD |  |
+| 04/AC | `CTRL_MINIMUM_FREQUENCY` | Minimum frequency | FD | FD |  |
+| 04/AD | `CTRL_INVERTER_MODE` | Inverter Mode | FD | FD |  |
+| 04/AE | `CTRL_EMERGENCY_DECELERATION` | Emergency deceleration | FD | FD |  |
+| 04/AF | `CTRL_POSITION_PHOTO_EXCLUSION` | Position of PHOTO exclusion | FD | FD |  |
+| 04/B0 | `CTRL_MAINTENANCE_MANAGEMENT` | Maintenance management | OK | OK | ✓ |
+| 04/B1 | `CTRL_THRESHOLD_ALARM_MAINTENANCE` | Treshold alarm mainteance | OK | OK | ✓ |
+| 04/B2 | `CTRL_MAINTENANCE_MANEUVERS_COUNTER` | Maintenance maneuvers counter | OK | OK | ✓ |
+| 04/B3 | `CTRL_MANEUVERS_COUNTER` | Total maneuvers counter | OK | OK | ✓ |
+| 04/B4 | `CTRL_MAINTENANCE_MANEUVERS_DELETE` | Delete mainteance maneuvers | OK | not sent | ✓ |
+| 04/B5 | `CTRL_SENSITIVITY_INTERVENTION_TIME` | Sensitivity Intervention Time | FD | FD |  |
+| 04/B6 | `CTRL_IO_EXP_BOARD` | I/O expansion board for modular control unit | FD | FD |  |
+| 04/B7 | `CTRL_MODULAR_BOARD_OPERATIONS` |  Modular control unit: european version or UL325 version | FD | FD |  |
+| 04/B8 | `CTRL_RADIO_CODES_MANAGEMENT` | Radio codes management | FD | FD |  |
+| 04/B9 | `CTRL_COURTESY_LIGHT_MNG` | Courtesy light | FD | FD |  |
+| 04/BA | `CONTROLLER_RADIO_CODEINMEMORY` | Built in Radio code in memory | FD | FD |  |
+| 04/BB | `CONTROLLER_RADIO_CFG_CODES` | Built in Radio codes configuration | FD | FD |  |
+| 04/BC | `CONTROLLER_RADIO_ACTIVATION` | Built in Radio activation | FD | FD |  |
+| 04/BD | `CONTROLLER_TLC_CNT` | Controller profile: Read TLC List counter (total and detailed counter) | FD | FD |  |
+| 04/BE | `UNKNOWN_48644` | ? | FD | FD |  |
+| 04/BF | `CONTROLLER_EDITEDCODE_BMASK` | Controller profile:  enabled radio protocol on the receiver | FD | FD |  |
+| 04/C1 | `CONTROLLER_ADV_ABILITATION` | Controller profile: Advanced Abilitation, Session challenge | FD | FD |  |
+| 04/CD | `CTRL_SENSITIVITY_GND_IMPACT` | Sensitivity used by Door to check the impact to ground | FD | FD |  |
+| 04/CE | `CTRL_FORCE_GND_IMPACT` | Force used by Door to check the impact to ground (when mechanical blocks are not used) | FD | FD |  |
+| 04/CF | `CTRL_INSTALLATION_SPEED_2` | Installation speed | FD | FD |  |
+| 04/D0 | `CTRL_DIAGNOSTICS_BLUEBUS_DEVICES` | Diagnostics BlueBus devices | OK | OK | ✓ |
+| 04/D1 | `CTRL_DIAGNOSTICS_INPUT_OUTPUT` | Diagnostics inputs / outputs | OK | OK | ✓ |
+| 04/D2 | `CTRL_DIAGNOSTICS_HARDWARE` | Diagnostics hardware | OK | OK | ✓ |
+| 04/D3 | `CTRL_DIAGNOSTICS_OTHER` | Diagnostics other | FD | FD |  |
+| 04/D4 | `CTRL_DIAGNOSTICS_INVERTER` | Diagnostics inverter | FD | FD |  |
+| 04/D5 | `CTRL_DIAGNOSTICS_VISUAL` | Diagnostics visual | FD | FD |  |
+| 04/D6 | `CTRL_DIAGNOSTICS_MODULAR_SM_ADVLOG` | Diagnostics info for current MTB and LCU state machine used into Modular control unit | FD | FD |  |
+| 04/DA | `CTRL_LOG_8_MANEUVERS` | Log last 8 maneuvers | F0 | OK | ✓ |
+| 04/DB | `CTRL_ADVANCED_LOG` | Last 8 Advanced diagnostics status | FD | FD |  |
+| 04/DC | `CTRL_LOG_TEST_1` | Log test 1 | FD | not sent |  |
+| 04/DD | `CTRL_LOG_TEST_2` | Log test 2 | FD | not sent |  |
+| 04/DE | `CTRL_LOG_TEST_3` | Log test 3 | FD | not sent |  |
+| 04/DF | `CTRL_LOG_TEST_4` | Log test 4 | FD | not sent |  |
+| 04/E0 | `CTRL_FORCE_AUTOMATIC_MINIMUM` | Minimum automatic force | FD | FD |  |
+| 04/E1 | `CTRL_FORCE_AUTOMATIC_MAXIMUM` | Maximum automatic force | FD | FD |  |
+| 04/E2 | `CTRL_FORCE_AUTOMATIC_SLOWING_DOWN_MAXIMUM` | Automatic strength for minimum slow down | FD | FD |  |
+| 04/E3 | `CTRL_FORCE_AUTOMATIC_SLOWING_DOWN_MINIMUM` | Automatic strength for maximum slow down | FD | FD |  |
+| 04/E4 | `CTRL_LOOP_SENSIBILITY` | Sensibility loop | FD | FD |  |
+| 04/E5 | `CTRL_LOOP_CALIBRATION` | Calibration loop | FD | not sent |  |
+| 04/E6 | `CTRL_LOOP_SUPPLY` | Supply loop | FD | FD |  |
+| 04/E7 | `CTRL_LOOP_WORKING_ACTIVATE` | Activate loop working | FD | not sent |  |
+| 04/E8 | `CTRL_LOOP_WORKING_MODE` | Mode loop working | FD | FD |  |
+| 04/E9 | `CTRL_LOOP_RECALIBRATION_TIME` | Time loop recalibration | FD | not sent |  |
+| 04/EA | `CTRL_LOOP_ACTIVATION_MODE` | Mode activation loop | FD | FD |  |
+| 04/EB | `CTRL_LOOP_ACTIVATION_TIME` | Time activation loop | FD | FD |  |
+| 04/EC | `CTRL_BURGLARY_LOOP_DETECT` | Loop Burglary function | FD | FD |  |
+| 04/ED | `CTRL_LOOP_FREQUENCY_VIEW` | View frequency loop | FD | FD |  |
+| 04/EE | `CTRL_PRESS_TEST` | View pressure test | FD | not sent |  |
+| 04/EF | `CTRL_TEST4` | Test 4 | FD | not sent |  |
+| 04/F0 | `CTRL_STR_INSTALLATION` | Installation | FD | FD |  |
+| 04/F1 | `CTRL_STR_PARAMETERS_MAIN` | Main parameters | FD | FD |  |
+| 04/F2 | `CTRL_STR_PARAMETERS_ADVANCED` | Advanced parameters | FD | FD |  |
+| 04/F3 | `CTRL_STR_POSITIONS` | Positions | FD | FD |  |
+| 04/F4 | `CTRL_STR_SECURITY` | Security | FD | FD |  |
+| 04/F5 | `CTRL_STR_MAINTENANCE` | Maintenance | FD | FD |  |
+| 04/F6 | `CTRL_STR_DIAGNOSTICS` | Diagnostics | FD | FD |  |
+| 04/F7 | `CTRL_STR_OPTIONS` | Options | FD | FD |  |
+| 04/F8 | `CTRL_STR_SETUP_INPUTS` | Inputs setup | FD | FD |  |
+| 04/F9 | `CTRL_STR_SETUP_OUTPUTS` | Outputs setup | FD | FD |  |
+| 04/FA | `CTRL_STR_SETUP_COMMANDS` | Commands setup | FD | FD |  |
+| 04/FB | `CTRL_STR_PASSWORD` | Password | FD | FD |  |
+| 04/FC | `CTRL_STR_COMPENSATION_LEVEL` | Level compensation | FD | FD |  |
+| 04/FD | `CTRL_STR_LOOP_DETECTOR` | Loop detector | FD | FD |  |
+| 04/FE | `CTRL_STR_INVERTER` | Inverter | FD | FD |  |
