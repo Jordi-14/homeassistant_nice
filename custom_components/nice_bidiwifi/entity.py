@@ -50,6 +50,8 @@ def bidi_device_info(entry: ConfigEntry, info: NiceBidiDeviceInfo | None = None)
             if info and info.interface_product
             else "BiDi-WiFi"
         ),
+        # product code (e.g. ROBUSR10); the model above is the description (e.g. NewRobus)
+        model_id=info.device_product if info and info.device_product else None,
         serial_number=info.device_serial if info and info.device_serial else None,
         sw_version=info.device_fw_version if info and info.device_fw_version else None,
         hw_version=info.device_hw_version if info and info.device_hw_version else None,
