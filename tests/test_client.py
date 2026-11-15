@@ -1623,3 +1623,18 @@ def test_late_info_reply_is_not_a_register_value() -> None:
     client._read_dmp_register_locked(registers, 0x00, 0x03, 0x04, 0x81, required=False)
 
     assert registers["04/81"].value == b"\x1e"
+
+
+def test_indexed_read_rejects_a_reply_for_another_element() -> None:
+    """Review of #61: a late reply of element 1 must not be taken as element 2."""
+
+    class LateClient(NiceBidiClient):
+        def _t4_request_locked(self, protocol, plain_payload, daddr, dendpoint, tout_ms):
+            return b"<Response />", [_dmp_response(0x04, 0x03, bytes.fromhex("0152424133"))]
+
+    client = LateClient(
+        "192.0.2.10", 443, NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF")
+    )
+
+    assert client._read_dmp_indexed_locked(0x04, 0x03, 2) is None
+    assert client._read_dmp_indexed_locked(0x04, 0x03, 1) == bytes.fromhex("0152424133")

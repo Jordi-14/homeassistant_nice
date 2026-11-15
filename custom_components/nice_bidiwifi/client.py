@@ -719,12 +719,37 @@ class NiceBidiClient:
     def _read_dmp_info_locked(
         self, group: int, parameter: int, *, preemptible: bool = False
     ) -> DmpInfo | None:
+        value = self._read_dmp_value_locked(
+            group, parameter, flags=DMP_INFO_FLAGS, operation=0x09, preemptible=preemptible
+        )
+        return decode_dmp_info(value) if value is not None else None
+
+    def _read_dmp_indexed_locked(
+        self, group: int, parameter: int, index: int, *, preemptible: bool = False
+    ) -> bytes | None:
+        value = self._read_dmp_value_locked(
+            group, parameter, index=index, operation=0x19, preemptible=preemptible
+        )
+        # the reply starts with its element index; a late reply of another element is not it
+        return value if value and value[0] == index else None
+
+    def _read_dmp_value_locked(
+        self,
+        group: int,
+        parameter: int,
+        *,
+        operation: int,
+        flags: int = 0x99,
+        index: int | None = None,
+        preemptible: bool = False,
+    ) -> bytes | None:
+        """Send one DMP GET or INFO and return the value of the matching reply, or None."""
         if preemptible and self._should_yield is not None and self._should_yield():
-            raise NiceReadPreemptedError("INFO read yielded to a pending command")
+            raise NiceReadPreemptedError("DMP read yielded to a pending command")
         response, plains = self._t4_request_locked(
             "DMP",
             build_dmp_read_frame(
-                *CONTROLLER_TARGET.as_tuple(), group, parameter, flags=DMP_INFO_FLAGS
+                *CONTROLLER_TARGET.as_tuple(), group, parameter, index, flags=flags
             ),
             *CONTROLLER_TARGET.as_tuple(),
             self.t4_timeout_ms,
@@ -733,26 +758,7 @@ class NiceBidiClient:
             return None
         for plain in plains:
             parsed = decode_dmp_response(plain)
-            if (parsed.group, parsed.parameter, parsed.operation) == (group, parameter, 0x09):
-                return decode_dmp_info(parsed.value)
-        return None
-
-    def _read_dmp_indexed_locked(
-        self, group: int, parameter: int, index: int, *, preemptible: bool = False
-    ) -> bytes | None:
-        if preemptible and self._should_yield is not None and self._should_yield():
-            raise NiceReadPreemptedError("indexed read yielded to a pending command")
-        response, plains = self._t4_request_locked(
-            "DMP",
-            build_dmp_read_frame(*CONTROLLER_TARGET.as_tuple(), group, parameter, index),
-            *CONTROLLER_TARGET.as_tuple(),
-            self.t4_timeout_ms,
-        )
-        if "<Error>" in _printable(response):
-            return None
-        for plain in plains:
-            parsed = decode_dmp_response(plain)
-            if (parsed.group, parsed.parameter, parsed.operation) == (group, parameter, 0x19):
+            if (parsed.group, parsed.parameter, parsed.operation) == (group, parameter, operation):
                 return parsed.value
         return None
 

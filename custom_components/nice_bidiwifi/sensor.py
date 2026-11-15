@@ -756,7 +756,6 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         entity_registry_visible_default=False,
         icon="mdi:ray-start",
-        state_class=SensorStateClass.MEASUREMENT,
         value_fn=partial(_status_field, "min_closing_position"),
     ),
     NiceBidiSensorEntityDescription(

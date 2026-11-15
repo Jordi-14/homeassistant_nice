@@ -104,6 +104,7 @@ from .write_policy import dmp_write_block_reason
 _LOGGER = logging.getLogger(__name__)
 # full INFO loads per session; a controller without some INFO stops asking after this
 SETTING_INFO_ATTEMPTS = 3
+MAX_CONFIGURATION_ENTRIES = 16
 
 EXTENDED_STATUS_REFRESH_SECONDS = 300.0
 
@@ -346,15 +347,17 @@ class NiceBidiDataUpdateCoordinator(
         info = await self.hass.async_add_executor_job(
             partial(self.client.read_dmp_info, 0x04, 0x03, preemptible=True)
         )
-        if info is None or not info.array_size or info.array_size < 2:
+        if info is None or (info.array_size or 0) < 2:
             return None
         entries = []
-        for index in range(1, info.array_size):
+        # the app shows a few boards and motors; a bad INFO must not start 255 reads
+        for index in range(1, min(info.array_size, MAX_CONFIGURATION_ENTRIES + 1)):
             value = await self.hass.async_add_executor_job(
                 partial(self.client.read_dmp_indexed, 0x04, 0x03, index, preemptible=True)
             )
-            if (text := decode_version_entry(value)) is not None:
-                entries.append(text)
+            if (text := decode_version_entry(value)) is None:
+                return None  # incomplete: try again later, never store a part
+            entries.append(text)
         return ", ".join(entries) or None
 
     async def _async_load_setting_info(self) -> None:
@@ -398,7 +401,7 @@ class NiceBidiDataUpdateCoordinator(
         loaded = len(self.setting_info) + len(self.register_info)
         _LOGGER.debug("Nice INFO read for %d of %d registers", loaded, len(targets))
         self._setting_info_attempts += 1
-        if loaded < len(targets) and self._setting_info_attempts < SETTING_INFO_ATTEMPTS:
+        if (loaded < len(targets) or self.controller_configuration is None) and self._setting_info_attempts < SETTING_INFO_ATTEMPTS:
             self._setting_info_task = None
         self.async_update_listeners()
 

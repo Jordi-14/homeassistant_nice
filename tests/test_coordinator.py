@@ -125,6 +125,41 @@ async def test_controller_configuration_read_like_the_app(hass: HomeAssistant) -
     assert instance.controller_configuration == "RBA3R10, RB600"
 
 
+async def test_controller_configuration_is_not_stored_in_part(hass: HomeAssistant) -> None:
+    """Review of #61: a missing element leaves the value unknown and the load is tried again."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.dmp_info = {(0x04, 0x03): decode_dmp_info(bytes.fromhex("0903078103"))}
+    values = {1: bytes.fromhex("01524241335231300000")}
+    client.read_dmp_indexed = lambda group, parameter, index, preemptible=False: values.get(index)
+    instance.client = client
+    instance._setting_info_task = object()
+
+    await instance._async_load_setting_info()
+
+    assert instance.controller_configuration is None
+    assert instance._setting_info_task is None
+
+
+async def test_controller_configuration_count_is_capped(hass: HomeAssistant) -> None:
+    """Review of #61: a bad INFO array size must not start hundreds of reads."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    client.dmp_info = {(0x04, 0x03): decode_dmp_info(bytes.fromhex("090307820300"))}
+    reads = []
+
+    def read(group, parameter, index, preemptible=False):
+        reads.append(index)
+        return bytes([index]) + b"X"
+
+    client.read_dmp_indexed = read
+    instance.client = client
+
+    await instance._async_load_setting_info()
+
+    assert reads == list(range(1, coordinator_module.MAX_CONFIGURATION_ENTRIES + 1))
+
+
 async def test_setting_info_failure_keeps_static_limits(hass: HomeAssistant) -> None:
     """Test a route without INFO support leaves the INFO map empty."""
     instance = _coordinator(hass)
