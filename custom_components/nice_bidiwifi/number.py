@@ -303,31 +303,39 @@ class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
         """Return the controller's INFO for this setting, if it was read."""
         return self.coordinator.setting_info.get(self.entity_description.setting.key)
 
-    @property
-    def native_min_value(self) -> float:
-        """Return the static minimum, raised to the controller's minimum or lowest option."""
-        minimum = self.entity_description.native_min_value or 0
-        info = self._info
-        controller_min = (
-            min(info.options) if info and info.options else info.minimum if info else None
-        )
-        return max(minimum, controller_min) if controller_min is not None else minimum
-
-    @property
-    def native_max_value(self) -> float:
-        """Return the static maximum, lowered to the controller's or the dynamic maximum."""
-        maximum = self.entity_description.native_max_value or 0
+    def _limits(self) -> tuple[float, float]:
+        """Return (min, max): static limits, the dynamic maximum, then the controller's INFO."""
+        low = self.entity_description.native_min_value or 0
+        high = self.entity_description.native_max_value or 0
         dynamic_max_fn = self.entity_description.dynamic_max_fn
         status = self.coordinator.data
         if dynamic_max_fn is not None and status is not None:
             dynamic_max = dynamic_max_fn(status)
             if dynamic_max is not None:
-                maximum = dynamic_max
+                high = dynamic_max
         info = self._info
-        controller_max = (
-            max(info.options) if info and info.options else info.maximum if info else None
+        if info is None:
+            return low, high
+        values = info.options or (
+            (info.minimum, info.maximum)
+            if info.minimum is not None and info.maximum is not None
+            else ()
         )
-        return min(maximum, controller_max) if controller_max is not None else maximum
+        if not values:
+            return low, high
+        info_low, info_high = max(low, min(values)), min(high, max(values))
+        # INFO that contradicts the other limits is ignored, never an empty range
+        return (info_low, info_high) if info_low <= info_high else (low, high)
+
+    @property
+    def native_min_value(self) -> float:
+        """Return the static minimum, raised to the controller's minimum or lowest option."""
+        return self._limits()[0]
+
+    @property
+    def native_max_value(self) -> float:
+        """Return the static or dynamic maximum, lowered to the controller's maximum or option."""
+        return self._limits()[1]
 
     @property
     def extra_state_attributes(self) -> dict[str, list[int]] | None:

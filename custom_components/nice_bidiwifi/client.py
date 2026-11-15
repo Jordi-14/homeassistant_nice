@@ -782,7 +782,8 @@ class NiceBidiClient:
             parsed = decode_dmp_response(plain)
             parsed_group = parsed.group
             parsed_parameter = parsed.parameter
-            if parsed_group is None or parsed_parameter is None:
+            # a late INFO reply (op 0x09) is a value format, not a value
+            if parsed_group is None or parsed_parameter is None or parsed.operation == 0x09:
                 continue
             key = f"{parsed_group:02X}/{parsed_parameter:02X}"
             if (daddr, dendpoint) != CONTROLLER_TARGET.as_tuple():

@@ -116,6 +116,33 @@ async def test_setting_info_failure_keeps_static_limits(hass: HomeAssistant) -> 
     assert instance.setting_info == {}
 
 
+async def test_setting_info_error_is_retried_a_few_times(hass: HomeAssistant) -> None:
+    """Review of #58: an error must not stop the INFO load for the whole session."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    info = decode_dmp_info(bytes.fromhex("0100f561021011"))
+    calls = []
+
+    def flaky(group: int, parameter: int, *, preemptible: bool = False):
+        calls.append((group, parameter))
+        if len(calls) == 1:
+            raise OSError("wifi drop")
+        return info if (group, parameter) == (0x04, 0x86) else None
+
+    client.read_dmp_info = flaky
+    instance.client = client
+    for _ in range(coordinator_module.SETTING_INFO_ATTEMPTS):
+        instance._setting_info_task = object()
+        await instance._async_load_setting_info()
+        if instance._setting_info_task is not None:
+            break
+
+    assert instance.setting_info == {"photo_close_mode": info}
+    # settings this controller has no INFO for stop being asked after the last attempt
+    assert instance._setting_info_task is not None
+    assert instance._setting_info_attempts == coordinator_module.SETTING_INFO_ATTEMPTS
+
+
 async def test_update_data_reads_status_and_caches_device_info(
     hass: HomeAssistant,
 ) -> None:

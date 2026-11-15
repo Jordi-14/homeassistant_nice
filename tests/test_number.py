@@ -227,6 +227,16 @@ class TestNiceBidiNumberProperties:
         assert (force.native_min_value, force.native_max_value) == (1, 100)
         assert (pause.native_min_value, pause.native_max_value) == (0, 100)
 
+    async def test_number_ignores_info_that_empties_the_range(self) -> None:
+        """Test INFO 112-128 against a static 1-100 force keeps 1-100, not min > max."""
+        coordinator = FakeCoordinator()
+        coordinator.setting_info = {
+            "opening_force": decode_dmp_info(bytes.fromhex("01000a01708001")),
+        }
+        force = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_force"))
+
+        assert (force.native_min_value, force.native_max_value) == (1, 100)
+
     async def test_number_rejects_out_of_range_value(self) -> None:
         coordinator = FakeCoordinator()
         entity = NiceBidiNumber(coordinator, config_entry(), _description("bus_t4_opening_speed"))

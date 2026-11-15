@@ -102,6 +102,8 @@ from .protocol.t4.actions import T4_ACTION_BY_KEY
 from .write_policy import dmp_write_block_reason
 
 _LOGGER = logging.getLogger(__name__)
+# full INFO loads per session; a controller without some INFO stops asking after this
+SETTING_INFO_ATTEMPTS = 3
 
 EXTENDED_STATUS_REFRESH_SECONDS = 300.0
 
@@ -212,6 +214,7 @@ class NiceBidiDataUpdateCoordinator(
         # Value format (DMP INFO) of each writable setting, read once from the controller.
         self.setting_info: dict[str, DmpInfo] = {}
         self._setting_info_task: asyncio.Task | None = None
+        self._setting_info_attempts = 0
         self._extended_status_next_refresh_monotonic = 0.0
         self._extended_scan_requests = 0
         self._last_open_position: int | None = None
@@ -336,7 +339,8 @@ class NiceBidiDataUpdateCoordinator(
         """Read the controller's range or option list of each writable setting once.
 
         The reads yield to gate commands: on a pending command the load stops and the next
-        successful poll resumes it with the settings that are still missing.
+        successful poll resumes it with the settings that are still missing. After an error
+        or a missing reply the next poll tries again, at most SETTING_INFO_ATTEMPTS times.
         """
         for setting in SETTINGS.values():
             if setting.key in self.setting_info:
@@ -356,10 +360,16 @@ class NiceBidiDataUpdateCoordinator(
                 return
             except Exception as err:  # noqa: BLE001 - optional metadata, static limits stay in use
                 _LOGGER.debug("Nice setting INFO not available: %r", err)
-                return
+                break
             if info is not None:
                 self.setting_info[setting.key] = info
         _LOGGER.debug("Nice setting INFO read for %d settings", len(self.setting_info))
+        self._setting_info_attempts += 1
+        if (
+            len(self.setting_info) < len(SETTINGS)
+            and self._setting_info_attempts < SETTING_INFO_ATTEMPTS
+        ):
+            self._setting_info_task = None
         self.async_update_listeners()
 
     @property
@@ -947,5 +957,8 @@ class NiceBidiDataUpdateCoordinator(
         # a still-valid issue is recreated by the first poll after setup
         ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
         await self._async_cancel_background_tasks(calibration_reason="shutdown")
+        if self._setting_info_task is not None:
+            # it must not open a new session on the closed client
+            self._setting_info_task.cancel()
         self.event_controller.shutdown()
         await self.hass.async_add_executor_job(self.client.close)
