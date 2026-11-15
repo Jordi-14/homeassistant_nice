@@ -392,3 +392,30 @@ def test_scaled_time_sensor_uses_controller_info() -> None:
     assert entity.native_value is None
     coordinator.register_info = {"04/5A": decode_dmp_info(bytes.fromhex("010011110164 01000a".replace(" ", "")))}
     assert entity.native_value == 2.0
+
+
+def test_diagnostic_registers_are_decoded_with_their_info() -> None:
+    """04/D1 and 04/D2 attributes use the controller INFO (ROBUSR10 replies, gate closing)."""
+    from custom_components.nice_bidiwifi.protocol.t4.info import decode_dmp_info
+
+    coordinator = FakeCoordinator()
+    coordinator.data = replace(
+        make_status(),
+        registers={
+            "04/D1": "01 00 40 00 05 04 00 00 00 00 00 02 01 00",
+            "04/D2": "00 ee 00 00 00 00 00 0b 00 20 00 1e 00 00 00 1c 00 00 00 00 00 4c 00 00 12 d4 00 00",
+        }
+    )
+    coordinator.register_info = {
+        "04/D1": decode_dmp_info(bytes.fromhex("0181e1410e0f0743000dffffffff3c1fff0100")),
+        "04/D2": decode_dmp_info(
+            bytes.fromhex("0281e2410e80008000800080648000806400008000000000008064000080000000")
+        ),
+    }
+    io = NiceBidiSensor(coordinator, config_entry(), _description("diagnostics_io_byte"))
+    hw = NiceBidiSensor(coordinator, config_entry(), _description("diagnostics_parameters"))
+
+    assert io.extra_state_attributes["motor_m1"] is True
+    assert "loop_1" not in io.extra_state_attributes
+    assert hw.extra_state_attributes["torque_m1"] == 30
+    assert "torque_m2" not in hw.extra_state_attributes

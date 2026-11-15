@@ -21,6 +21,8 @@ _SLOTS: tuple[tuple[str, str, int, int, int], ...] = (
     ("cmd_2", "cmd", 4, 0x02, 1),
     ("cmd_3", "cmd", 4, 0x04, 2),
     ("cmd_4", "cmd", 4, 0x08, 3),
+    ("photo_open", "cmd", 4, 0x20, 0),  # same status byte 0x15 as CMD 1 (@0xf380)
+    ("photo_open_ii", "cmd", 4, 0x40, 0),  # @0xf41c
     ("s_sl", "ms", 5, 0x01, 0),
 )
 
@@ -30,6 +32,8 @@ def _status(b: bytes, kind: str, mask: int, extra: int) -> str:
     if b[1] & 0x10:  # BlueBus line error
         return "stand_by"
     if kind == "photo":
+        if b[12] & 0x80:  # setDiagPhotoStatus @0x211f8: signed byte 12 < 0
+            return "stand_by"
         if b[6] & mask:
             return "not_working"
         if b[10] & mask and b[0] & 0x08:

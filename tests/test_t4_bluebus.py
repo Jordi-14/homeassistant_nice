@@ -35,7 +35,9 @@ def test_short_or_missing() -> None:
         (_data(b2=1, b6=1), {"photo": "not_working"}),
         (_data(b2=1, b10=1, b0=0x08), {"photo": "in_error"}),
         (_data(b2=1), {"photo": "off"}),
-        (_data(b4=0x60, b6=0x20, b10=0x20, b0=0x08), {}),  # PHOTO OPEN not listed
+        # PHOTO OPEN / II: installed byte 4 bits 5-6, not-working mask on byte 8, status byte 0x15 (@0xf31c, @0xf3b8)
+        (_data(b4=0x60, b8=0x20), {"photo_open": "not_working", "photo_open_ii": "off"}),
+        (_data(b2=1, b12=0x80), {"photo": "stand_by"}),  # signed byte 12 < 0 (@0x211f8)
         (_data(b4=1, b21=0), {"cmd_1": "off"}),
         (_data(b4=1, b21=1), {"cmd_1": "on"}),
         (_data(b4=1, b21=0x40), {"cmd_1": "on"}),

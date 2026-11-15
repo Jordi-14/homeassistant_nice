@@ -28,6 +28,8 @@ class DmpInfo:
     scale: int | None = None
     options: tuple[int, ...] | None = None
     array_size: int | None = None
+    # bit-6 list without option codes: one value of `size` bytes per field (04/D1 present bits, 04/D2 scales)
+    values: tuple[int, ...] | None = None
 
 
 def decode_dmp_info(data: bytes | None) -> DmpInfo | None:
@@ -42,8 +44,17 @@ def decode_dmp_info(data: bytes | None) -> DmpInfo | None:
     if flags & 0x80 and len(data) >= offset:
         info = replace(info, array_size=int.from_bytes(data[4:offset], "big"))
     if flags & 0x40:
-        if not flags & 0x20 or len(data) <= offset:
+        if len(data) <= offset:
             return info
+        if not flags & 0x20:
+            width = size or 1
+            raw = data[offset + 1 : offset + 1 + data[offset] * width]
+            if len(raw) != data[offset] * width:
+                return None
+            values = tuple(
+                int.from_bytes(raw[i : i + width], order) for i in range(0, len(raw), width)
+            )
+            return replace(info, values=values or None)
         count = data[offset]
         options = tuple(data[offset + 1 : offset + 1 + count])
         if len(options) != count:
