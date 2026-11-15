@@ -67,8 +67,10 @@ def scaled_value(raw: int | None, info: DmpInfo | None) -> float | int | None:
     """
     if raw is None or info is None:
         return None
-    if not info.scale or info.flags & 0x40:
+    if info.flags & 0x40 or not info.flags & 0x30:
         return raw
+    if not info.scale:
+        return None  # scaled, but the scale is missing: unknown rather than 10x wrong
     if info.flags & 0x10:
         return raw / info.scale
     if info.flags & 0x20:

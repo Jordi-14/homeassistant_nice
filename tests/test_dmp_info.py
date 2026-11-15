@@ -75,6 +75,7 @@ def test_info_read_frame_uses_info_flags() -> None:
         (20, "01001111016401000a", 2.0),  # 04/5A divide, scale 10
         (20, "01001121016401000a", 200),  # multiply
         (30, "01001101 00fa01", 30),  # no scale
+        (20, "01001111016401", None),  # divide flag but the scale bytes are missing
         (17, "0100f561021011", 17),  # option list: never scaled
         (20, None, None),  # INFO unknown
     ],

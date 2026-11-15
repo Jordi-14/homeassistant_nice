@@ -20,7 +20,6 @@ from .options import (
     OUTPUT_FUNCTIONS,
     STANDBY_MODES,
     COMMAND_MODES,
-    STEP_STEP_MODES,
     option_name,
 )
 
@@ -155,7 +154,7 @@ def status_from_dmp_registers(
         output_1_function=option_name(OUTPUT_FUNCTIONS, dmp_uint(registers.get("04/51"))),
         output_2_function=option_name(OUTPUT_FUNCTIONS, dmp_uint(registers.get("04/52"))),
         courtesy_light_time=dmp_uint(registers.get("04/5B")),
-        step_step_mode=option_name(STEP_STEP_MODES, dmp_uint(registers.get("04/61"))),
+        step_step_mode=option_name(COMMAND_MODES, dmp_uint(registers.get("04/61"))),
         standby_time=dmp_uint(registers.get("04/8D")),
         standby_mode=option_name(STANDBY_MODES, dmp_uint(registers.get("04/8E"))),
         pre_flash_open_time=dmp_uint(registers.get("04/95")),

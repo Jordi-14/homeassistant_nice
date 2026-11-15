@@ -115,7 +115,6 @@ COMMAND_MODES = {
     28: "stop_and_reverse_when_closing",
     29: "condominium_block",
 }
-STEP_STEP_MODES = COMMAND_MODES
 
 # 04/8E standby mode (ListFunctionsMode wire values).
 STANDBY_MODES = {48: "bluebus", 49: "safety_devices", 50: "all"}

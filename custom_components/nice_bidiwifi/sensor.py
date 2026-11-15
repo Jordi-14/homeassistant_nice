@@ -706,7 +706,7 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:timer-outline",
         native_unit_of_measurement=UnitOfTime.SECONDS,
-        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
         value_fn=partial(_scaled_field, "electric_lock_time", "04/5A"),
     ),
     NiceBidiSensorEntityDescription(
@@ -717,7 +717,7 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:timer-outline",
         native_unit_of_measurement=UnitOfTime.SECONDS,
-        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
         value_fn=partial(_scaled_field, "suction_cup_time", "04/5C"),
     ),
     NiceBidiSensorEntityDescription(
@@ -728,7 +728,7 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         entity_registry_visible_default=False,
         icon="mdi:timer-outline",
         native_unit_of_measurement=UnitOfTime.SECONDS,
-        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
         value_fn=partial(_scaled_field, "starting_torque_time", "04/91"),
     ),
     NiceBidiSensorEntityDescription(

@@ -346,49 +346,33 @@ class NiceBidiDataUpdateCoordinator(
         successful poll resumes it with the settings that are still missing. After an error
         or a missing reply the next poll tries again, at most SETTING_INFO_ATTEMPTS times.
         """
-        for setting in SETTINGS.values():
-            if setting.key in self.setting_info:
-                continue
-            try:
-                info = await self.hass.async_add_executor_job(
-                    partial(
-                        self.client.read_dmp_info,
-                        setting.group,
-                        setting.parameter,
-                        preemptible=True,
-                    )
-                )
-            except NiceReadPreemptedError:
-                _LOGGER.debug("Nice setting INFO read yielded to a command; resuming later")
-                self._setting_info_task = None
-                return
-            except Exception as err:  # noqa: BLE001 - optional metadata, static limits stay in use
-                _LOGGER.debug("Nice setting INFO not available: %r", err)
-                break
-            if info is not None:
-                self.setting_info[setting.key] = info
-        for group, parameter in SCALED_REGISTERS:
-            if f"{group:02X}/{parameter:02X}" in self.register_info:
+        targets = [
+            (self.setting_info, setting.key, setting.group, setting.parameter)
+            for setting in SETTINGS.values()
+        ] + [
+            (self.register_info, f"{group:02X}/{parameter:02X}", group, parameter)
+            for group, parameter in SCALED_REGISTERS
+        ]
+        for store, key, group, parameter in targets:
+            if key in store:
                 continue
             try:
                 info = await self.hass.async_add_executor_job(
                     partial(self.client.read_dmp_info, group, parameter, preemptible=True)
                 )
             except NiceReadPreemptedError:
-                _LOGGER.debug("Nice register INFO read yielded to a command; resuming later")
+                _LOGGER.debug("Nice INFO read yielded to a command; resuming later")
                 self._setting_info_task = None
                 return
-            except Exception as err:  # noqa: BLE001 - optional metadata
-                _LOGGER.debug("Nice register INFO not available: %r", err)
-                return
+            except Exception as err:  # noqa: BLE001 - optional metadata, static limits stay in use
+                _LOGGER.debug("Nice INFO not available: %r", err)
+                break
             if info is not None:
-                self.register_info[f"{group:02X}/{parameter:02X}"] = info
-        _LOGGER.debug("Nice setting INFO read for %d settings", len(self.setting_info))
+                store[key] = info
+        loaded = len(self.setting_info) + len(self.register_info)
+        _LOGGER.debug("Nice INFO read for %d of %d registers", loaded, len(targets))
         self._setting_info_attempts += 1
-        if (
-            len(self.setting_info) < len(SETTINGS)
-            and self._setting_info_attempts < SETTING_INFO_ATTEMPTS
-        ):
+        if loaded < len(targets) and self._setting_info_attempts < SETTING_INFO_ATTEMPTS:
             self._setting_info_task = None
         self.async_update_listeners()
 
