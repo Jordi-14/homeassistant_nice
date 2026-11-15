@@ -82,12 +82,14 @@ EXTENDED_CONTROLLER_PROFILE = DmpRegisterProfile(
 OXI_INFO_PROFILE = DmpRegisterProfile(
     key="oxi_identity",
     target=OXI_TARGET,
+    # STD group 00 (MyNice Pro STD_PROFILE, STD_PRODUCT, STD_HARDWARE_VERSION, STD_FIRMWARE_VERSION,
+    # STD_RADIO_DESCRIPTION); group 0A holds the radio settings and answers 0xFD for these
     registers=(
-        (0x0A, 0x04),
-        (0x0A, 0x09),
-        (0x0A, 0x0A),
-        (0x0A, 0x0B),
-        (0x0A, 0x0C),
+        (0x00, 0x04),
+        (0x00, 0x09),
+        (0x00, 0x0A),
+        (0x00, 0x0B),
+        (0x00, 0x0C),
     ),
     required=False,
 )

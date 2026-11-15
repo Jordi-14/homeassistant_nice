@@ -102,9 +102,9 @@ def status_from_dmp_registers(
             if diagnostic_parameters is not None
             else None
         ),
-        oxi_detected=any(key.startswith("0A/") for key in registers),
-        oxi_product=dmp_ascii(registers.get("0A/09@00.0A")),
-        oxi_hardware_version=dmp_ascii(registers.get("0A/0A@00.0A")),
-        oxi_firmware_version=dmp_ascii(registers.get("0A/0B@00.0A")),
-        oxi_description=dmp_ascii(registers.get("0A/0C@00.0A")),
+        oxi_detected=any(key.endswith("@00.0A") for key in registers),
+        oxi_product=dmp_ascii(registers.get("00/09@00.0A")),
+        oxi_hardware_version=dmp_ascii(registers.get("00/0A@00.0A")),
+        oxi_firmware_version=dmp_ascii(registers.get("00/0B@00.0A")),
+        oxi_description=dmp_ascii(registers.get("00/0C@00.0A")),
     )
