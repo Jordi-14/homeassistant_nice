@@ -515,7 +515,7 @@ class NiceBidiDataUpdateCoordinator(
             except NiceBidiError:
                 raise err from None
             if self._supports_nhk_status():
-                status = self.client.read_nhk_status(preemptible=True)
+                status = self._store_nhk_status_fields(self.client.read_nhk_status(preemptible=True))
                 self._use_nhk_status = True
                 _LOGGER.info(
                     "Nice DMP status polling is not supported by this device; "

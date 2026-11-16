@@ -177,7 +177,9 @@ def parse_nhk_status_frames(frames: list[bytes], device_id: int = 1) -> NiceStat
     for frame in frames:
         parsed = parse_nhk_status_xml(xml_payload(frame), device_id)
         if parsed is not None:
-            status = parsed
+            # a CHANGE after the STATUS reply has no clock or counters: keep the STATUS ones
+            kept = {k: v for k, v in (status.registers if status else {}).items() if k in NHK_STATUS_FIELD_KEYS}
+            status = replace(parsed, registers={**kept, **parsed.registers})
         for plain in decrypt_t4_payloads_from_frame(frame):
             live_status = parse_cuwifi_live_status_payload(plain)
             # event-only frames (no state or position) must not touch the gate status

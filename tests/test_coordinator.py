@@ -354,18 +354,23 @@ async def test_update_data_uses_nhk_status_when_dmp_status_is_unsupported(
         f'<Response type="T4_REQUEST"><Error><Code>{error_code}</Code></Error></Response>'
     )
     client.read_info_result = make_device_info(nhk_status=True)
-    client.read_nhk_status_result = make_status(
-        state="closing",
-        position=None,
-        current_position=None,
-        closed_position=None,
-        open_position=None,
+    client.read_nhk_status_result = replace(
+        make_status(
+            state="closing",
+            position=None,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        ),
+        registers={"NHK/DoorStatus": "closing", "NHK/InterfaceLastEvent": "225"},
     )
     instance.client = client
 
     result = await instance._async_update_data()
 
     assert result.state == "closing"
+    # the first poll after the DMP fallback fills the STATUS sensors too
+    assert instance.nhk_status_fields["NHK/InterfaceLastEvent"] == "225"
     assert result.position is None
     assert instance.device_info is client.read_info_result
     assert instance.status_polling_supported is True
@@ -2863,6 +2868,27 @@ def test_nhk_status_keeps_the_module_clock_and_event_counters() -> None:
     status = parse_nhk_status_xml(STATUS_XML)
 
     assert status.state == "open"
+    assert status.registers["NHK/InterfaceDate"] == "2026-11-15T21:37:10"
+    assert status.registers["NHK/InterfaceLastEvent"] == "225"
+    assert status.registers["NHK/DeviceLastEvent"] == "406"
+
+
+def test_nhk_status_fields_survive_a_change_frame_in_the_same_reply() -> None:
+    """STATUS then CHANGE: the movement state is the latest, clock and counters stay."""
+    from custom_components.nice_bidiwifi.protocol.nhk.codec import frame_xml
+    from custom_components.nice_bidiwifi.protocol.nhk.status import (
+        parse_nhk_status_frames,
+    )
+
+    change = frame_xml(
+        '<Event type="CHANGE"><Devices><Device id="1"><Properties>'
+        "<DoorStatus>closing</DoorStatus><Obstruct>0</Obstruct></Properties></Device></Devices></Event>"
+    )
+
+    status = parse_nhk_status_frames([frame_xml(STATUS_XML), change])
+
+    assert status.state == "closing"
+    assert status.registers["NHK/DoorStatus"] == "closing"
     assert status.registers["NHK/InterfaceDate"] == "2026-11-15T21:37:10"
     assert status.registers["NHK/InterfaceLastEvent"] == "225"
     assert status.registers["NHK/DeviceLastEvent"] == "406"
