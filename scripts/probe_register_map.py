@@ -38,6 +38,9 @@ NO_GET_04 = frozenset(
     {0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x0F, 0x27, 0x2F, 0x3F, 0xA9, 0xB4}
     | {0xDC, 0xDD, 0xDE, 0xDF, 0xE5, 0xE7, 0xE9, 0xEE, 0xEF}
 )
+# Secrets: password (FB) and the built-in radio codes (B8, BA, BB). INFO gives only the value format; their value
+# is never read, so it cannot end up in the report.
+SECRET_04 = frozenset({0xB8, 0xBA, 0xBB, 0xFB})
 # STD identity only: no MAC (07, 21), passwords (13, 14), product detail / serial (20), Wi-Fi code (22).
 STD_IDENTITY = (0x04, 0x08, 0x09, 0x0A, 0x0B, 0x0C)
 # OXI radio group: receiver type and remote coding only. PIN, keys and remote codes are never read.
@@ -89,7 +92,7 @@ def probe(client: Any, include_oxi: bool) -> list[dict[str, Any]]:
     plan: list[tuple[str, tuple[int, int], int, int, bool]] = [
         ("controller", CONTROLLER, 0x00, p, True) for p in STD_IDENTITY
     ]
-    plan += [("controller", CONTROLLER, 0x04, p, p not in NO_GET_04) for p in range(0x100)]
+    plan += [("controller", CONTROLLER, 0x04, p, p not in NO_GET_04 | SECRET_04) for p in range(0x100)]
     if include_oxi:
         plan += [("oxi", OXI, 0x00, p, True) for p in STD_IDENTITY]
         plan += [("oxi", OXI, 0x0A, p, True) for p in OXI_RADIO]

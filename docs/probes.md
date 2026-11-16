@@ -112,6 +112,9 @@ What it never sends or reads:
 - no GET of the registers that start a procedure or a move in MyNice Pro
   (search, delete, reset, activate, go to position, test, calibration; see
   group F of the register map). Only their INFO is read;
+- no GET of the password (04/FB) and the built-in radio-code registers
+  (04/B8, 04/BA, 04/BB), even when the controller supports them. Only their
+  INFO (the value format) is read, so their value is never in the report;
 - no MAC address, password, Wi-Fi setup code or product detail (serial-like),
   and no OXI PIN, keys, certificates or remote codes.
 

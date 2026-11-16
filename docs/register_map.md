@@ -225,7 +225,7 @@ How the position is read depends on the frame (`protocol/t4/live.py`,
 
 | Frame | Conversion | Confirmed on |
 | --- | --- | --- |
-| target `FF.01`, value up to 7000 | raw scalar: `(raw − 04/19) / (04/18 − 04/19) × 100` when the encoder ends are known, a `live_scalar` calibration first, else `raw / 7000` | ROBUSR10 FG01h (#57 run 0: 135 of 135 events within ±2 % of the polled position); RBA4R10 (#14) |
+| target `FF.01`, value up to 7000 | raw scalar: `(raw − 04/19) / (04/18 − 04/19) × 100` when the encoder ends are known, a `live_scalar` calibration first, else `raw / 7000 × 100` | ROBUSR10 FG01h (#57 run 0: 135 of 135 events within ±2 % of the polled position); RBA4R10 (#14) |
 | other target, value 0-100 | percent, used as it is | *guess*: some CU_WIFI devices, no model named |
 
 See [position_calibration.md](position_calibration.md) for how each format is used.
@@ -667,7 +667,9 @@ The full list of the 237 group 04 parameters that MyNice Pro 2.18 knows
 the app. **INFO** and **GET** show how a ROBUSR10 FG01h answered a one-off
 read-only probe (`OK`, or the status code from *How to read this page*). Action
 registers (search, delete, reset, activate, go to position, test, calibration)
-got no GET on purpose: "not sent". 04/E9 (a time) was skipped by the same name
+got no GET on purpose: "not sent". The probe also never sends GET to the password
+(04/FB) and radio-code registers (04/B8, 04/BA, 04/BB); on this controller their
+INFO is `FD`. 04/E9 (a time) was skipped by the same name
 filter. **Map** ✓ = described in sections A-F; registers that share one row there
 (04/05, 04/09, 04/27, 04/2F, 04/3F) have no ✓.
 
