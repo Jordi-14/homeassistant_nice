@@ -25,6 +25,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .client import NiceBidiStatus
 from .connection import NiceConnectionRoute, NiceRouteState
@@ -76,6 +77,30 @@ def _bluebus_fault_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | No
     if status is None or status.bluebus_devices is None:
         return None
     return sum(value in _BLUEBUS_FAULT_NAMES for value in status.bluebus_devices.values())
+
+
+def _interface_clock_offset(coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
+    """Seconds the module clock is ahead (+) or behind (-) at the last STATUS read.
+
+    The module sends local time without a zone (seen: CET on a BiDi-WiFi 2.6.4), so it is read in
+    the Home Assistant time zone.
+    """
+    raw = coordinator.nhk_status_fields.get("NHK/InterfaceDate")
+    read_at = coordinator.nhk_status_read_at
+    if not raw or read_at is None:
+        return None
+    try:
+        module_time = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if module_time.tzinfo is None:
+        module_time = module_time.replace(tzinfo=dt_util.get_default_time_zone())
+    return round((module_time - read_at).total_seconds())
+
+
+def _nhk_counter(key: str, coordinator: NiceBidiDataUpdateCoordinator) -> int | None:
+    value = coordinator.nhk_status_fields.get(key)
+    return int(value) if value is not None and value.isdigit() else None
 
 
 def _status_field(name: str, coordinator: NiceBidiDataUpdateCoordinator) -> Any:
@@ -815,6 +840,44 @@ SENSORS: tuple[NiceBidiSensorEntityDescription, ...] = (
         value_fn=lambda coordinator: (
             _status(coordinator).motor_temperature if _status(coordinator) else None
         ),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="interface_clock_offset",
+        name="Interface clock offset",
+        device_class=SensorDeviceClass.DURATION,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:clock-alert-outline",
+        value_fn=_interface_clock_offset,
+        extra_attributes_fn=lambda coordinator: {
+            key: value
+            for key, value in (
+                ("interface_clock", coordinator.nhk_status_fields.get("NHK/InterfaceDate")),
+                ("read_at", coordinator.nhk_status_read_at),
+            )
+            if value is not None
+        },
+    ),
+    NiceBidiSensorEntityDescription(
+        key="interface_event_counter",
+        name="Interface event counter",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:counter",
+        value_fn=partial(_nhk_counter, "NHK/InterfaceLastEvent"),
+    ),
+    NiceBidiSensorEntityDescription(
+        key="device_event_counter",
+        name="Device event counter",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
+        icon="mdi:counter",
+        value_fn=partial(_nhk_counter, "NHK/DeviceLastEvent"),
     ),
     NiceBidiSensorEntityDescription(
         key="service_voltage",

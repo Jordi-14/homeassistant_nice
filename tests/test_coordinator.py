@@ -358,18 +358,23 @@ async def test_update_data_uses_nhk_status_when_dmp_status_is_unsupported(
         f'<Response type="T4_REQUEST"><Error><Code>{error_code}</Code></Error></Response>'
     )
     client.read_info_result = make_device_info(nhk_status=True)
-    client.read_nhk_status_result = make_status(
-        state="closing",
-        position=None,
-        current_position=None,
-        closed_position=None,
-        open_position=None,
+    client.read_nhk_status_result = replace(
+        make_status(
+            state="closing",
+            position=None,
+            current_position=None,
+            closed_position=None,
+            open_position=None,
+        ),
+        registers={"NHK/DoorStatus": "closing", "NHK/InterfaceLastEvent": "225"},
     )
     instance.client = client
 
     result = await instance._async_update_data()
 
     assert result.state == "closing"
+    # the first poll after the DMP fallback fills the STATUS sensors too
+    assert instance.nhk_status_fields["NHK/InterfaceLastEvent"] == "225"
     assert result.position is None
     assert instance.device_info is client.read_info_result
     assert instance.status_polling_supported is True
@@ -2851,3 +2856,83 @@ async def test_remove_entry_deletes_the_issue_and_stored_baseline(
     assert _issue(hass) is None
     assert LIMITS_KEY not in hass_storage
     await instance.async_shutdown()
+
+
+STATUS_XML = """<Response id="257" type="STATUS">
+<Interface><Date>2026-11-15T21:37:10</Date><Settings><Name>x</Name></Settings>
+<Events><LastEvent>225</LastEvent></Events></Interface>
+<Devices><Device id="1"><Properties><DoorStatus>open</DoorStatus><Obstruct>0</Obstruct></Properties>
+<Events><LastEvent>406</LastEvent></Events><Scheduled></Scheduled></Device></Devices></Response>"""
+
+
+def test_nhk_status_keeps_the_module_clock_and_event_counters() -> None:
+    """Fields seen on a BiDi-WiFi 2.6.4 STATUS reply (name and location removed)."""
+    from custom_components.nice_bidiwifi.protocol.nhk.status import parse_nhk_status_xml
+
+    status = parse_nhk_status_xml(STATUS_XML)
+
+    assert status.state == "open"
+    assert status.registers["NHK/InterfaceDate"] == "2026-11-15T21:37:10"
+    assert status.registers["NHK/InterfaceLastEvent"] == "225"
+    assert status.registers["NHK/DeviceLastEvent"] == "406"
+
+
+def test_nhk_status_fields_survive_a_change_frame_in_the_same_reply() -> None:
+    """STATUS then CHANGE: the movement state is the latest, clock and counters stay."""
+    from custom_components.nice_bidiwifi.protocol.nhk.codec import frame_xml
+    from custom_components.nice_bidiwifi.protocol.nhk.status import (
+        parse_nhk_status_frames,
+    )
+
+    change = frame_xml(
+        '<Event type="CHANGE"><Devices><Device id="1"><Properties>'
+        "<DoorStatus>closing</DoorStatus><Obstruct>0</Obstruct></Properties></Device></Devices></Event>"
+    )
+
+    status = parse_nhk_status_frames([frame_xml(STATUS_XML), change])
+
+    assert status.state == "closing"
+    assert status.registers["NHK/DoorStatus"] == "closing"
+    assert status.registers["NHK/InterfaceDate"] == "2026-11-15T21:37:10"
+    assert status.registers["NHK/InterfaceLastEvent"] == "225"
+    assert status.registers["NHK/DeviceLastEvent"] == "406"
+
+
+async def test_extended_scan_reads_nhk_status_fields_once(hass: HomeAssistant) -> None:
+    """One NHK STATUS per extended scan; the start-up obstacle seed read is reused."""
+    from custom_components.nice_bidiwifi.protocol.nhk.status import parse_nhk_status_xml
+
+    instance, client = await _seed_coordinator(
+        hass,
+        read_nhk_status_result=parse_nhk_status_xml(STATUS_XML),
+        read_status_result=make_status(obstacle=None, state="open"),
+    )
+    await instance._async_update_data()
+    assert client.nhk_status_reads == 1
+    assert instance.nhk_status_fields["NHK/DeviceLastEvent"] == "406"
+    assert instance.nhk_status_read_at is not None
+
+    await instance._async_update_data()  # normal poll: no STATUS
+    assert client.nhk_status_reads == 1
+    instance._extended_status_next_refresh_monotonic = 0.0  # extended scan due again
+    await instance._async_update_data()  # extended again: one STATUS
+    assert client.nhk_status_reads == 2
+
+
+async def test_interface_clock_offset_uses_the_home_assistant_time_zone(hass: HomeAssistant) -> None:
+    """The module sends local time without a zone (CET here): 21:37:10 local at 20:37:20 UTC = -10 s."""
+    from datetime import UTC, datetime
+
+    from homeassistant.util import dt as dt_util
+
+    from custom_components.nice_bidiwifi.sensor import _interface_clock_offset
+
+    await hass.config.async_set_time_zone("Europe/Warsaw")
+    instance = _coordinator(hass)
+    instance.nhk_status_fields = {"NHK/InterfaceDate": "2026-11-15T21:37:10"}
+    instance.nhk_status_read_at = datetime(2026, 11, 15, 20, 37, 20, tzinfo=UTC)
+    assert dt_util.get_default_time_zone().key == "Europe/Warsaw"
+    assert _interface_clock_offset(instance) == -10
+
+    instance.nhk_status_fields = {"NHK/InterfaceDate": "garbage"}
+    assert _interface_clock_offset(instance) is None

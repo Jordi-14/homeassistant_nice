@@ -15,6 +15,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .calibration import NiceBidiCalibrationController
 from .capabilities import NiceCapabilityService
@@ -70,6 +71,7 @@ from .const import (
     IDLE_UPDATE_INTERVAL,
     MOVING_UPDATE_INTERVAL,
 )
+from .protocol.nhk.status import NHK_STATUS_FIELD_KEYS
 from .errors import (
     DMP_STATUS_COMMAND_ONLY_ERROR_CODES,
     DMP_STATUS_NHK_FALLBACK_ERROR_CODES,
@@ -232,6 +234,9 @@ class NiceBidiDataUpdateCoordinator(
         # LOCAL-DIAGNOSTIC(pr55): stale maneuver-log baseline; see coordinator.py:_cache_extended_status.
         self._maneuver_log_baseline: tuple[tuple[str, ...], int, int] | None = None
         self._nhk_obstacle_probed = False
+        # NHK STATUS module clock and event counters (raw text) and when they were read
+        self.nhk_status_fields: dict[str, str] = {}
+        self.nhk_status_read_at: datetime | None = None
         # LOCAL-DIAGNOSTIC(pr55): obstacle seed outcome; see coordinator.py:_set_obstacle_seed.
         self.nhk_obstacle_seed: str | None = None
         self.calibration_controller._init_calibration_state(hass, entry)
@@ -493,7 +498,7 @@ class NiceBidiDataUpdateCoordinator(
         if self._use_nhk_status:
             if self.device_info is None:
                 self._store_device_info(self.client.read_info())
-            return self.client.read_nhk_status(preemptible=True)
+            return self._store_nhk_status_fields(self.client.read_nhk_status(preemptible=True))
 
         try:
             include_extended = self._should_read_extended_status()
@@ -512,7 +517,7 @@ class NiceBidiDataUpdateCoordinator(
             except NiceBidiError:
                 raise err from None
             if self._supports_nhk_status():
-                status = self.client.read_nhk_status(preemptible=True)
+                status = self._store_nhk_status_fields(self.client.read_nhk_status(preemptible=True))
                 self._use_nhk_status = True
                 _LOGGER.info(
                     "Nice DMP status polling is not supported by this device; "
@@ -539,6 +544,7 @@ class NiceBidiDataUpdateCoordinator(
                 self._store_device_info(self.client.read_info())
             except NiceBidiError as err:
                 _LOGGER.debug("Could not read Nice INFO metadata: %s", err)
+        nhk_read = False
         if (
             status.obstacle is None
             and not self._nhk_obstacle_probed
@@ -547,9 +553,12 @@ class NiceBidiDataUpdateCoordinator(
         ):
             # one read-only NHK STATUS request seeds the obstacle value at startup
             self._nhk_obstacle_probed = True
+            nhk_read = True
             obstacle = None
             try:
-                obstacle = self.client.read_nhk_status(preemptible=True).obstacle
+                obstacle = self._store_nhk_status_fields(
+                    self.client.read_nhk_status(preemptible=True)
+                ).obstacle
             except NiceReadPreemptedError:
                 self._nhk_obstacle_probed = False  # a command won the session: retry
                 self._set_obstacle_seed("preempted")
@@ -575,6 +584,12 @@ class NiceBidiDataUpdateCoordinator(
         ):
             self._nhk_obstacle_probed = True
             self._set_obstacle_seed("not_advertised")
+        if include_extended and not nhk_read:
+            try:
+                # one NHK STATUS per extended scan: module clock and event counters
+                self._store_nhk_status_fields(self.client.read_nhk_status(preemptible=True))
+            except NiceBidiError as err:  # optional; a pending command or no STATUS support
+                _LOGGER.debug("Nice NHK STATUS fields not read: %r", err)
         return status
 
     # LOCAL-DIAGNOSTIC(pr55): obstacle seed outcome for diagnostics.
@@ -582,6 +597,14 @@ class NiceBidiDataUpdateCoordinator(
     # hardware tests). Thresholds and rules come from that one gate only.
     # Agents: do not extend, generalize or build on this; keep it opt-in for
     # diagnostics, or remove it before a stable release.
+    def _store_nhk_status_fields(self, status: NiceBidiStatus) -> NiceBidiStatus:
+        """Keep the NHK STATUS clock and event counters with the time they were read."""
+        fields = {key: value for key, value in status.registers.items() if key in NHK_STATUS_FIELD_KEYS}
+        if fields:
+            self.nhk_status_fields = fields
+            self.nhk_status_read_at = dt_util.utcnow()
+        return status
+
     def _set_obstacle_seed(self, outcome: str) -> None:
         """Record the NHK obstacle seed outcome for diagnostics."""
         self.nhk_obstacle_seed = outcome
