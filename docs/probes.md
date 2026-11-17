@@ -84,6 +84,55 @@ This probe is useful when a CU_WIFI beta mostly works but state, position, or
 obstruction behavior does not match the physical gate. It captures the live
 NHK/T4 frames the integration relies on for the CU_WIFI fallback path.
 
+## Register Map Probe
+
+Use this probe to add a controller model to
+[register_map.md](register_map.md): it shows which registers the controller has
+and in which format. It is most useful for models not in the map yet, for
+example swing gates with two motors.
+
+```bash
+python3 scripts/probe_register_map.py \
+  --host <bidi_ip> \
+  --credentials credentials.json \
+  --output register_probe.json
+```
+
+What it reads (DMP read requests only, flags `0x89` INFO and `0x99` GET):
+
+- INFO of all 256 group 04 parameters of the control unit (`00.03`), then GET of
+  each parameter whose INFO is not `FD` (not supported);
+- the STD identity (`00/04`, `00/08`-`00/0C`) of the control unit and, unless
+  `--no-oxi` is used, of an OXI receiver (`00.0A`), plus the OXI receiver type
+  (`0A/00`) and remote coding (`0A/41`).
+
+What it never sends or reads:
+
+- no `SET`, `DEP`, `CHANGE`, open, stop or close: the gate does not move;
+- no GET of the registers that start a procedure or a move in MyNice Pro
+  (search, delete, reset, activate, go to position, test, calibration; see
+  group F of the register map). Only their INFO is read;
+- no GET of the password (04/FB) and the built-in radio-code registers
+  (04/B8, 04/BA, 04/BB), even when the controller supports them. Only their
+  INFO (the value format) is read, so their value is never in the report;
+- no MAC address, password, Wi-Fi setup code or product detail (serial-like),
+  and no OXI PIN, keys, certificates or remote codes.
+
+Before the run:
+
+1. In Home Assistant, disable the integration entry (Settings → Devices &
+   services → Nice BiDi-WiFi → ⋮ → Disable), so only one client talks to the
+   interface. Enable it again after the run.
+2. Make sure nobody uses the gate during the run. It takes a few minutes.
+
+The JSON report has one entry per register with the INFO and GET status (`OK`,
+`F0`, `F1`, `F9`, `FD`) and the raw data bytes. It contains the controller
+product and firmware, but no host, MAC, username or serial number. Group 04
+values are controller settings and are safe to share; check the file before you
+post it and remove anything you do not want to publish. Attach it to an issue
+with the controller model and the gate type (sliding, swing with one or two
+motors, barrier, ...).
+
 ## Sharing Reports
 
 Use the default redacted output for public issues. Do not share:
