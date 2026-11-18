@@ -142,6 +142,11 @@ class ResponseDispatcher:
 
     def _reader_loop(self) -> None:
         """Run the reader and release the transport if close() deferred it."""
+        with self._condition:
+            # start() forgets a thread whose start was interrupted; such a
+            # thread must never read alongside a later registered reader.
+            if self._reader_thread is not threading.current_thread():
+                return
         try:
             self._read_frames()
         finally:
@@ -347,33 +352,42 @@ class ResponseDispatcher:
             self._close_transport()
             return
         deadline = time.monotonic() + _READER_STOP_TIMEOUT_SECONDS
+        close_transport = False
+        still_used = False
         try:
-            shutdown = getattr(self.transport, "shutdown", None)
-            if shutdown is not None:
-                try:
-                    shutdown()
-                except Exception:
-                    _LOGGER.debug("Nice transport shutdown failed", exc_info=True)
-            if reader is not None and reader is not current:
-                reader.join(timeout=_READER_STOP_TIMEOUT_SECONDS)
+            try:
+                shutdown = getattr(self.transport, "shutdown", None)
+                if shutdown is not None:
+                    try:
+                        shutdown()
+                    except Exception:
+                        _LOGGER.debug(
+                            "Nice transport shutdown failed", exc_info=True
+                        )
+                if reader is not None and reader is not current:
+                    reader.join(timeout=_READER_STOP_TIMEOUT_SECONDS)
+            finally:
+                # Always hand the close over, even if waking or waiting
+                # failed: otherwise the socket stays open after the last user.
+                with self._condition:
+                    try:
+                        while self._active_sends:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                break
+                            self._condition.wait(timeout=remaining)
+                    finally:
+                        self._close_deferred = True
+                        close_transport = self._take_deferred_close_locked()
+                        still_used = not close_transport and bool(
+                            self._active_sends
+                            or self._reader_thread not in (None, current)
+                        )
         finally:
-            # Always hand the close over, even if waking or waiting failed:
-            # otherwise the socket would stay open after the last user left.
-            with self._condition:
-                while self._active_sends:
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        break
-                    self._condition.wait(timeout=remaining)
-                self._close_deferred = True
-                close_transport = self._take_deferred_close_locked()
-                still_used = not close_transport and (
-                    self._active_sends
-                    or self._reader_thread not in (None, current)
-                )
-        if close_transport:
-            self._close_transport()
-        elif still_used:
+            # A close claimed above is performed even if an error propagates.
+            if close_transport:
+                self._close_transport()
+        if still_used:
             _LOGGER.warning(
                 "Nice transport still in use after shutdown; "
                 "the connection is closed when the last user finishes"

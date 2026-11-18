@@ -330,7 +330,8 @@ def _release(socket: ShutdownTrackingSocket, *threads: threading.Thread) -> Call
     def cleanup() -> None:
         socket.wake.set()
         for thread in threads:
-            thread.join(timeout=2.0)
+            # Class method: a test may replace the instance's join().
+            threading.Thread.join(thread, timeout=2.0)
 
     return cleanup
 
@@ -560,27 +561,92 @@ def test_failed_reader_start_does_not_block_close(
 
 
 def test_unexpected_shutdown_error_still_hands_over_the_close(
+    monkeypatch: pytest.MonkeyPatch,
     release_blocked_io: list[Callable[[], None]],
 ) -> None:
     """A failing shutdown hook must not leave the socket open after the reader."""
+    monkeypatch.setattr(
+        "custom_components.nice_bidiwifi.transport.dispatcher."
+        "_READER_STOP_TIMEOUT_SECONDS",
+        0.05,
+        raising=False,
+    )
     socket = ShutdownTrackingSocket(honour_shutdown=False)
     dispatcher, reader = _start_blocked_reader(socket)
     release_blocked_io.append(_release(socket, reader))
+    hook_calls: list[str] = []
 
     def broken_shutdown() -> None:
+        hook_calls.append("shutdown")
         raise RuntimeError("synthetic shutdown failure")
 
     dispatcher.transport.shutdown = broken_shutdown  # type: ignore[method-assign]
-    closer = threading.Thread(target=dispatcher.close)
-    closer.start()
-    time.sleep(0.05)
-    socket.wake.set()
-    closer.join(timeout=5.0)
-    reader.join(timeout=2.0)
 
-    assert not closer.is_alive()
-    assert socket.closed is True
+    dispatcher.close()  # the reader stays blocked in recv()
+
+    assert hook_calls == ["shutdown"]
+    assert socket.closed is False
+    socket.wake.set()
+    reader.join(timeout=2.0)
+    assert not reader.is_alive()
+    assert socket.calls.count("close") == 1
     assert socket.closed_during_recv is False
+
+
+def test_join_error_after_reader_exit_still_closes_the_socket(
+    release_blocked_io: list[Callable[[], None]],
+) -> None:
+    """A close claimed by close() itself is performed even if join() raised."""
+    socket = ShutdownTrackingSocket()
+    dispatcher, reader = _start_blocked_reader(socket)
+    release_blocked_io.append(_release(socket, reader))
+    real_join = reader.join
+
+    def join_then_fail(timeout: float | None = None) -> None:
+        real_join(timeout)
+        raise RuntimeError("synthetic join failure")
+
+    reader.join = join_then_fail  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="synthetic join failure"):
+        dispatcher.close()
+
+    assert not reader.is_alive()
+    assert socket.calls == ["shutdown", "close"]
+    assert socket.closed_during_recv is False
+
+
+def test_interrupted_reader_start_never_runs_a_second_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A thread launched before start() was interrupted must not read."""
+    socket = QueueSocket()
+    dispatcher = ResponseDispatcher(SocketFrameTransport(socket))
+    dispatcher.add_event_callback(lambda _frame: None)
+    readers: list[threading.Thread] = []
+    original_read_frames = ResponseDispatcher._read_frames
+    original_start = threading.Thread.start
+
+    def counting_read_frames(self: ResponseDispatcher) -> None:
+        readers.append(threading.current_thread())
+        original_read_frames(self)
+
+    def start_then_interrupt(self: threading.Thread) -> None:
+        original_start(self)
+        raise RuntimeError("synthetic interrupted start")
+
+    monkeypatch.setattr(ResponseDispatcher, "_read_frames", counting_read_frames)
+    monkeypatch.setattr(threading.Thread, "start", start_then_interrupt)
+    with pytest.raises(RuntimeError):
+        dispatcher.start()
+    monkeypatch.setattr(threading.Thread, "start", original_start)
+    dispatcher.start()
+    time.sleep(0.1)
+    dispatcher.close()
+    time.sleep(0.3)
+
+    assert len(readers) == 1
+    assert socket.closed is True
 
 
 def test_tls_socket_shutdown_keeps_ssl_object_attached() -> None:
