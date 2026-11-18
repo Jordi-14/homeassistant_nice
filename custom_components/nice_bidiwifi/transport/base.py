@@ -6,7 +6,13 @@ from typing import Protocol
 
 
 class FrameTransport(Protocol):
-    """A connected framed byte transport."""
+    """A connected framed byte transport.
+
+    The dispatcher can call send_frame and read_frame from different threads.
+    Implementations sharing mutable TLS state must serialize the actual I/O.
+    Shutdown may wake I/O without releasing the descriptor; final close follows
+    the dispatcher's socket-user lifetime checks.
+    """
 
     @property
     def connected(self) -> bool:

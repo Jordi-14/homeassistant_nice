@@ -501,9 +501,13 @@ class RecvProbe:
         self.real.close()
 
 
-def test_shutdown_wakes_real_socket_reader_before_descriptor_is_released() -> None:
+def test_shutdown_wakes_real_socket_reader_before_descriptor_is_released(monkeypatch) -> None:
     """With real sockets, the descriptor is closed only after recv() returned."""
     local, peer = socket.socketpair()
+    monkeypatch.setattr(
+        "custom_components.nice_bidiwifi.transport.lan._READ_SLICE_SECONDS", 3.0,
+        raising=False,
+    )
     probe = RecvProbe(local)
     reader = None
     try:
