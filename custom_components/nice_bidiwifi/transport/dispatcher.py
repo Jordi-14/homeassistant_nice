@@ -17,6 +17,7 @@ RawEventCallback = Callable[[bytes], None]
 ReaderFailureCallback = Callable[[Exception], None]
 
 _READER_TIMEOUT_SECONDS = 0.25
+_READER_STOP_TIMEOUT_SECONDS = 2.0
 _INTERRUPT_CHECK_SECONDS = 0.05
 _MAX_EXCHANGE_FRAMES = 64
 
@@ -44,6 +45,10 @@ class ResponseDispatcher:
         self._failure_callbacks: list[ReaderFailureCallback] = []
         self._reader_thread: threading.Thread | None = None
         self._closed = False
+        # Threads that may still use the socket: the reader and in-flight
+        # send_frame() calls. The descriptor is released only after all left.
+        self._active_sends = 0
+        self._close_deferred = False
         self._failure: Exception | None = None
 
     @property
@@ -104,12 +109,18 @@ class ResponseDispatcher:
                 raise OSError(str(self._failure)) from self._failure
             if self._reader_thread and self._reader_thread.is_alive():
                 return
-            self._reader_thread = threading.Thread(
+            reader = threading.Thread(
                 target=self._reader_loop,
                 name="nice-bidiwifi-reader",
                 daemon=True,
             )
-            self._reader_thread.start()
+            self._reader_thread = reader
+            try:
+                reader.start()
+            except BaseException:
+                # An unstarted thread would block the deferred close forever.
+                self._reader_thread = None
+                raise
 
     def _publish_event(self, frame: bytes) -> None:
         with self._condition:
@@ -130,6 +141,47 @@ class ResponseDispatcher:
                 _LOGGER.exception("Nice reader-failure callback failed")
 
     def _reader_loop(self) -> None:
+        """Run the reader and release the transport if close() deferred it."""
+        with self._condition:
+            # start() forgets a thread whose start was interrupted; such a
+            # thread must never read alongside a later registered reader.
+            if self._reader_thread is not threading.current_thread():
+                return
+        try:
+            self._read_frames()
+        finally:
+            with self._condition:
+                if self._reader_thread is threading.current_thread():
+                    self._reader_thread = None
+                close_transport = self._take_deferred_close_locked()
+                self._condition.notify_all()
+            if close_transport:
+                self._close_transport()
+
+    def _take_deferred_close_locked(self) -> bool:
+        """Claim a deferred close once no thread can still use the socket."""
+        if (
+            self._close_deferred
+            and self._reader_thread is None
+            and self._active_sends == 0
+        ):
+            self._close_deferred = False
+            return True
+        return False
+
+    def _send(self, request: bytes) -> None:
+        """Send while counted as a socket user (counter taken by the caller)."""
+        try:
+            self.transport.send_frame(request)
+        finally:
+            with self._condition:
+                self._active_sends -= 1
+                close_transport = self._take_deferred_close_locked()
+                self._condition.notify_all()
+            if close_transport:
+                self._close_transport()
+
+    def _read_frames(self) -> None:
         """Continuously route complete frames from the transport."""
         while True:
             with self._condition:
@@ -227,9 +279,10 @@ class ResponseDispatcher:
             if self._failure is not None:
                 raise OSError(str(self._failure)) from self._failure
             self._pending.append(pending)
+            self._active_sends += 1
 
         try:
-            self.transport.send_frame(request)
+            self._send(request)
             self.start()
             with self._condition:
                 while True:
@@ -274,19 +327,74 @@ class ResponseDispatcher:
                 reader.join(timeout=1.0)
 
     def close(self) -> None:
-        """Stop the reader, release pending requests, and close the transport."""
+        """Stop the reader, release pending requests, and close the transport.
+
+        The socket is never closed while another thread may still use it: a
+        closed descriptor number is reused by the next ``open()`` in the
+        process, and a stale reader (or sender) would then read from and
+        write TLS records into that unrelated file. Wake the users with
+        ``shutdown()``, wait for them, and only then close. If they do not
+        stop in time, the last one closes the transport when it finishes.
+        """
+        current = threading.current_thread()
         with self._condition:
             if self._closed:
                 return
             self._closed = True
             reader = self._reader_thread
             self._condition.notify_all()
+            immediate = (
+                reader is None or reader is current
+            ) and self._active_sends == 0
+        if immediate:
+            # No other user: no reader, or close() runs from a reader callback
+            # (the reader is then outside recv), and no send in flight.
+            self._close_transport()
+            return
+        deadline = time.monotonic() + _READER_STOP_TIMEOUT_SECONDS
+        close_transport = False
+        still_used = False
+        try:
+            try:
+                shutdown = getattr(self.transport, "shutdown", None)
+                if shutdown is not None:
+                    try:
+                        shutdown()
+                    except Exception:
+                        _LOGGER.debug(
+                            "Nice transport shutdown failed", exc_info=True
+                        )
+                if reader is not None and reader is not current:
+                    reader.join(timeout=_READER_STOP_TIMEOUT_SECONDS)
+            finally:
+                # Always hand the close over, even if waking or waiting
+                # failed: otherwise the socket stays open after the last user.
+                with self._condition:
+                    try:
+                        while self._active_sends:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                break
+                            self._condition.wait(timeout=remaining)
+                    finally:
+                        self._close_deferred = True
+                        close_transport = self._take_deferred_close_locked()
+                        still_used = not close_transport and bool(
+                            self._active_sends
+                            or self._reader_thread not in (None, current)
+                        )
+        finally:
+            # A close claimed above is performed even if an error propagates.
+            if close_transport:
+                self._close_transport()
+        if still_used:
+            _LOGGER.warning(
+                "Nice transport still in use after shutdown; "
+                "the connection is closed when the last user finishes"
+            )
+
+    def _close_transport(self) -> None:
         try:
             self.transport.close()
-        finally:
-            if reader is not None and reader is not threading.current_thread():
-                reader.join(timeout=2.0)
-                if reader.is_alive():
-                    _LOGGER.warning(
-                        "Nice response reader did not stop after transport close"
-                    )
+        except OSError:
+            _LOGGER.debug("Nice transport close failed", exc_info=True)
