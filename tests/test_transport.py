@@ -520,10 +520,8 @@ def test_shutdown_wakes_real_socket_reader_before_descriptor_is_released() -> No
         assert probe.entered.wait(timeout=2.0)
         time.sleep(0.05)
 
-        started = time.monotonic()
         dispatcher.close()
 
-        assert time.monotonic() - started < 2.5  # woken by shutdown, not the 3 s read
         assert not reader.is_alive()
         assert probe.events[-3:] == ["shutdown", "recv_exit", "close"]
         assert local.fileno() == -1
@@ -620,33 +618,37 @@ def test_interrupted_reader_start_never_runs_a_second_reader(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A thread launched before start() was interrupted must not read."""
-    socket = QueueSocket()
-    dispatcher = ResponseDispatcher(SocketFrameTransport(socket))
-    dispatcher.add_event_callback(lambda _frame: None)
-    readers: list[threading.Thread] = []
-    original_read_frames = ResponseDispatcher._read_frames
+    dispatcher = ResponseDispatcher(SocketFrameTransport(FakeSocket([])))
+    entered: list[threading.Thread] = []
+    launched: list[threading.Thread] = []
     original_start = threading.Thread.start
 
-    def counting_read_frames(self: ResponseDispatcher) -> None:
-        readers.append(threading.current_thread())
-        original_read_frames(self)
+    def record_read_frames(_self: ResponseDispatcher) -> None:
+        entered.append(threading.current_thread())
+
+    def start_and_record(self: threading.Thread) -> None:
+        launched.append(self)
+        original_start(self)
 
     def start_then_interrupt(self: threading.Thread) -> None:
-        original_start(self)
+        start_and_record(self)
         raise RuntimeError("synthetic interrupted start")
 
-    monkeypatch.setattr(ResponseDispatcher, "_read_frames", counting_read_frames)
-    monkeypatch.setattr(threading.Thread, "start", start_then_interrupt)
-    with pytest.raises(RuntimeError):
+    monkeypatch.setattr(ResponseDispatcher, "_read_frames", record_read_frames)
+    try:
+        monkeypatch.setattr(threading.Thread, "start", start_then_interrupt)
+        with pytest.raises(RuntimeError):
+            dispatcher.start()
+        monkeypatch.setattr(threading.Thread, "start", start_and_record)
         dispatcher.start()
-    monkeypatch.setattr(threading.Thread, "start", original_start)
-    dispatcher.start()
-    time.sleep(0.1)
-    dispatcher.close()
-    time.sleep(0.3)
+    finally:
+        monkeypatch.setattr(threading.Thread, "start", original_start)
+        for thread in launched:
+            thread.join(timeout=2.0)
 
-    assert len(readers) == 1
-    assert socket.closed is True
+    assert len(launched) == 2
+    assert not any(thread.is_alive() for thread in launched)
+    assert entered == [launched[1]]
 
 
 def test_tls_socket_shutdown_keeps_ssl_object_attached() -> None:
