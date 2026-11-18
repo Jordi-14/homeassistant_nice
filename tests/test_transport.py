@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import socket
 import ssl
 import threading
 import time
+from collections.abc import Callable
 from queue import Empty, Queue
 
 import pytest
@@ -315,6 +317,24 @@ class ShutdownTrackingSocket:
         self.closed = True
 
 
+@pytest.fixture
+def release_blocked_io():
+    """Wake and join blocked fake I/O threads even when an assertion failed."""
+    cleanups: list[Callable[[], None]] = []
+    yield cleanups
+    for cleanup in reversed(cleanups):
+        cleanup()
+
+
+def _release(socket: ShutdownTrackingSocket, *threads: threading.Thread) -> Callable[[], None]:
+    def cleanup() -> None:
+        socket.wake.set()
+        for thread in threads:
+            thread.join(timeout=2.0)
+
+    return cleanup
+
+
 def _start_blocked_reader(
     socket: ShutdownTrackingSocket,
 ) -> tuple[ResponseDispatcher, threading.Thread]:
@@ -327,10 +347,13 @@ def _start_blocked_reader(
     return dispatcher, reader
 
 
-def test_dispatcher_close_never_releases_socket_under_running_reader() -> None:
+def test_dispatcher_close_never_releases_socket_under_running_reader(
+    release_blocked_io: list[Callable[[], None]],
+) -> None:
     """The descriptor stays allocated until the reader left recv()."""
     socket = ShutdownTrackingSocket()
     dispatcher, reader = _start_blocked_reader(socket)
+    release_blocked_io.append(_release(socket, reader))
 
     dispatcher.close()
 
@@ -342,6 +365,7 @@ def test_dispatcher_close_never_releases_socket_under_running_reader() -> None:
 
 def test_dispatcher_defers_close_to_a_reader_that_does_not_stop(
     monkeypatch: pytest.MonkeyPatch,
+    release_blocked_io: list[Callable[[], None]],
 ) -> None:
     """A stuck reader closes the socket itself instead of racing close()."""
     monkeypatch.setattr(
@@ -352,6 +376,7 @@ def test_dispatcher_defers_close_to_a_reader_that_does_not_stop(
     )
     socket = ShutdownTrackingSocket(honour_shutdown=False)
     dispatcher, reader = _start_blocked_reader(socket)
+    release_blocked_io.append(_release(socket, reader))
 
     dispatcher.close()
 
@@ -404,10 +429,13 @@ def _start_blocked_send(
     return dispatcher, sender, errors
 
 
-def test_dispatcher_close_waits_for_a_send_in_flight() -> None:
+def test_dispatcher_close_waits_for_a_send_in_flight(
+    release_blocked_io: list[Callable[[], None]],
+) -> None:
     """A concurrent sendall() keeps the descriptor allocated until it returns."""
     socket = ShutdownTrackingSocket(block_send=True)
     dispatcher, sender, errors = _start_blocked_send(socket)
+    release_blocked_io.append(_release(socket, sender))
 
     dispatcher.close()
     sender.join(timeout=2.0)
@@ -420,6 +448,7 @@ def test_dispatcher_close_waits_for_a_send_in_flight() -> None:
 
 def test_last_sender_closes_when_close_timed_out(
     monkeypatch: pytest.MonkeyPatch,
+    release_blocked_io: list[Callable[[], None]],
 ) -> None:
     """A send that ignores shutdown closes the transport when it finishes."""
     monkeypatch.setattr(
@@ -430,6 +459,7 @@ def test_last_sender_closes_when_close_timed_out(
     )
     socket = ShutdownTrackingSocket(honour_shutdown=False, block_send=True)
     dispatcher, sender, _errors = _start_blocked_send(socket)
+    release_blocked_io.append(_release(socket, sender))
 
     dispatcher.close()
 
@@ -474,11 +504,12 @@ def test_shutdown_wakes_real_socket_reader_before_descriptor_is_released() -> No
     """With real sockets, the descriptor is closed only after recv() returned."""
     local, peer = socket.socketpair()
     probe = RecvProbe(local)
+    reader = None
     try:
         dispatcher = ResponseDispatcher(SocketFrameTransport(probe))
         dispatcher.add_event_callback(lambda _frame: None)
         # A long read timeout keeps the reader inside one blocking recv().
-        monkey_timeout = 30.0
+        monkey_timeout = 3.0
         dispatcher.transport.read_frame = (  # type: ignore[method-assign]
             lambda _t, read=dispatcher.transport.read_frame: read(monkey_timeout)
         )
@@ -491,13 +522,65 @@ def test_shutdown_wakes_real_socket_reader_before_descriptor_is_released() -> No
         started = time.monotonic()
         dispatcher.close()
 
-        assert time.monotonic() - started < 5.0  # woken by shutdown, not the 30 s read
+        assert time.monotonic() - started < 2.5  # woken by shutdown, not the 3 s read
         assert not reader.is_alive()
         assert probe.events[-3:] == ["shutdown", "recv_exit", "close"]
         assert local.fileno() == -1
     finally:
+        if reader is not None and reader.is_alive():
+            # Regression path: wake the reader (EOF from the peer also works
+            # when the old code already closed the local socket).
+            with contextlib.suppress(OSError):
+                local.shutdown(socket.SHUT_RDWR)
+            peer.close()
+            reader.join(timeout=4.0)
         peer.close()
         local.close()
+
+
+def test_failed_reader_start_does_not_block_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reader thread that never started is forgotten, so close() still closes."""
+    socket = FakeSocket([])
+    dispatcher = ResponseDispatcher(SocketFrameTransport(socket))
+
+    def fail_start(_self: threading.Thread) -> None:
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(threading.Thread, "start", fail_start)
+    with pytest.raises(RuntimeError):
+        dispatcher.start()
+    monkeypatch.undo()
+
+    dispatcher.close()
+
+    assert dispatcher._reader_thread is None
+    assert socket.closed is True
+
+
+def test_unexpected_shutdown_error_still_hands_over_the_close(
+    release_blocked_io: list[Callable[[], None]],
+) -> None:
+    """A failing shutdown hook must not leave the socket open after the reader."""
+    socket = ShutdownTrackingSocket(honour_shutdown=False)
+    dispatcher, reader = _start_blocked_reader(socket)
+    release_blocked_io.append(_release(socket, reader))
+
+    def broken_shutdown() -> None:
+        raise RuntimeError("synthetic shutdown failure")
+
+    dispatcher.transport.shutdown = broken_shutdown  # type: ignore[method-assign]
+    closer = threading.Thread(target=dispatcher.close)
+    closer.start()
+    time.sleep(0.05)
+    socket.wake.set()
+    closer.join(timeout=5.0)
+    reader.join(timeout=2.0)
+
+    assert not closer.is_alive()
+    assert socket.closed is True
+    assert socket.closed_during_recv is False
 
 
 def test_tls_socket_shutdown_keeps_ssl_object_attached() -> None:

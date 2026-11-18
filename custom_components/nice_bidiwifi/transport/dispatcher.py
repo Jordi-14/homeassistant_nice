@@ -109,12 +109,18 @@ class ResponseDispatcher:
                 raise OSError(str(self._failure)) from self._failure
             if self._reader_thread and self._reader_thread.is_alive():
                 return
-            self._reader_thread = threading.Thread(
+            reader = threading.Thread(
                 target=self._reader_loop,
                 name="nice-bidiwifi-reader",
                 daemon=True,
             )
-            self._reader_thread.start()
+            self._reader_thread = reader
+            try:
+                reader.start()
+            except BaseException:
+                # An unstarted thread would block the deferred close forever.
+                self._reader_thread = None
+                raise
 
     def _publish_event(self, frame: bytes) -> None:
         with self._condition:
@@ -340,26 +346,31 @@ class ResponseDispatcher:
             # (the reader is then outside recv), and no send in flight.
             self._close_transport()
             return
-        shutdown = getattr(self.transport, "shutdown", None)
-        if shutdown is not None:
-            try:
-                shutdown()
-            except OSError:
-                _LOGGER.debug("Nice transport shutdown failed", exc_info=True)
         deadline = time.monotonic() + _READER_STOP_TIMEOUT_SECONDS
-        if reader is not None and reader is not current:
-            reader.join(timeout=_READER_STOP_TIMEOUT_SECONDS)
-        with self._condition:
-            while self._active_sends:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                self._condition.wait(timeout=remaining)
-            self._close_deferred = True
-            close_transport = self._take_deferred_close_locked()
-            still_used = not close_transport and (
-                self._active_sends or self._reader_thread not in (None, current)
-            )
+        try:
+            shutdown = getattr(self.transport, "shutdown", None)
+            if shutdown is not None:
+                try:
+                    shutdown()
+                except Exception:
+                    _LOGGER.debug("Nice transport shutdown failed", exc_info=True)
+            if reader is not None and reader is not current:
+                reader.join(timeout=_READER_STOP_TIMEOUT_SECONDS)
+        finally:
+            # Always hand the close over, even if waking or waiting failed:
+            # otherwise the socket would stay open after the last user left.
+            with self._condition:
+                while self._active_sends:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    self._condition.wait(timeout=remaining)
+                self._close_deferred = True
+                close_transport = self._take_deferred_close_locked()
+                still_used = not close_transport and (
+                    self._active_sends
+                    or self._reader_thread not in (None, current)
+                )
         if close_transport:
             self._close_transport()
         elif still_used:
