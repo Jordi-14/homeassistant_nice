@@ -120,6 +120,8 @@ class SocketFrameTransport:
             if connected_socket is None:
                 raise OSError("socket is closed")
             remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            if remaining == 0 and self._write_timeout != 0:
+                raise TimeoutError("Nice frame send deadline expired")
             connected_socket.settimeout(remaining)
             connected_socket.sendall(frame)
         finally:
@@ -155,6 +157,8 @@ class SocketFrameTransport:
                 if connected_socket is None:
                     return b""
                 remaining = max(0.0, deadline - time.monotonic())
+                if remaining <= 0:
+                    return b""
                 connected_socket.settimeout(min(remaining, _READ_SLICE_SECONDS))
                 chunk = connected_socket.recv(65535)
             except TimeoutError:

@@ -133,6 +133,30 @@ def test_read_polling_does_not_shorten_write_timeout():
     transport.close()
 
 
+@pytest.mark.parametrize("writer", [False, True])
+def test_deadline_expiring_after_acquisition_does_not_start_socket_io(monkeypatch, writer):
+    sock = CheckedSocket()
+    transport = SocketFrameTransport(sock)
+    transport._write_timeout = 0.01
+    acquire = transport._acquire_io
+
+    def delayed_acquisition(**kwargs):
+        acquired = acquire(**kwargs)
+        time.sleep(0.03)
+        return acquired
+
+    monkeypatch.setattr(transport, "_acquire_io", delayed_acquisition)
+    if writer:
+        with pytest.raises(TimeoutError, match="deadline expired"):
+            transport.send_frame(b"expired command")
+        assert not sock.sent.is_set()
+    else:
+        assert transport.read_frame(0.01) == b""
+        assert not sock.entered.is_set()
+    assert not transport._io_busy and transport._waiting_writers == 0
+    transport.close()
+
+
 def test_timed_out_waiting_writer_never_sends_later_and_releases_priority():
     sock = CheckedSocket(hold_read=True)
     transport = SocketFrameTransport(sock)
