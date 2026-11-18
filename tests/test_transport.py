@@ -263,20 +263,34 @@ def test_dispatcher_close_unblocks_pending_exchange_and_stops_reader() -> None:
 class ShutdownTrackingSocket:
     """Blocking socket fake that records whether close races a running recv."""
 
-    def __init__(self, *, honour_shutdown: bool = True) -> None:
+    def __init__(
+        self, *, honour_shutdown: bool = True, block_send: bool = False
+    ) -> None:
         self.honour_shutdown = honour_shutdown
+        self.block_send = block_send
         self.wake = threading.Event()
         self.in_recv = threading.Event()
+        self.in_send = threading.Event()
         self.calls: list[str] = []
         self.closed_during_recv = False
+        self.closed_during_send = False
         self.closed = False
         self._recv_active = False
+        self._send_active = False
 
     def settimeout(self, value: float | None) -> None:
         pass
 
     def sendall(self, data: bytes) -> None:
-        pass
+        if not self.block_send:
+            return
+        self._send_active = True
+        self.in_send.set()
+        try:
+            self.wake.wait(timeout=5.0)
+            raise BrokenPipeError("synthetic shutdown")
+        finally:
+            self._send_active = False
 
     def recv(self, _size: int) -> bytes:
         self._recv_active = True
@@ -297,6 +311,7 @@ class ShutdownTrackingSocket:
     def close(self) -> None:
         self.calls.append("close")
         self.closed_during_recv |= self._recv_active
+        self.closed_during_send |= self._send_active
         self.closed = True
 
 
@@ -365,23 +380,118 @@ def test_dispatcher_close_from_reader_callback_closes_immediately() -> None:
     assert socket.closed is True
 
 
-def test_shutdown_wakes_real_socket_reader_before_descriptor_is_released() -> None:
-    """With real sockets, close() returns only after the reader stopped."""
-    import socket as socket_module
+def _start_blocked_send(
+    socket: ShutdownTrackingSocket,
+) -> tuple[ResponseDispatcher, threading.Thread, list[Exception]]:
+    dispatcher = ResponseDispatcher(SocketFrameTransport(socket))
+    errors: list[Exception] = []
 
-    local, peer = socket_module.socketpair()
+    def exchange() -> None:
+        try:
+            dispatcher.exchange(
+                frame_xml('<Request type="INFO" id="5"/>'),
+                expected_type="INFO",
+                expected_id=5,
+                timeout=5.0,
+            )
+        except Exception as err:
+            errors.append(err)
+
+    sender = threading.Thread(target=exchange)
+    sender.start()
+    assert socket.in_send.wait(timeout=2.0)
+    return dispatcher, sender, errors
+
+
+def test_dispatcher_close_waits_for_a_send_in_flight() -> None:
+    """A concurrent sendall() keeps the descriptor allocated until it returns."""
+    socket = ShutdownTrackingSocket(block_send=True)
+    dispatcher, sender, errors = _start_blocked_send(socket)
+
+    dispatcher.close()
+    sender.join(timeout=2.0)
+
+    assert socket.calls == ["shutdown", "close"]
+    assert socket.closed_during_send is False
+    assert not sender.is_alive()
+    assert errors and isinstance(errors[0], OSError)
+
+
+def test_last_sender_closes_when_close_timed_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A send that ignores shutdown closes the transport when it finishes."""
+    monkeypatch.setattr(
+        "custom_components.nice_bidiwifi.transport.dispatcher."
+        "_READER_STOP_TIMEOUT_SECONDS",
+        0.05,
+    )
+    socket = ShutdownTrackingSocket(honour_shutdown=False, block_send=True)
+    dispatcher, sender, _errors = _start_blocked_send(socket)
+
+    dispatcher.close()
+
+    assert socket.closed is False
+    socket.wake.set()
+    sender.join(timeout=2.0)
+    assert socket.calls == ["shutdown", "close"]
+    assert socket.closed_during_send is False
+
+
+class RecvProbe:
+    """Real socket wrapper that records when recv() is entered and left."""
+
+    def __init__(self, real: socket.socket) -> None:
+        self.real = real
+        self.entered = threading.Event()
+        self.events: list[str] = []
+
+    def settimeout(self, value: float | None) -> None:
+        self.real.settimeout(value)
+
+    def sendall(self, data: bytes) -> None:
+        self.real.sendall(data)
+
+    def recv(self, size: int) -> bytes:
+        self.entered.set()
+        try:
+            return self.real.recv(size)
+        finally:
+            self.events.append("recv_exit")
+
+    def shutdown(self, how: int) -> None:
+        self.events.append("shutdown")
+        self.real.shutdown(how)
+
+    def close(self) -> None:
+        self.events.append("close")
+        self.real.close()
+
+
+def test_shutdown_wakes_real_socket_reader_before_descriptor_is_released() -> None:
+    """With real sockets, the descriptor is closed only after recv() returned."""
+    local, peer = socket.socketpair()
+    probe = RecvProbe(local)
     try:
-        transport = SocketFrameTransport(local)
-        dispatcher = ResponseDispatcher(transport)
+        dispatcher = ResponseDispatcher(SocketFrameTransport(probe))
         dispatcher.add_event_callback(lambda _frame: None)
+        # A long read timeout keeps the reader inside one blocking recv().
+        monkey_timeout = 30.0
+        dispatcher.transport.read_frame = (  # type: ignore[method-assign]
+            lambda _t, read=dispatcher.transport.read_frame: read(monkey_timeout)
+        )
         dispatcher.start()
         reader = dispatcher._reader_thread
         assert reader is not None
+        assert probe.entered.wait(timeout=2.0)
         time.sleep(0.05)
 
+        started = time.monotonic()
         dispatcher.close()
 
+        assert time.monotonic() - started < 1.0  # woken by shutdown, not timeout
         assert not reader.is_alive()
+        assert probe.events[-3:] == ["shutdown", "recv_exit", "close"]
         assert local.fileno() == -1
     finally:
         peer.close()
@@ -403,6 +513,7 @@ def test_tls_socket_shutdown_keeps_ssl_object_attached() -> None:
         # SSLSocket.shutdown() would set _sslobj to None while a reader may
         # still be inside it; only the TCP side may be shut down.
         assert tls._sslobj is not None
+        peer.settimeout(2.0)
         assert peer.recv(1) == b""
         assert tls.fileno() != -1
     finally:
