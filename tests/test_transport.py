@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 import ssl
 import threading
 import time
@@ -257,6 +258,156 @@ def test_dispatcher_close_unblocks_pending_exchange_and_stops_reader() -> None:
     assert isinstance(errors[0], OSError)
     assert not dispatcher.running
     assert not worker.is_alive()
+
+
+class ShutdownTrackingSocket:
+    """Blocking socket fake that records whether close races a running recv."""
+
+    def __init__(self, *, honour_shutdown: bool = True) -> None:
+        self.honour_shutdown = honour_shutdown
+        self.wake = threading.Event()
+        self.in_recv = threading.Event()
+        self.calls: list[str] = []
+        self.closed_during_recv = False
+        self.closed = False
+        self._recv_active = False
+
+    def settimeout(self, value: float | None) -> None:
+        pass
+
+    def sendall(self, data: bytes) -> None:
+        pass
+
+    def recv(self, _size: int) -> bytes:
+        self._recv_active = True
+        self.in_recv.set()
+        try:
+            # A real recv() does not return when another thread closes the
+            # descriptor; only shutdown() (or data/timeout) wakes it.
+            self.wake.wait(timeout=5.0)
+            return b""
+        finally:
+            self._recv_active = False
+
+    def shutdown(self, _how: int) -> None:
+        self.calls.append("shutdown")
+        if self.honour_shutdown:
+            self.wake.set()
+
+    def close(self) -> None:
+        self.calls.append("close")
+        self.closed_during_recv |= self._recv_active
+        self.closed = True
+
+
+def _start_blocked_reader(
+    socket: ShutdownTrackingSocket,
+) -> tuple[ResponseDispatcher, threading.Thread]:
+    dispatcher = ResponseDispatcher(SocketFrameTransport(socket))
+    dispatcher.add_event_callback(lambda _frame: None)
+    dispatcher.start()
+    assert socket.in_recv.wait(timeout=2.0)
+    reader = dispatcher._reader_thread
+    assert reader is not None
+    return dispatcher, reader
+
+
+def test_dispatcher_close_never_releases_socket_under_running_reader() -> None:
+    """The descriptor stays allocated until the reader left recv()."""
+    socket = ShutdownTrackingSocket()
+    dispatcher, reader = _start_blocked_reader(socket)
+
+    dispatcher.close()
+
+    assert socket.calls == ["shutdown", "close"]
+    assert socket.closed_during_recv is False
+    assert not reader.is_alive()
+    assert not dispatcher.running
+
+
+def test_dispatcher_defers_close_to_a_reader_that_does_not_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stuck reader closes the socket itself instead of racing close()."""
+    monkeypatch.setattr(
+        "custom_components.nice_bidiwifi.transport.dispatcher."
+        "_READER_STOP_TIMEOUT_SECONDS",
+        0.05,
+    )
+    socket = ShutdownTrackingSocket(honour_shutdown=False)
+    dispatcher, reader = _start_blocked_reader(socket)
+
+    dispatcher.close()
+
+    assert socket.calls == ["shutdown"]
+    assert socket.closed is False
+    socket.wake.set()
+    reader.join(timeout=2.0)
+    assert not reader.is_alive()
+    assert socket.calls == ["shutdown", "close"]
+    assert socket.closed_during_recv is False
+
+
+def test_dispatcher_close_from_reader_callback_closes_immediately() -> None:
+    """A failure callback on the reader thread is outside recv() and may close."""
+    socket = FakeSocket([b""])
+    dispatcher = ResponseDispatcher(SocketFrameTransport(socket))
+    closed = threading.Event()
+
+    def on_failure(_error: Exception) -> None:
+        dispatcher.close()
+        closed.set()
+
+    dispatcher.add_failure_callback(on_failure)
+    dispatcher.start()
+
+    assert closed.wait(timeout=2.0)
+    assert socket.closed is True
+
+
+def test_shutdown_wakes_real_socket_reader_before_descriptor_is_released() -> None:
+    """With real sockets, close() returns only after the reader stopped."""
+    import socket as socket_module
+
+    local, peer = socket_module.socketpair()
+    try:
+        transport = SocketFrameTransport(local)
+        dispatcher = ResponseDispatcher(transport)
+        dispatcher.add_event_callback(lambda _frame: None)
+        dispatcher.start()
+        reader = dispatcher._reader_thread
+        assert reader is not None
+        time.sleep(0.05)
+
+        dispatcher.close()
+
+        assert not reader.is_alive()
+        assert local.fileno() == -1
+    finally:
+        peer.close()
+        local.close()
+
+
+def test_tls_socket_shutdown_keeps_ssl_object_attached() -> None:
+    """Shutdown of an SSLSocket must not detach the SSL object under a reader."""
+    local, peer = socket.socketpair()
+    tls = make_local_tls_context().wrap_socket(
+        local, server_hostname=None, do_handshake_on_connect=False
+    )
+    try:
+        assert tls._sslobj is not None
+        transport = SocketFrameTransport(tls)
+
+        transport.shutdown()
+
+        # SSLSocket.shutdown() would set _sslobj to None while a reader may
+        # still be inside it; only the TCP side may be shut down.
+        assert tls._sslobj is not None
+        assert peer.recv(1) == b""
+        assert tls.fileno() != -1
+    finally:
+        peer.close()
+        tls.close()
 
 
 def test_transport_distinguishes_peer_close_from_idle_timeout() -> None:

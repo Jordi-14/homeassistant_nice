@@ -116,6 +116,30 @@ class SocketFrameTransport:
             if buffered is not None:
                 return buffered
 
+    def shutdown(self) -> None:
+        """Wake a reader blocked in ``recv`` without releasing the descriptor.
+
+        ``close()`` frees the file descriptor number immediately. If another
+        thread is still inside ``recv`` (or OpenSSL's ``SSL_read``), the next
+        ``open()`` anywhere in the process can receive that number and the
+        stale reader then reads from and writes TLS records into an unrelated
+        file. ``shutdown()`` ends the connection but keeps the descriptor
+        allocated until the reader has stopped and ``close()`` runs.
+        """
+        connected_socket = self.socket
+        if connected_socket is None or not hasattr(connected_socket, "shutdown"):
+            return
+        try:
+            if isinstance(connected_socket, ssl.SSLSocket):
+                # SSLSocket.shutdown() also detaches the SSL object, racing
+                # with a reader that is inside it. Shut down only the TCP side.
+                socket.socket.shutdown(connected_socket, socket.SHUT_RDWR)
+            else:
+                connected_socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            # Already disconnected; the reader wakes up on its own.
+            pass
+
     def close(self) -> None:
         """Close the socket and discard buffered data."""
         connected_socket = self.socket

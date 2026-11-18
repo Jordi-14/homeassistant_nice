@@ -17,6 +17,7 @@ RawEventCallback = Callable[[bytes], None]
 ReaderFailureCallback = Callable[[Exception], None]
 
 _READER_TIMEOUT_SECONDS = 0.25
+_READER_STOP_TIMEOUT_SECONDS = 2.0
 _INTERRUPT_CHECK_SECONDS = 0.05
 _MAX_EXCHANGE_FRAMES = 64
 
@@ -44,6 +45,7 @@ class ResponseDispatcher:
         self._failure_callbacks: list[ReaderFailureCallback] = []
         self._reader_thread: threading.Thread | None = None
         self._closed = False
+        self._close_transport_on_reader_exit = False
         self._failure: Exception | None = None
 
     @property
@@ -130,6 +132,20 @@ class ResponseDispatcher:
                 _LOGGER.exception("Nice reader-failure callback failed")
 
     def _reader_loop(self) -> None:
+        """Run the reader and release the transport if close() deferred it."""
+        try:
+            self._read_frames()
+        finally:
+            with self._condition:
+                if self._reader_thread is threading.current_thread():
+                    self._reader_thread = None
+                close_transport = self._close_transport_on_reader_exit
+                self._close_transport_on_reader_exit = False
+                self._condition.notify_all()
+            if close_transport:
+                self._close_transport()
+
+    def _read_frames(self) -> None:
         """Continuously route complete frames from the transport."""
         while True:
             with self._condition:
@@ -274,19 +290,47 @@ class ResponseDispatcher:
                 reader.join(timeout=1.0)
 
     def close(self) -> None:
-        """Stop the reader, release pending requests, and close the transport."""
+        """Stop the reader, release pending requests, and close the transport.
+
+        The socket is never closed while the reader may still be inside
+        ``recv``: a closed descriptor number is reused by the next ``open()``
+        in the process, and a stale reader would then read from and write TLS
+        records into that unrelated file. Wake the reader with ``shutdown()``,
+        wait for it, and only then close. If it does not stop in time, the
+        reader closes the transport itself when it exits.
+        """
         with self._condition:
             if self._closed:
                 return
             self._closed = True
             reader = self._reader_thread
             self._condition.notify_all()
+        if reader is None or reader is threading.current_thread():
+            # No reader, or close() runs from a reader callback (not inside
+            # recv): nothing else can use the descriptor.
+            self._close_transport()
+            return
+        shutdown = getattr(self.transport, "shutdown", None)
+        if shutdown is not None:
+            try:
+                shutdown()
+            except OSError:
+                _LOGGER.debug("Nice transport shutdown failed", exc_info=True)
+        reader.join(timeout=_READER_STOP_TIMEOUT_SECONDS)
+        with self._condition:
+            reader_running = self._reader_thread is reader
+            if reader_running:
+                self._close_transport_on_reader_exit = True
+        if reader_running:
+            _LOGGER.warning(
+                "Nice response reader did not stop after transport shutdown; "
+                "the connection is closed when the reader exits"
+            )
+            return
+        self._close_transport()
+
+    def _close_transport(self) -> None:
         try:
             self.transport.close()
-        finally:
-            if reader is not None and reader is not threading.current_thread():
-                reader.join(timeout=2.0)
-                if reader.is_alive():
-                    _LOGGER.warning(
-                        "Nice response reader did not stop after transport close"
-                    )
+        except OSError:
+            _LOGGER.debug("Nice transport close failed", exc_info=True)
