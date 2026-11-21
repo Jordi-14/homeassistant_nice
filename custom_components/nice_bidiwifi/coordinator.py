@@ -65,6 +65,7 @@ from .connection_router import NiceConnectionRouter
 from .controllers.base import controller_defines
 from .controllers.events import NiceEventController
 from .controllers.administration import NiceAdministrationController
+from .controllers.motion_trace import MotionTraceController
 from .const import (
     DOMAIN,
     ERROR_UPDATE_INTERVAL,
@@ -256,6 +257,7 @@ class NiceBidiDataUpdateCoordinator(
         )
         self.event_controller = NiceEventController(self)
         self.administration_controller = NiceAdministrationController(self)
+        self.motion_trace = MotionTraceController(self)
 
     def __getattr__(self, name: str):
         """Expose composed controller operations through the stable coordinator API."""
@@ -503,10 +505,14 @@ class NiceBidiDataUpdateCoordinator(
         try:
             include_extended = self._should_read_extended_status()
             scan_due = self._extended_scan_requests
+            trace_registers = () if include_extended else self.motion_trace.extra_registers()
             status = self.client.read_status(
                 include_extended=include_extended,
                 preemptible=True,
+                **({"extra_registers": trace_registers} if trace_registers else {}),
             )
+            if trace_registers:
+                self.motion_trace.record(status)
         except NiceBidiConnectionError as err:
             error_code = nice_bidi_error_code(err)
             if error_code not in DMP_STATUS_NHK_FALLBACK_ERROR_CODES:
@@ -987,6 +993,7 @@ class NiceBidiDataUpdateCoordinator(
         self.last_command = command.key
         self.last_command_monotonic = time.monotonic()
         self.last_command_latency_ms = result.latency_ms
+        self.motion_trace.handle_command(command.key)
 
     def _store_failed_command(
         self,

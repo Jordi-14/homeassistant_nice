@@ -290,16 +290,19 @@ class NiceBidiClient:
         *,
         include_extended: bool = False,
         preemptible: bool = False,
+        extra_registers: tuple[tuple[int, int], ...] = (),
     ) -> NiceBidiStatus:
         """Read status and position DMP registers.
 
         A preemptible read stops between registers when a command is waiting
         for the session, so polling never delays gate movement.
+        `extra_registers` are optional controller registers read after the core ones.
         """
         return self._run_with_reconnect(
             lambda: self._read_status_locked(
                 include_extended=include_extended,
                 preemptible=preemptible,
+                extra_registers=extra_registers,
             )
         )
 
@@ -830,28 +833,22 @@ class NiceBidiClient:
         *,
         include_extended: bool = False,
         preemptible: bool = False,
+        extra_registers: tuple[tuple[int, int], ...] = (),
     ) -> NiceBidiStatus:
         registers: dict[str, DmpResponse] = {}
         profiles = [CORE_STATUS_PROFILE]
         if include_extended:
             profiles.extend((EXTENDED_CONTROLLER_PROFILE, OXI_INFO_PROFILE))
-        for profile in profiles:
-            for group, parameter in profile.registers:
-                if (
-                    preemptible
-                    and self._should_yield is not None
-                    and self._should_yield()
-                ):
-                    raise NiceReadPreemptedError(
-                        "status read yielded to a pending command"
-                    )
-                self._read_dmp_register_locked(
-                    registers,
-                    *profile.target.as_tuple(),
-                    group,
-                    parameter,
-                    required=profile.required,
-                )
+        reads = [
+            (profile.target.as_tuple(), group, parameter, profile.required)
+            for profile in profiles
+            for group, parameter in profile.registers
+        ]
+        reads += [(CONTROLLER_TARGET.as_tuple(), group, parameter, False) for group, parameter in extra_registers]
+        for target, group, parameter, required in reads:
+            if preemptible and self._should_yield is not None and self._should_yield():
+                raise NiceReadPreemptedError("status read yielded to a pending command")
+            self._read_dmp_register_locked(registers, *target, group, parameter, required=required)
         return status_from_dmp_registers(registers)
 
     def _read_nhk_status_locked(self, *, preemptible: bool = False) -> NiceBidiStatus:
