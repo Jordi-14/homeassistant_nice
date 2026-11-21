@@ -402,6 +402,9 @@ class NiceConnectionRouter:
     def send_dep_action(self, action: str) -> None:
         self._write("send_dep_action", action)
 
+    def send_t4_action(self, action: str) -> None:
+        self._write("send_t4_action", action)
+
     def write_dmp_register(
         self,
         group: int,

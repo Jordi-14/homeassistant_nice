@@ -1309,6 +1309,27 @@ def test_send_action_rejects_invalid_action() -> None:
         _client().send_action("toggle")
 
 
+def test_send_t4_action_uses_the_nhk_t4action_service() -> None:
+    """IT4WIFI: T4 actions go as CHANGE <T4Action>, base64 of the 3-digit hex code (MyNice Welcome)."""
+    bodies = []
+
+    class ActionClient(NiceBidiClient):
+        def _signed_exchange_locked(self, request_type, body=""):
+            assert request_type == "CHANGE"
+            bodies.append(body)
+            return STX + b'<Response type="CHANGE"></Response>' + ETX
+
+    client = ActionClient("192.0.2.10", 443, NiceBidiCredentials("user", "AA" * 32, "AA:BB:CC:DD:EE:FF"))
+
+    client._send_t4_action_locked("partial_open_1")
+    client._send_t4_action_locked("apartment_step_step")
+
+    assert "<Services>\r\n<T4Action>MDA1</T4Action>\r\n</Services>" in bodies[0]  # "005"
+    assert "<T4Action>MDBi</T4Action>" in bodies[1]  # "00b"
+    with pytest.raises(ValueError, match="action must be one of"):
+        client.send_t4_action("open")
+
+
 def test_send_action_locked_raises_on_error_response() -> None:
     """Test CHANGE error handling."""
 

@@ -6,6 +6,7 @@ import asyncio
 from dataclasses import replace
 from datetime import datetime
 from itertools import count
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -1216,6 +1217,27 @@ async def test_code_5_disables_only_the_rejected_dep_action(
     assert instance.rejected_t4_actions == (DEP_ACTION_PARTIAL_OPEN_1,)
     assert instance.t4_action_supported(DEP_ACTION_PARTIAL_OPEN_1) is False
     assert instance.t4_action_supported(DEP_ACTION_COURTESY_LIGHT) is True
+
+
+async def test_t4_actions_use_the_nhk_service_when_t4_requests_are_unsupported(
+    hass: HomeAssistant,
+) -> None:
+    """IT4WIFI: DMP status fell back to NHK (Code 5) and T4_allowed is advertised, so no DEP frame is sent."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.capabilities = SimpleNamespace(
+        t4_allowed=SimpleNamespace(advertised=True), supports_t4_action=lambda code: True
+    )
+
+    await instance._async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_1, refresh=False)
+    assert client.dep_actions == [DEP_ACTION_PARTIAL_OPEN_1]  # DMP status works: DEP as before
+
+    instance._use_nhk_status = True
+    await instance._async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_1, refresh=False)
+    assert client.t4_actions == [DEP_ACTION_PARTIAL_OPEN_1]
+    assert client.dep_actions == [DEP_ACTION_PARTIAL_OPEN_1]
+    await instance._async_cancel_position_simulation()
 
 
 async def test_write_dmp_register_records_command_metadata(hass: HomeAssistant) -> None:
