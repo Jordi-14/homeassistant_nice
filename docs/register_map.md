@@ -627,9 +627,40 @@ integration has no action for partial close `08`-`0a`.
 | `0c` | step-by-step high priority | `1b`, `1c` | condominium open on / off (BlueBus inputs) |
 | `0d`-`0f` | open and block, close and block, block | | |
 
-App code ✓. No DEP command code is confirmed on hardware yet. On ROBUSR10 FG01h
-open and close were tested through the cover entity, which sends the BiDi-WiFi
-`DoorAction`, not a DEP frame.
+App code ✓. On hardware, `05` (partial open 1) is confirmed through BiDi-WiFi
+SB725A1 2.6.4 on a ROBUSR10 FG01h (gate to the 04/21 position, encoder 1009 for
+1000) and on an MC424L DD00c (one leaf open), both in #74. Open and close go
+through the cover entity, which sends the NHK `DoorAction`, not a DEP frame.
+
+IT4WIFI SB575B 0.4.43 answers every `T4_REQUEST` with `<Error><Code>5</Code>`
+(about 60-100 ms), so no DEP frame reaches the controller there: seen with a
+ROBUSR10 FG01a, a POA3 R10 CM08 and a SPINBUSR10 BZ01 (#74; DMP status reads
+fail the same way, #27).
+
+### T4Action — the same commands through NHK
+
+MyNice Welcome sends these commands to IT4WIFI modules without a T4 frame, as an
+NHK `CHANGE` with the `T4Action` service:
+
+```xml
+<Devices><Device id="1"><Services><T4Action>MDA1</T4Action></Services></Device></Devices>
+```
+
+| Item | Value | Source |
+| --- | --- | --- |
+| Value | base64 of the code as 3 lower-case hex digits: `05` → `"005"` → `MDA1`, `0b` → `"00b"` → `MDBi`, `1c` → `"01c"` → `MDFj` | `AutomationAction.Type` (25 types, codes `01`-`07`, `0b`-`1c`) |
+| Which codes | the `T4_allowed` property from INFO: code *n* is offered when bit *n* is set; `DoorAction` open / stop / close are always offered | `SupportedAutomationActionsKt.getWifiAccessorySupportedCommands` |
+| Sent by | `AutomationRepositoryImpl.changeCommand`: `T4Action` for these types, `DoorAction` for open / stop / close | MyNice Welcome code |
+
+So `T4_allowed` lists the commands of the connected controller, also on the same
+interface firmware: ROBUSR10 `1FFFF8FE` (all 25 codes, the same as 04/08), POA3
+`0607F8FE` (`01`-`07`, `0b`-`12`, `19`, `1a`), SPINBUSR10 `0607F83E` (the same
+without `06`, `07`).
+
+On hardware, `MDA1` through BiDi-WiFi SB725A1 2.6.4 on a ROBUSR10 FG01h moved the
+gate to the same partial position as DEP `05` (reply after 195 ms, no error).
+Not yet confirmed on an IT4WIFI; #77 proposes this route for modules that refuse
+`T4_REQUEST`.
 
 ### 04/08 — Accepted commands (CTRL_STR_COMMANDS)
 
@@ -640,8 +671,8 @@ open and close were tested through the cover entity, which sends the BiDi-WiFi
 On the ROBUSR10 FG01h the list has 25 codes: `01`-`07`, `0b`-`1c`. Partial close
 `08`-`0a` is missing. The integration does not read 04/08: it shows a button only
 when the interface lists the command in its T4 allowed mask
-(`protocol/t4/allowed.py`). On ROBUSR10 FG01h that mask (`0x1FFFF8FE`) holds the
-same 25 codes as 04/08.
+(`protocol/t4/allowed.py`, see [T4Action](#t4action--the-same-commands-through-nhk)).
+On ROBUSR10 FG01h that mask (`0x1FFFF8FE`) holds the same 25 codes as 04/08.
 
 ### Procedures (not used by the integration)
 
