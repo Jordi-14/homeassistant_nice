@@ -30,7 +30,7 @@ TRACE_REGISTERS = ((0x04, 0xD2), (0x04, 0xD1))
 AFTER_COMMAND_SECONDS = 15.0
 AFTER_STOP_SECONDS = 5.0
 NEW_TRACE_GAP_SECONDS = 10.0  # a sample after a longer pause starts a new trace
-MAX_SAMPLES = 300  # more than the 240 s controller work time at one sample per ~1.2 s
+MAX_SAMPLES = 300  # more than the 240 s controller work time; a longer trace continues in a new one
 MAX_TRACES = 5
 
 
@@ -54,6 +54,9 @@ class MotionTraceController:
         self._trace: dict[str, Any] | None = None
         self._trace_start = 0.0
         self._last_sample = 0.0
+        self._moved = False  # the current trace has a moving sample
+        self._last_state: str | None = None
+        self._command_state: str | None = None  # state when the command came; may still show the old move
         self.traces: deque[dict[str, Any]] = deque(maxlen=MAX_TRACES)
 
     @staticmethod
@@ -80,20 +83,25 @@ class MotionTraceController:
     def record(self, status: NiceStatus) -> None:
         """Add one sample from a status poll that read the trace registers."""
         now = time.monotonic()
-        if self._trace is None or now - self._last_sample > NEW_TRACE_GAP_SECONDS:
-            self._trace = {
-                "started_at": datetime.now(UTC).isoformat(),
-                "trigger": self._trigger or "movement",
-                "samples": [],
-                "truncated": False,
-            }
+        # a new move after a stop, or a reversal, gets its own trace like a new command
+        new_move = status.is_moving and self._moved and status.state != self._last_state
+        gap = self._trace is None or now - self._last_sample > NEW_TRACE_GAP_SECONDS
+        if self._trigger is not None or new_move or gap:
+            trigger = self._trigger or "movement"
+        elif len(self._trace["samples"]) >= MAX_SAMPLES:
+            trigger = "continued"
+        else:
+            trigger = None
+        if trigger is not None:
+            self._trace = {"started_at": datetime.now(UTC).isoformat(), "trigger": trigger, "samples": []}
             self._trace_start = now
+            self._command_state = self._last_state if self._trigger is not None else None
             self._trigger = None
+            self._moved = False
             self.traces.append(self._trace)
         self._last_sample = now
-        if len(self._trace["samples"]) >= MAX_SAMPLES:
-            self._trace["truncated"] = True
-            return
+        self._last_state = status.state
+        self._moved = self._moved or (status.is_moving and status.state != self._command_state)
         sample = self._sample(status, now - self._trace_start)
         self._trace["samples"].append(sample)
         _LOGGER.debug("Nice motion trace %s", sample)

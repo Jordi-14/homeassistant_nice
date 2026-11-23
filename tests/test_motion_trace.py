@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import replace
+from types import SimpleNamespace
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -104,3 +105,29 @@ async def test_command_trigger_and_idle_gate(hass, caplog) -> None:
     assert trace.extra_registers() == motion_trace.TRACE_REGISTERS
     trace.record(make_status(state="opening"))
     assert trace.traces[-1]["trigger"] == "command:open"
+
+
+def test_each_move_gets_a_trace_and_a_long_move_rolls_over(hass, caplog, monkeypatch) -> None:
+    caplog.set_level(logging.DEBUG, logger=PACKAGE_LOGGER)
+    monkeypatch.setattr(motion_trace, "MAX_SAMPLES", 3)
+    clock = iter(range(1000))
+    monkeypatch.setattr(motion_trace, "time", SimpleNamespace(monotonic=lambda: next(clock)))
+    trace = _coordinator(hass).motion_trace
+
+    def record(*states: str) -> None:
+        for state in states:
+            trace.record(make_status(state=state))
+
+    record("opening", "opening", "stopped", "opening", "opening")  # stop of 1 s, then a new move
+    record("closing")  # reversal
+    trace.handle_command("open")  # reversal by command: the first poll still shows closing
+    record("closing", "opening", "opening", "opening")  # 4 samples > MAX_SAMPLES
+
+    assert [(t["trigger"], [s["state"] for s in t["samples"]]) for t in trace.traces] == [
+        ("movement", ["opening", "opening", "stopped"]),
+        ("movement", ["opening", "opening"]),
+        ("movement", ["closing"]),
+        ("command:open", ["closing", "opening", "opening"]),
+        ("continued", ["opening"]),
+    ]
+    assert caplog.text.count("Nice motion trace") == 10  # every sample is logged
