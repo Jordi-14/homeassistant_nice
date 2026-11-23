@@ -659,8 +659,11 @@ without `06`, `07`).
 
 On hardware, `MDA1` through BiDi-WiFi SB725A1 2.6.4 on a ROBUSR10 FG01h moved the
 gate to the same partial position as DEP `05` (reply after 195 ms, no error).
-Not yet confirmed on an IT4WIFI; #77 proposes this route for modules that refuse
-`T4_REQUEST`.
+The NHK route is also confirmed on IT4WIFI SB575B-R10.0 firmware 0.4.43 with
+ROBUSR10 FG01a, POA3 CM08 and SPINBUSR10 BZ01 (#74, #77). Partial open 1 worked
+on all three; partial open 2 and 3 also worked on POA3 and are not exposed on
+SPINBUSR10. PR #77 selects this route after NHK status fallback only when the
+selected device advertises a writable `T4Action` service and `T4_allowed`.
 
 ### 04/08 — Accepted commands (CTRL_STR_COMMANDS)
 
