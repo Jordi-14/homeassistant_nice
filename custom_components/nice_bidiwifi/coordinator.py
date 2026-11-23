@@ -740,6 +740,16 @@ class NiceBidiDataUpdateCoordinator(
         await self._async_cancel_calibration(reason=f"dep_action:{action}")
         await self._async_send_dep_action(action)
 
+    @property
+    def t4_actions_via_nhk(self) -> bool:
+        """Return true when T4 actions go as the NHK `T4Action` service instead of a T4_REQUEST DEP frame.
+
+        IT4WIFI 0.4.43 answers every T4_REQUEST with Code 5 (#27, #74), so status falls back to NHK; MyNice Welcome
+        drives these modules with CHANGE <T4Action>. Only modules that advertise T4_allowed and a writable Device T4Action service get this route.
+        """
+        caps = self.capabilities
+        return self._use_nhk_status and bool(caps and caps.t4_allowed.advertised and caps.t4_action_service)
+
     def t4_action_supported(self, action: str) -> bool:
         """Return whether a reviewed action is safe to offer and execute."""
         if action in getattr(self, "_rejected_t4_actions", ()):
@@ -866,7 +876,8 @@ class NiceBidiDataUpdateCoordinator(
         started = time.monotonic()
         command = NiceCommand(key=action, kind=CommandKind.T4_ACTION)
         try:
-            await self.hass.async_add_executor_job(self.client.send_dep_action, action)
+            send = self.client.send_t4_action if self.t4_actions_via_nhk else self.client.send_dep_action
+            await self.hass.async_add_executor_job(send, action)
         except NiceBidiAuthError as err:
             self._store_failed_command(command, started, err)
             await self.hass.async_add_executor_job(self.client.close)

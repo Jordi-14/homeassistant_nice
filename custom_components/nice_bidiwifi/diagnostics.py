@@ -335,6 +335,7 @@ async def async_get_config_entry_diagnostics(
                 # LOCAL-DIAGNOSTIC(pr55): obstacle seed outcome; see coordinator.py:_set_obstacle_seed.
                 "nhk_obstacle_seed": getattr(coordinator, "nhk_obstacle_seed", None),
                 "t4_allowed_advertised": (capabilities.t4_allowed.advertised),
+                "t4_action_route": "nhk_t4action" if getattr(coordinator, "t4_actions_via_nhk", False) else "dep",
                 "t4_allowed_valid": capabilities.t4_allowed_valid,
                 "t4_allowed_mask": capabilities.t4_allowed_mask,
                 "supported_t4_action_codes": (

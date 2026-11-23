@@ -226,6 +226,7 @@ class FakeClient:
 
     def __init__(self) -> None:
         self.actions: list[str] = []
+        self.t4_actions: list[str] = []
         self.dep_actions: list[str] = []
         self.closed = False
         self.read_status_result = make_status(
@@ -399,6 +400,10 @@ class FakeClient:
         if self.send_dep_action_error is not None:
             raise self.send_dep_action_error
         self.dep_actions.append(action)
+
+    def send_t4_action(self, action: str) -> None:
+        """Record a T4Action (NHK CHANGE) command."""
+        self.t4_actions.append(action)
 
     def write_dmp_register(
         self, group: int, parameter: int, value: int, *, size: int = 1

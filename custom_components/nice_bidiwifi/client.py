@@ -396,6 +396,13 @@ class NiceBidiClient:
             raise ValueError(f"action must be one of: {valid}")
         self._run_command_once(lambda: self._send_dep_action_locked(action))
 
+    def send_t4_action(self, action: str) -> None:
+        """Send a T4 action as the NHK `T4Action` service, the way MyNice Welcome drives IT4WIFI modules."""
+        if action not in DEP_ACTION_COMMANDS:
+            valid = ", ".join(sorted(DEP_ACTION_COMMANDS))
+            raise ValueError(f"action must be one of: {valid}")
+        self._run_command_once(lambda: self._send_t4_action_locked(action))
+
     def write_dmp_register(
         self,
         group: int,
@@ -690,11 +697,19 @@ class NiceBidiClient:
         return response_matches(response, expected_type, expected_id)
 
     def _send_action_locked(self, action: str) -> None:
+        self._send_service_locked("DoorAction", action)
+
+    def _send_t4_action_locked(self, action: str) -> None:
+        # MyNice Welcome AutomationAction: base64 of the 3-digit hex code, e.g. partial open 1 = "005" -> "MDA1"
+        code = base64.b64encode(f"{DEP_ACTION_COMMANDS[action]:03x}".encode()).decode()
+        self._send_service_locked("T4Action", code)
+
+    def _send_service_locked(self, service: str, value: str) -> None:
         body = (
             "<Devices>\r\n"
             f'<Device id="{self.device_id}">\r\n'
             "<Services>\r\n"
-            f"<DoorAction>{action}</DoorAction>\r\n"
+            f"<{service}>{value}</{service}>\r\n"
             "</Services>\r\n"
             "</Device>\r\n"
             "</Devices>\r\n"
