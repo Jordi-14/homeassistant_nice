@@ -362,11 +362,14 @@ class NiceConnectionRouter:
         *,
         include_extended: bool = False,
         preemptible: bool = False,
+        extra_registers: tuple[tuple[int, int], ...] = (),
     ):
+        # passed only when set, so route clients without the argument keep working
         return self._read(
             "read_status",
             include_extended=include_extended,
             preemptible=preemptible,
+            **({"extra_registers": extra_registers} if extra_registers else {}),
         )
 
     def read_nhk_status(self, *, preemptible: bool = False):

@@ -240,6 +240,7 @@ class FakeClient:
         )
         self.read_info_result = make_device_info()
         self.read_status_error: Exception | None = None
+        self.read_status_extra_registers: list[tuple] = []
         self.read_nhk_status_error: Exception | None = None
         self.read_info_error: Exception | None = None
         self.send_action_error: Exception | None = None
@@ -306,8 +307,11 @@ class FakeClient:
         """Return no persistent fake error."""
         return None
 
-    def read_status(self, *, include_extended: bool = False, preemptible: bool = False) -> NiceBidiStatus:
+    def read_status(
+        self, *, include_extended: bool = False, preemptible: bool = False, extra_registers=()
+    ) -> NiceBidiStatus:
         """Return status or raise a configured error."""
+        self.read_status_extra_registers.append(extra_registers)
         self.read_status_include_extended.append(include_extended)
         self.read_status_preemptible.append(preemptible)
         if self.read_status_error is not None:
@@ -469,6 +473,7 @@ class FakeCoordinator:
         self.event_battery_level = None
         self.event_battery_device_type = None
         self.event_history = deque(maxlen=32)
+        self.motion_trace = SimpleNamespace(traces=deque(maxlen=5))
         self.interface_log_snapshot = None
         self.access_group_snapshot = None
         self.last_administration_operation = None

@@ -239,6 +239,8 @@ async def async_get_config_entry_diagnostics(
             "history_limit": coordinator.event_history.maxlen,
             "history": [event.as_diagnostics() for event in coordinator.event_history],
         },
+        # filled only while debug logging is on: motor load and inputs sampled during the last moves
+        "motion_traces": list(coordinator.motion_trace.traces),
         "status": {
             "movement_speed_profile": coordinator.movement_speed_profile,
             "state": status.state if status else None,
