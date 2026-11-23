@@ -27,10 +27,12 @@ from custom_components.nice_bidiwifi.client import (
     DEP_ACTION_PARTIAL_OPEN_1,
     NiceBidiAuthError,
     NiceBidiConnectionError,
+    NiceBidiServiceCapability,
 )
 from custom_components.nice_bidiwifi.const import DOMAIN
 from custom_components.nice_bidiwifi.coordinator import NiceBidiDataUpdateCoordinator
 from custom_components.nice_bidiwifi.errors import NiceReadPreemptedError
+from custom_components.nice_bidiwifi.models.capabilities import NiceCapabilities
 from custom_components.nice_bidiwifi.protocol.t4.info import decode_dmp_info
 from tests.conftest import FakeClient, config_entry_data, make_device_info, make_status
 
@@ -1227,7 +1229,9 @@ async def test_t4_actions_use_the_nhk_service_when_t4_requests_are_unsupported(
     client = FakeClient()
     instance.client = client
     instance.capabilities = SimpleNamespace(
-        t4_allowed=SimpleNamespace(advertised=True), supports_t4_action=lambda code: True
+        t4_allowed=SimpleNamespace(advertised=True),
+        t4_action_service=True,
+        supports_t4_action=lambda code: True,
     )
 
     await instance._async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_1, refresh=False)
@@ -1237,6 +1241,59 @@ async def test_t4_actions_use_the_nhk_service_when_t4_requests_are_unsupported(
     await instance._async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_1, refresh=False)
     assert client.t4_actions == [DEP_ACTION_PARTIAL_OPEN_1]
     assert client.dep_actions == [DEP_ACTION_PARTIAL_OPEN_1]
+    await instance._async_cancel_position_simulation()
+
+
+def _t4_capabilities(owner_id: str | None, permission: str | None) -> NiceCapabilities:
+    """Real capabilities with T4_allowed and, optionally, a T4Action service."""
+    info = make_device_info()
+    services = ()
+    if owner_id is not None:
+        services = (
+            NiceBidiServiceCapability(
+                owner="Device",
+                owner_id=owner_id,
+                name="T4Action",
+                path=f'Response/Devices/Device[@id="{owner_id}"]/Services/T4Action',
+                value_type="string",
+                permission=permission,
+                values_raw=None,
+                values=(),
+            ),
+        )
+    t4_allowed = NiceBidiServiceCapability(
+        owner="Device",
+        owner_id="1",
+        name="T4_allowed",
+        path='Response/Devices/Device[@id="1"]/Properties/T4_allowed',
+        value_type="string",
+        permission="r",
+        values_raw="1FFFF8FE",
+        values=(),
+    )
+    info = replace(info, services=(*info.services, *services), properties=(*info.properties, t4_allowed))
+    return NiceCapabilities.from_device_info(info, 1)
+
+
+@pytest.mark.parametrize(
+    ("owner_id", "permission", "via_nhk"),
+    [("1", "w", True), (None, None, False), ("1", "r", False), ("2", "w", False)],
+)
+async def test_t4_action_route_needs_a_writable_t4action_service(
+    hass: HomeAssistant, owner_id: str | None, permission: str | None, via_nhk: bool
+) -> None:
+    """The NHK route needs a writable T4Action on the selected device; otherwise DEP stays."""
+    instance = _coordinator(hass)
+    client = FakeClient()
+    instance.client = client
+    instance.capabilities = _t4_capabilities(owner_id, permission)
+    assert instance.capabilities.t4_allowed.advertised
+    instance._use_nhk_status = True
+
+    await instance._async_send_dep_action(DEP_ACTION_PARTIAL_OPEN_1, refresh=False)
+
+    assert client.t4_actions == ([DEP_ACTION_PARTIAL_OPEN_1] if via_nhk else [])
+    assert client.dep_actions == ([] if via_nhk else [DEP_ACTION_PARTIAL_OPEN_1])
     await instance._async_cancel_position_simulation()
 
 

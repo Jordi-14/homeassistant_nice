@@ -739,9 +739,10 @@ class NiceBidiDataUpdateCoordinator(
         """Return true when T4 actions go as the NHK `T4Action` service instead of a T4_REQUEST DEP frame.
 
         IT4WIFI 0.4.43 answers every T4_REQUEST with Code 5 (#27, #74), so status falls back to NHK; MyNice Welcome
-        drives these modules with CHANGE <T4Action>. Only modules that advertise T4_allowed get this route.
+        drives these modules with CHANGE <T4Action>. Only modules that advertise T4_allowed and a writable Device T4Action service get this route.
         """
-        return self._use_nhk_status and bool(self.capabilities and self.capabilities.t4_allowed.advertised)
+        caps = self.capabilities
+        return self._use_nhk_status and bool(caps and caps.t4_allowed.advertised and caps.t4_action_service)
 
     def t4_action_supported(self, action: str) -> bool:
         """Return whether a reviewed action is safe to offer and execute."""

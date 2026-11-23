@@ -112,6 +112,7 @@ class NiceCapabilities:
     interface_name_write: bool | None = None
     time_sync: bool | None = None
     reboot: bool | None = None
+    t4_action_service: bool | None = None
 
     @classmethod
     def from_device_info(
@@ -121,6 +122,7 @@ class NiceCapabilities:
     ) -> NiceCapabilities:
         """Build normalized capabilities from INFO metadata."""
         door_action = _matching_capability(info.services, "DoorAction", device_id)
+        t4_action = _matching_capability(info.services, "T4Action", device_id)
         door_status = _matching_capability(info.properties, "DoorStatus", device_id)
         obstruction = _matching_capability(info.properties, "Obstruct", device_id)
         target_id = str(device_id)
@@ -149,6 +151,11 @@ class NiceCapabilities:
             ),
             high_level_actions=(
                 door_action.writable if door_action is not None else None
+            ),
+            t4_action_service=(
+                t4_action.writable
+                if t4_action is not None and t4_action.owner == "Device"
+                else None
             ),
             readable_status=(door_status.readable if door_status is not None else None),
             obstruction=(obstruction.readable if obstruction is not None else None),
