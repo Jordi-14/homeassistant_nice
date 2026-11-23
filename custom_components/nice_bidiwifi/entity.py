@@ -39,6 +39,7 @@ def bidi_suggested_entity_id(domain: str, entry: ConfigEntry, suffix: str | None
 def bidi_device_info(entry: ConfigEntry, info: NiceBidiDeviceInfo | None = None) -> DeviceInfo:
     """Build Home Assistant device info from config and optional INFO metadata."""
     target_mac = entry.data[CONF_TARGET_MAC]
+    host = entry.data.get(CONF_HOST)
     return DeviceInfo(
         identifiers={(DOMAIN, target_mac)},
         name=entry.data.get(CONF_NAME),
@@ -55,7 +56,7 @@ def bidi_device_info(entry: ConfigEntry, info: NiceBidiDeviceInfo | None = None)
         serial_number=info.device_serial if info and info.device_serial else None,
         sw_version=info.device_fw_version if info and info.device_fw_version else None,
         hw_version=info.device_hw_version if info and info.device_hw_version else None,
-        configuration_url=f"https://{entry.data[CONF_HOST]}",
+        configuration_url=f"https://{host}" if host else None,
     )
 
 

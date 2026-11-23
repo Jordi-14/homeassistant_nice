@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
 from homeassistant.components import button as button_component
-from homeassistant.const import CONF_NAME
+from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
@@ -15,10 +16,24 @@ from custom_components.nice_bidiwifi.button import BUTTONS, NiceBidiButton
 from custom_components.nice_bidiwifi.const import CONF_TARGET_MAC, DOMAIN
 from custom_components.nice_bidiwifi.cover import NiceBidiCover
 from custom_components.nice_bidiwifi.entity import (
+    bidi_device_info,
     bidi_entity_name,
 )
 from custom_components.nice_bidiwifi.switch import NiceBidiCoverSwitch
 from tests.conftest import FakeCoordinator, config_entry, config_entry_data
+
+
+@pytest.mark.parametrize("host", [None, "", "192.0.2.10"])
+def test_device_configuration_link_requires_a_local_host(host) -> None:
+    """Cloud entries without a host still provide valid device metadata."""
+    entry = config_entry()
+    if host is None:
+        entry.data.pop(CONF_HOST)
+    else:
+        entry.data[CONF_HOST] = host
+    info = bidi_device_info(entry)
+    assert info["configuration_url"] == (f"https://{host}" if host else None)
+    assert info["identifiers"] == {(DOMAIN, entry.data[CONF_TARGET_MAC])}
 
 
 def test_entity_name_uses_configured_gate_name() -> None:
@@ -82,13 +97,19 @@ def test_cover_switch_uses_short_entity_name_with_full_entity_id_suggestion() ->
     assert entity.entity_id == "switch.p0_garage_door_exterior"
 
 
+@pytest.mark.parametrize("cloud_only", [False, True])
 async def test_button_registry_entity_id_ignores_device_area_prefix(
     hass: HomeAssistant,
+    cloud_only: bool,
 ) -> None:
     """Test HA registry IDs stay full while entity names are device-relative."""
+    data = config_entry_data(**{CONF_NAME: "p0_garage_door_exterior"})
+    if cloud_only:
+        data.pop(CONF_HOST)
+        data["connection_mode"] = "cloud_only"
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data=config_entry_data(**{CONF_NAME: "p0_garage_door_exterior"}),
+        data=data,
         entry_id="entry-1",
         title="Nice gate",
     )
