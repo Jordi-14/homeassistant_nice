@@ -18,6 +18,7 @@ from .const import (
 from .models.config import ConnectionMode
 from .controllers.administration import ADMINISTRATION_HISTORY_LIMIT
 from .protocol.t4.enums import EVT_ERROR
+from .protocol.t4.replies import DMP_ERRORS
 from .protocol.nhk.administration import (
     LOG_EVENTS_PER_SCOPE,
     MAX_ADMINISTRATION_XML_BYTES,
@@ -52,6 +53,17 @@ TO_REDACT = {
     "serial_number",
     *SENSITIVE_CONFIG_KEYS,
 }
+
+
+def _command_error_name(result) -> str | None:
+    if result is None or result.error_code is None:
+        return None
+    if result.error_layer == "dmp":
+        try:
+            return DMP_ERRORS.get(int(result.error_code, 16))
+        except ValueError:
+            return None
+    return EVT_ERROR.get(int(result.error_code)) if result.error_code.isdecimal() else None
 
 
 def _capability_diagnostics(capability) -> dict[str, Any]:
@@ -207,13 +219,10 @@ async def async_get_config_entry_diagnostics(
             "error_code": (
                 command_result.error_code if command_result is not None else None
             ),
-            "error_name": (
-                EVT_ERROR.get(int(command_result.error_code))
-                if command_result is not None
-                and command_result.error_code is not None
-                and command_result.error_code.isdecimal()
-                else None
-            ),
+            "error_layer": command_result.error_layer if command_result is not None else None,
+            "verification": command_result.verification if command_result is not None else None,
+            "details": dict(command_result.details) if command_result is not None else {},
+            "error_name": _command_error_name(command_result),
         },
         "event_stream": {
             "state": coordinator.event_stream_state,
@@ -241,6 +250,7 @@ async def async_get_config_entry_diagnostics(
         },
         # filled only while debug logging is on: motor load and inputs sampled during the last moves
         "motion_traces": list(coordinator.motion_trace.traces),
+        "parameters": coordinator.parameters.diagnostics(),
         "status": {
             "movement_speed_profile": coordinator.movement_speed_profile,
             "state": status.state if status else None,

@@ -343,6 +343,14 @@ class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
         info = self._info
         return {"allowed_values": list(info.options)} if info and info.options else None
 
+    @property
+    def native_step(self) -> float:
+        """Present the controller's verified integer step used by backend validation."""
+        info = self._info
+        if info is not None and not info.options and info.step is not None and info.step > 0:
+            return info.step
+        return self.entity_description.native_step or 1
+
     async def async_set_native_value(self, value: float) -> None:
         """Write the BusT4 number value."""
         if self._disabled_for_device():

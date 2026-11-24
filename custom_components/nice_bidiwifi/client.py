@@ -10,6 +10,7 @@ import secrets
 import ssl
 import threading
 import time
+from dataclasses import replace
 from typing import Any
 
 from .errors import (
@@ -19,10 +20,15 @@ from .errors import (
     NiceError as NiceBidiError,
     NiceProtocolError,
     NiceReadPreemptedError,
+    NiceParameterError,
     NiceUnsupportedError,
-    is_unsupported_request_error,
+    NiceResponseError,
+    ProtocolLayer,
+    is_request_rejection,
     nice_error_code as nice_bidi_error_code,
 )
+from .models.commands import CommandAcknowledgement, CommandReceipt
+from .parameters import ParameterRepository, PreparedParameterWrite, SupportState
 from .models.credentials import NiceCredentials as NiceBidiCredentials
 from .models.administration import (
     NiceGroupSnapshot,
@@ -97,6 +103,8 @@ from .protocol.t4.dmp import (
     parse_dmp_response,
 )
 from .protocol.t4.history import ControllerHistoryRow
+from .protocol.t4.replies import checked_dmp_reply
+from .protocol.t4.settings import SETTINGS_BY_REGISTER
 from .protocol.t4.info import DMP_INFO_FLAGS, DmpInfo, decode_dmp_info
 from .protocol.t4.registers import (
     CONTROLLER_TARGET,
@@ -141,6 +149,7 @@ __all__ = [
     "STX",
     "_make_context",
     "parse_dmp_response",
+    "decode_dmp_response",
 ]
 
 NHK_STATUS_POST_RESPONSE_LISTEN_SECONDS = 0.75
@@ -162,6 +171,7 @@ class NiceBidiClient:
         transport_factory: TransportFactory = LanTlsTransport.connect,
         route_name: str = "local",
         should_yield: Callable[[], bool] | None = None,
+        parameters: ParameterRepository | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -181,6 +191,7 @@ class NiceBidiClient:
         self._sequence = 1
         self._lock = threading.RLock()
         self._reconnect_count = 0
+        self.parameters = parameters if parameters is not None else ParameterRepository(device_id)
 
     @property
     def _socket(self) -> SocketLike | None:
@@ -339,6 +350,12 @@ class NiceBidiClient:
         """Read raw INFO XML from the BiDi-WiFi."""
         return self._run_with_reconnect(self._read_info_xml_locked)
 
+    def read_dmp_value(self, group: int, parameter: int, *, preemptible: bool = False) -> bytes | None:
+        """Read one parameter without a broad status scan."""
+        return self._run_with_reconnect(lambda: self._read_dmp_value_locked(
+            group, parameter, operation=0x19, preemptible=preemptible,
+        ))
+
     def read_logs(
         self,
         event_count: int = LOG_EVENTS_PER_SCOPE,
@@ -410,7 +427,9 @@ class NiceBidiClient:
         value: int,
         *,
         size: int = 1,
-    ) -> None:
+        byte_order: str = "big",
+        before_dispatch: Callable[[], None] | None = None,
+    ) -> CommandReceipt:
         """Write a BusT4/DMP register."""
         if size < 1:
             raise ValueError("size must be at least 1")
@@ -418,9 +437,9 @@ class NiceBidiClient:
             raise ValueError("value must be non-negative")
         if value > (1 << (size * 8)) - 1:
             raise ValueError(f"value must fit in {size} byte(s)")
-        payload = value.to_bytes(size, "big")
-        self._run_command_once(
-            lambda: self._write_dmp_register_locked(group, parameter, payload)
+        payload = value.to_bytes(size, byte_order)
+        return self._run_command_once(
+            lambda: self._write_dmp_register_locked(group, parameter, payload), before_dispatch=before_dispatch
         )
 
     def test_connection(self) -> NiceBidiStatus:
@@ -452,6 +471,23 @@ class NiceBidiClient:
                 registers={},
             )
 
+    def write_parameter(self, prepared: PreparedParameterWrite, *, before_dispatch: Callable[[], None] | None = None) -> CommandReceipt:
+        """Send the parameter engine's exact validated payload to its scoped target."""
+        target = prepared.address
+        if (target is None or target.device_id != self.device_id
+                or (target.address, target.endpoint, target.index) != (0, 3, None)
+                or (target.group, target.parameter) != (prepared.setting.group, prepared.setting.parameter)
+                or SETTINGS_BY_REGISTER.get((target.group, target.parameter)) != prepared.setting):
+            raise NiceParameterError("Prepared parameter has an incompatible target or definition")
+        if not prepared.payload or prepared.byte_order not in {"big", "little"}:
+            raise NiceParameterError("Prepared parameter has an invalid value format")
+        if prepared.payload != prepared.value.to_bytes(len(prepared.payload), prepared.byte_order):
+            raise NiceParameterError("Prepared parameter payload is inconsistent")
+        return self._run_command_once(
+            lambda: self._write_dmp_register_locked(target.group, target.parameter, prepared.payload),
+            before_dispatch=before_dispatch,
+        )
+
     def _run_with_reconnect(self, operation: Callable[[], Any]) -> Any:
         last_error: Exception | None = None
         with self._lock:
@@ -460,7 +496,7 @@ class NiceBidiClient:
                     self._ensure_connected_locked()
                     return operation()
                 except (OSError, ssl.SSLError, NiceBidiConnectionError) as exc:
-                    if is_unsupported_request_error(exc):
+                    if is_request_rejection(exc):
                         raise
                     last_error = exc
                     self._close_locked()
@@ -475,17 +511,28 @@ class NiceBidiClient:
             assert last_error is not None
             raise NiceBidiConnectionError(str(last_error)) from last_error
 
-    def _run_command_once(self, operation: Callable[[], Any]) -> Any:
+    def _run_command_once(self, operation: Callable[[], Any], *, before_dispatch: Callable[[], None] | None = None) -> Any:
         """Run a write once so an ambiguous response cannot duplicate movement."""
         with self._lock:
             try:
                 self._ensure_connected_locked()
+            except (NiceBidiError, OSError) as exc:
+                self._close_locked()
+                exc.delivery = "not_sent"
+                raise
+            if before_dispatch is not None:
+                try:
+                    before_dispatch()
+                except Exception as err:
+                    err.delivery = "not_sent"
+                    raise
+            try:
                 return operation()
             except NiceBidiAuthError:
                 self._close_locked()
                 raise
             except (OSError, ssl.SSLError, NiceBidiConnectionError) as exc:
-                if is_unsupported_request_error(exc):
+                if is_request_rejection(exc):
                     raise
                 self._close_locked()
                 raise NiceBidiConnectionError(str(exc)) from exc
@@ -538,17 +585,25 @@ class NiceBidiClient:
         auth_match = re.search(r"<Authentication\b([^>]*)>", text)
         session_id = _attr(auth_match.group(1), "id") if auth_match else None
         if "<Error>" in text:
-            raise NiceBidiAuthError(_response_error_summary(response))
+            raise NiceBidiAuthError(_response_error_summary(response), layer="nhk",
+                                   code=nice_bidi_error_code(text), request_type="CONNECT")
         if not server_challenge or session_id is None:
             raise NiceBidiConnectionError(
                 "CONNECT response was empty or missing session data"
             )
 
-        self._session_id = int(session_id)
+        try:
+            parsed_session_id = int(session_id)
+            server_bytes = _reverse_hex(server_challenge)
+            if parsed_session_id < 0 or not server_bytes:
+                raise ValueError("Invalid session fields")
+        except ValueError as err:
+            raise NiceProtocolError("Invalid NHK session fields") from err
+        self._session_id = parsed_session_id
         self._sequence = 1
         self._session_key = _sha256(
             self.credentials.password,
-            _reverse_hex(server_challenge),
+            server_bytes,
             _reverse_hex(client_challenge),
         )
         _LOGGER.debug(
@@ -715,8 +770,7 @@ class NiceBidiClient:
             "</Devices>\r\n"
         )
         response = self._signed_exchange_locked("CHANGE", body)
-        if "<Error>" in _printable(response):
-            raise NiceBidiConnectionError(_response_error_summary(response))
+        self._raise_response_error(response, "CHANGE")
 
     def _change_interface_locked(self, body: str) -> None:
         response = self._signed_exchange_locked("CHANGE", body)
@@ -731,16 +785,27 @@ class NiceBidiClient:
             0x03,
             self.t4_timeout_ms,
         )
-        if "<Error>" in _printable(response):
-            raise NiceBidiConnectionError(_response_error_summary(response))
+        self._raise_response_error(response, "T4_REQUEST")
 
     def _read_dmp_info_locked(
         self, group: int, parameter: int, *, preemptible: bool = False
     ) -> DmpInfo | None:
-        value = self._read_dmp_value_locked(
-            group, parameter, flags=DMP_INFO_FLAGS, operation=0x09, preemptible=preemptible
-        )
-        return decode_dmp_info(value) if value is not None else None
+        try:
+            value = self._read_dmp_value_locked(
+                group, parameter, flags=DMP_INFO_FLAGS, operation=0x09, preemptible=preemptible
+            )
+        except NiceProtocolError:
+            self.parameters.record_info(self.parameters.address(group, parameter), None, state=SupportState.INVALID)
+            raise
+        if value is None:
+            address = self.parameters.address(group, parameter)
+            if self.parameters.support_state(address, "info") is SupportState.UNKNOWN:
+                self.parameters.record_info(address, None, state=SupportState.UNAVAILABLE)
+            return None
+        info = decode_dmp_info(value)
+        self.parameters.record_info(self.parameters.address(group, parameter), info, raw=value,
+                                    state=SupportState.SUPPORTED if info else SupportState.INVALID)
+        return info
 
     def _read_dmp_indexed_locked(
         self, group: int, parameter: int, index: int, *, preemptible: bool = False
@@ -762,24 +827,44 @@ class NiceBidiClient:
         """Send one DMP GET or INFO and return the value of the matching reply, or None."""
         if preemptible and self._should_yield is not None and self._should_yield():
             raise NiceReadPreemptedError("DMP read yielded to a pending command")
+        address = self.parameters.address(group, parameter, index=index)
+        info = self.parameters.info_for(address)
+        index_size = info.index_size if info and info.indexed else 1
         response, plains = self._t4_request_locked(
             "DMP",
             build_dmp_read_frame(
-                *CONTROLLER_TARGET.as_tuple(), group, parameter, index, flags=flags
+                *CONTROLLER_TARGET.as_tuple(), group, parameter, index, flags=flags, index_size=index_size
             ),
             *CONTROLLER_TARGET.as_tuple(),
             self.t4_timeout_ms,
         )
         if "<Error>" in _printable(response):
-            return None
+            self._raise_response_error(response, "T4_REQUEST")
         for plain in plains:
-            parsed = decode_dmp_response(plain)
-            if (parsed.group, parsed.parameter, parsed.operation) != (group, parameter, operation):
+            try:
+                parsed = checked_dmp_reply(plain, target=CONTROLLER_TARGET.as_tuple(),
+                                           group=group, parameter=parameter, operation=operation)
+            except NiceResponseError as err:
+                if err.unsupported:
+                    if operation == 0x09:
+                        self.parameters.record_info(address, None, state=SupportState.UNSUPPORTED)
+                    else:
+                        self.parameters.record_support(address, "get", SupportState.UNSUPPORTED, error=err.code)
+                    return None
+                self.parameters.record_support(address, "info" if operation == 0x09 else "get",
+                    SupportState.UNAVAILABLE, error=err.code)
+                raise
+            if parsed is None:
                 continue
             # an indexed reply starts with its element index; a late reply of another element is not it
-            if index is not None and not (parsed.value and parsed.value[0] == index):
+            if index is not None and not (parsed.value and len(parsed.value) >= index_size
+                                         and int.from_bytes(parsed.value[:index_size], "big") == index):
                 continue
+            if operation == 0x19:
+                self.parameters.observe(address, parsed.value)
             return parsed.value
+        if operation == 0x19:
+            self.parameters.record_support(address, "get", SupportState.UNAVAILABLE, error="no_matching_reply")
         return None
 
     def _write_dmp_register_locked(
@@ -787,8 +872,8 @@ class NiceBidiClient:
         group: int,
         parameter: int,
         value: bytes,
-    ) -> None:
-        response, _ = self._t4_request_locked(
+    ) -> CommandReceipt:
+        response, plains = self._t4_request_locked(
             "DMP",
             build_dmp_write_frame(
                 *CONTROLLER_TARGET.as_tuple(),
@@ -799,8 +884,30 @@ class NiceBidiClient:
             *CONTROLLER_TARGET.as_tuple(),
             self.t4_timeout_ms,
         )
-        if "<Error>" in _printable(response):
-            raise NiceBidiConnectionError(_response_error_summary(response))
+        self._raise_response_error(response, "T4_REQUEST")
+        address = self.parameters.address(group, parameter)
+        for plain in plains:
+            try:
+                parsed = checked_dmp_reply(plain, target=CONTROLLER_TARGET.as_tuple(),
+                                           group=group, parameter=parameter, operation=0x29)
+            except NiceResponseError as err:
+                self.parameters.record_support(address, "set",
+                    SupportState.UNSUPPORTED if err.unsupported else SupportState.SUPPORTED, error=err.code)
+                raise
+            if parsed is not None:
+                self.parameters.record_support(address, "set", SupportState.SUPPORTED)
+                return CommandReceipt()
+        if plains:
+            raise NiceProtocolError("No matching controller acknowledgement for DMP write")
+        return CommandReceipt(CommandAcknowledgement.UNKNOWN)
+
+    @staticmethod
+    def _raise_response_error(response: bytes, request_type: str) -> None:
+        if "<Error>" not in _printable(response):
+            return
+        code = nice_bidi_error_code(_printable(response)) or "unknown"
+        raise NiceResponseError(_response_error_summary(response), layer=ProtocolLayer.NHK,
+                                code=code, request_type=request_type, unsupported=code == "5")
 
     def _read_dmp_register_locked(
         self,
@@ -821,7 +928,7 @@ class NiceBidiClient:
         )
         if "<Error>" in _printable(response):
             if required:
-                raise NiceBidiConnectionError(_response_error_summary(response))
+                self._raise_response_error(response, "T4_REQUEST")
             _LOGGER.debug(
                 "Optional Nice DMP register read failed daddr=%02X dendpoint=%02X register=%02X/%02X: %s",
                 daddr,
@@ -832,16 +939,26 @@ class NiceBidiClient:
             )
             return
         for plain in plains:
-            parsed = decode_dmp_response(plain)
-            parsed_group = parsed.group
-            parsed_parameter = parsed.parameter
-            # a late INFO reply (op 0x09) is a value format, not a value
-            if parsed_group is None or parsed_parameter is None or parsed.operation == 0x09:
+            address = self.parameters.address(group, parameter, target=(daddr, dendpoint))
+            try:
+                parsed = checked_dmp_reply(plain, target=(daddr, dendpoint), group=group,
+                                           parameter=parameter, operation=0x19)
+            except NiceResponseError as err:
+                self.parameters.record_support(address, "get",
+                    SupportState.UNSUPPORTED if err.unsupported else SupportState.UNAVAILABLE, error=err.code)
+                if err.unsupported or not required:
+                    return
+                raise
+            if parsed is None:
                 continue
-            key = f"{parsed_group:02X}/{parsed_parameter:02X}"
+            key = f"{group:02X}/{parameter:02X}"
             if (daddr, dendpoint) != CONTROLLER_TARGET.as_tuple():
                 key = f"{key}@{daddr:02X}.{dendpoint:02X}"
             registers[key] = parsed
+            self.parameters.observe(address, parsed.value)
+            return
+        if required:
+            raise NiceProtocolError("No matching DMP register reply")
 
     def _read_status_locked(
         self,
@@ -864,7 +981,19 @@ class NiceBidiClient:
             if preemptible and self._should_yield is not None and self._should_yield():
                 raise NiceReadPreemptedError("status read yielded to a pending command")
             self._read_dmp_register_locked(registers, *target, group, parameter, required=required)
-        return status_from_dmp_registers(registers)
+        status = status_from_dmp_registers(registers)
+        values = {}
+        for key, parsed in registers.items():
+            if "@" in key:
+                continue
+            setting = SETTINGS_BY_REGISTER.get((parsed.group, parsed.parameter))
+            if setting:
+                observation = self.parameters.observe(self.parameters.address(setting.group, setting.parameter), parsed.value)
+                values[setting.key] = (
+                    bool(observation.raw_value) if setting.kind == "boolean" and observation.raw_value is not None
+                    else observation.raw_value
+                )
+        return replace(status, **values) if values else status
 
     def _read_nhk_status_locked(self, *, preemptible: bool = False) -> NiceBidiStatus:
         interrupt = self._should_yield if preemptible else None

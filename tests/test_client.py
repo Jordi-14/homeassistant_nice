@@ -34,6 +34,7 @@ from custom_components.nice_bidiwifi.client import (
     parse_dmp_response,
     parse_info_xml,
 )
+from custom_components.nice_bidiwifi.protocol.t4.codec import dmp_checksum
 from custom_components.nice_bidiwifi.protocol.t4.dmp import DmpResponse
 from custom_components.nice_bidiwifi.protocol.t4.status import (
     CONTROLLER_ERROR_BITS,
@@ -43,8 +44,10 @@ from tests.conftest import make_device_info, make_status
 
 
 def _dmp_response(group: int, parameter: int, value: bytes) -> bytes:
-    body = bytes([0x55, 0x0D, 0x00, 0x03, 0x50, 0x91, 0x08, 0x08, 0x00, group, parameter, 0x19, len(value), 0x02])
-    return body + value + bytes([0x0D])
+    header = [0x50, 0x91, 0x00, 0x03, 0x08, len(value) + 6]
+    payload = [group, parameter, 0x19, len(value), 0x00, *value]
+    body = [*header, dmp_checksum(*header), *payload, dmp_checksum(*payload)]
+    return bytes([0x55, len(body), *body, len(body)])
 
 
 def _encrypted_t4_event(plain: bytes) -> bytes:
