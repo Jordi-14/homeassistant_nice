@@ -592,7 +592,7 @@ async def test_counter_card_honors_known_info_scale_and_preserves_raw_evidence(h
         owner.parameters.address(4, 0xB2),
         DmpInfo(4, 0, 4, 0x11, minimum=0, maximum=10000, step=1, scale=10),
     )
-    owner.async_set_updated_data(make_status(maintenance_count=120))
+    owner.async_set_updated_data(make_status(state="closed", maintenance_count=120))
     assert (
         owner.diagnostic_runtime.view("counters")["values"]["maintenance_count"] == 12
     )
