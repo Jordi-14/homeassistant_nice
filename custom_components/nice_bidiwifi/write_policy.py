@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .client import NiceBidiDeviceInfo
+from .models.device import NiceDeviceInfo as NiceBidiDeviceInfo
 from .models.profiles import DMP_WRITE_RESTRICTIONS, normalized_device_identity
 
 

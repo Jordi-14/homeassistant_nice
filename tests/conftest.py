@@ -34,6 +34,7 @@ from custom_components.nice_bidiwifi.models.administration import (
     NiceInterfaceClock,
     NiceLogSnapshot,
 )
+from custom_components.nice_bidiwifi.parameters import ParameterRepository
 from custom_components.nice_bidiwifi.protocol.t4.settings import DmpSetting
 from custom_components.nice_bidiwifi.write_policy import dmp_write_block_reason
 
@@ -265,6 +266,9 @@ class FakeClient:
         self.read_status_include_extended: list[bool] = []
         self.read_status_preemptible: list[bool] = []
         self.dmp_writes: list[tuple[int, int, int, int]] = []
+        self.dmp_values = {}
+        self.value_reads = []
+        self.read_dmp_value_error = None
         self.event_callbacks: list = []
         self.event_failure_callbacks: list = []
 
@@ -406,12 +410,25 @@ class FakeClient:
         self.t4_actions.append(action)
 
     def write_dmp_register(
-        self, group: int, parameter: int, value: int, *, size: int = 1
+        self, group: int, parameter: int, value: int, *, size: int = 1, byte_order="big", before_dispatch=None
     ) -> None:
         """Record a DMP write or raise a configured error."""
         if self.write_dmp_register_error is not None:
             raise self.write_dmp_register_error
+        if before_dispatch is not None:
+            before_dispatch()
         self.dmp_writes.append((group, parameter, value, size))
+        self.dmp_values.setdefault((group, parameter), value.to_bytes(size, byte_order))
+
+    def read_dmp_value(self, group, parameter, *, preemptible=False):
+        self.value_reads.append((group, parameter))
+        if self.read_dmp_value_error is not None:
+            raise self.read_dmp_value_error
+        return self.dmp_values.get((group, parameter))
+
+    def write_parameter(self, prepared, *, before_dispatch=None):
+        return self.write_dmp_register(prepared.setting.group, prepared.setting.parameter, prepared.value,
+            size=len(prepared.payload), byte_order=prepared.byte_order, before_dispatch=before_dispatch)
 
     def close(self) -> None:
         """Record that the client was closed."""
@@ -426,6 +443,7 @@ class FakeCoordinator:
         self.device_info = make_device_info()
         self.setting_info = {}
         self.register_info = {}
+        self.parameters = ParameterRepository()
         self.controller_configuration = None
         self.movement_speed_profile = {}
         self.capabilities = None

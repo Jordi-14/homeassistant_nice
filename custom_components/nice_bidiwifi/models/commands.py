@@ -24,6 +24,22 @@ class CommandAcknowledgement(StrEnum):
     UNKNOWN = "unknown"
 
 
+class CommandVerification(StrEnum):
+    NOT_REQUESTED = "not_requested"
+    VERIFIED = "verified"
+    UNAVAILABLE = "unavailable"
+    MISMATCH = "mismatch"
+
+
+@dataclass(frozen=True, slots=True)
+class CommandReceipt:
+    """Protocol acknowledgement, optionally followed by a targeted readback."""
+
+    acknowledgement: CommandAcknowledgement = CommandAcknowledgement.ACCEPTED
+    verification: CommandVerification = CommandVerification.NOT_REQUESTED
+    details: tuple[tuple[str, Any], ...] = ()
+
+
 @dataclass(frozen=True, slots=True)
 class NiceCommand:
     """One reviewed command request."""
@@ -43,6 +59,8 @@ class NiceCommandResult:
     completed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     error_code: str | None = None
     details: tuple[tuple[str, Any], ...] = ()
+    verification: CommandVerification = CommandVerification.NOT_REQUESTED
+    error_layer: str | None = None
 
     @property
     def accepted(self) -> bool:

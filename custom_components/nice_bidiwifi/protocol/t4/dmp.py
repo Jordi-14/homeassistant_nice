@@ -65,13 +65,16 @@ def build_dmp_read_frame(
     index: int | None = None,
     *,
     flags: int = 0x99,
+    index_size: int = 1,
 ) -> bytes:
     """Build a DMP register read frame (flags 0x99 = GET, 0x89 = INFO)."""
     args = [group, parameter, flags, 0x00]
     if index is None:
         args.append(0x00)
     else:
-        args.extend([0x01, index])
+        if not 1 <= index_size <= 3 or not 0 <= index < 1 << (index_size * 8):
+            raise ValueError("index does not fit the INFO index width")
+        args.extend([index_size, *index.to_bytes(index_size, "big")])
     sublen = len(args) + 1
     marker = 0xC9 ^ sublen ^ daddr ^ dendpoint
     body = [

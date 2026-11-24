@@ -10,7 +10,7 @@ bytes per field (04/D1 installed bits, 04/D2 scales). Without bit 6: min, max, s
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 DMP_INFO_FLAGS = 0x89  # req | ack | fin (GET is 0x99: also get)
 
@@ -31,6 +31,21 @@ class DmpInfo:
     array_size: int | None = None
     # bit-6 list without option codes: one value of `size` bytes per field (04/D1 present bits, 04/D2 scales)
     values: tuple[int, ...] | None = None
+    byte_order: str = "big"
+    raw: bytes | None = field(default=None, compare=False, repr=False)
+
+    @property
+    def indexed(self) -> bool:
+        return bool(self.flags & 0x80)
+
+    @property
+    def index_size(self) -> int:
+        return self.flags & 3 if self.indexed else 0
+
+    @property
+    def signed(self) -> bool | None:
+        """Only the scalar wire formats verified for the current catalog are interpreted."""
+        return False if self.data_format in {0x00, 0x25} else None
 
 
 def decode_dmp_info(data: bytes | None) -> DmpInfo | None:
@@ -41,12 +56,15 @@ def decode_dmp_info(data: bytes | None) -> DmpInfo | None:
     order = "little" if data[0] & 0x80 else "big"
     flags = data[3]
     offset = 4 + (flags & 0x03 if flags & 0x80 else 0)
-    info = DmpInfo(size=size, data_format=data[1], function=data[2], flags=flags)
-    if flags & 0x80 and len(data) >= offset:
+    info = DmpInfo(size=size, data_format=data[1], function=data[2], flags=flags,
+                   byte_order=order, raw=data)
+    if flags & 0x80:
+        if not flags & 3 or len(data) < offset:
+            return None
         info = replace(info, array_size=int.from_bytes(data[4:offset], "big"))
     if flags & 0x40:
         if len(data) <= offset:
-            return info
+            return None if flags & 0x20 else info
         if not flags & 0x20:
             width = size or 1
             raw = data[offset + 1 : offset + 1 + data[offset] * width]
@@ -93,9 +111,9 @@ def scaled_value(raw: int | None, info: DmpInfo | None) -> float | int | None:
     return raw
 
 
-def decode_version_entry(value: bytes | None) -> str | None:
+def decode_version_entry(value: bytes | None, *, index_size: int = 1) -> str | None:
     """Return the text of one 04/03 (CTRL_STR_VERSION_CONFIGURATION) element: index byte, then ASCII."""
-    if not value or len(value) < 2:
+    if not value or index_size < 1 or len(value) <= index_size:
         return None
-    text = value[1:].split(b"\x00", 1)[0].decode("ascii", errors="ignore").strip()
+    text = value[index_size:].split(b"\x00", 1)[0].decode("ascii", errors="ignore").strip()
     return text or None

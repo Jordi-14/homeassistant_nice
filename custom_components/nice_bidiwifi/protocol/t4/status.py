@@ -24,6 +24,97 @@ from .options import (
 )
 
 
+# Canonical field-to-register bindings shared by decoding and cache merging.
+UINT_FIELDS = {
+    "max_open_position": "04/12",
+    "partial_open_1_position": "04/21",
+    "partial_open_2_position": "04/22",
+    "partial_open_3_position": "04/23",
+    "opening_speed": "04/42",
+    "closing_speed": "04/43",
+    "opening_force": "04/4A",
+    "closing_force": "04/4B",
+    "pause_time": "04/81",
+    "photo_close_time": "04/85",
+    "photo_close_mode": "04/86",
+    "always_close_time": "04/89",
+    "always_close_mode": "04/8A",
+    "maintenance_threshold": "04/B1",
+    "maintenance_count": "04/B2",
+    "total_maneuver_count": "04/B3",
+    "transformation_ratio": "04/10",
+    "min_closing_position": "04/13",
+    "opening_slowdown_position": "04/24",
+    "closing_slowdown_position": "04/25",
+    "opening_slowdown_speed": "04/45",
+    "closing_slowdown_speed": "04/46",
+    "courtesy_light_time": "04/5B",
+    "standby_time": "04/8D",
+    "pre_flash_open_time": "04/95",
+    "pre_flash_close_time": "04/99",
+    "electric_lock_time": "04/5A",
+    "suction_cup_time": "04/5C",
+    "starting_torque_time": "04/91",
+}
+BOOL_FIELDS = {
+    "input_1": "04/71",
+    "input_2": "04/72",
+    "input_3": "04/73",
+    "input_4": "04/74",
+    "auto_close": "04/80",
+    "photo_close": "04/84",
+    "always_close": "04/88",
+    "standby": "04/8C",
+    "pre_flash": "04/94",
+    "key_lock": "04/9C",
+    "automation_blocked": "04/9A",
+    "slowdown": "04/A2",
+    "starting_torque": "04/90",
+    "slave_mode": "04/98",
+}
+OPTION_FIELDS = {
+    "input_1_function": ("04/71", INPUT_FUNCTIONS),
+    "input_2_function": ("04/72", INPUT_FUNCTIONS),
+    "input_3_function": ("04/73", INPUT_FUNCTIONS),
+    "input_4_function": ("04/74", INPUT_FUNCTIONS),
+    "output_1_function": ("04/51", OUTPUT_FUNCTIONS),
+    "output_2_function": ("04/52", OUTPUT_FUNCTIONS),
+    "step_step_mode": ("04/61", COMMAND_MODES),
+    "standby_mode": ("04/8E", STANDBY_MODES),
+    "partial_open_mode": ("04/62", COMMAND_MODES),
+    "open_mode": ("04/63", COMMAND_MODES),
+    "close_mode": ("04/64", COMMAND_MODES),
+    "stop_mode": ("04/65", COMMAND_MODES),
+    "photo_closing_reaction": ("04/68", COMMAND_MODES),
+    "photo_opening_reaction": ("04/69", COMMAND_MODES),
+    "photo_3_reaction": ("04/6A", COMMAND_MODES),
+    "alt_opening_reaction": ("04/6B", COMMAND_MODES),
+    "alt_closing_reaction": ("04/6C", COMMAND_MODES),
+    "obstacle_opening_reaction": ("04/78", COMMAND_MODES),
+    "obstacle_closing_reaction": ("04/79", COMMAND_MODES),
+    "maintenance_mode": ("04/B0", MAINTENANCE_MODES),
+}
+STATUS_FIELD_REGISTERS = {
+    **UINT_FIELDS,
+    **BOOL_FIELDS,
+    **{k: v[0] for k, v in OPTION_FIELDS.items()},
+    **{
+        k: "04/D1"
+        for k in (
+            "limit_open",
+            "limit_closed",
+            "diagnostics_io_byte",
+            "controller_errors",
+        )
+    },
+    **{
+        k: "04/D2"
+        for k in ("motor_temperature", "service_voltage", "diagnostics_parameters")
+    },
+    "bluebus_devices": "04/D0",
+    "last_maneuvers": "04/DA",
+}
+
 # 04/D1 byte 10, bits 0-6 = MyNice Pro T4InputOutputDiagnostic ids 37-43 (1 = ERR, "Err positions" @0x114b0).
 CONTROLLER_ERROR_BITS = (
     "positions",
@@ -84,7 +175,12 @@ def status_from_dmp_registers(
     opened = dmp_uint(registers.get("04/18"))
     closed = dmp_uint(registers.get("04/19"))
     position: float | None = None
-    if current is not None and opened is not None and closed is not None and opened != closed:
+    if (
+        current is not None
+        and opened is not None
+        and closed is not None
+        and opened != closed
+    ):
         position = max(0.0, min(100.0, ((current - closed) / (opened - closed)) * 100))
 
     diagnostics_io = dmp_bytes(registers.get("04/D1"))
@@ -97,12 +193,22 @@ def status_from_dmp_registers(
     )
     diagnostic_parameters = dmp_bytes(registers.get("04/D2"))
     if diagnostic_parameters and all(
-        value in {0x00, 0xFF}
-        for value in diagnostic_parameters
+        value in {0x00, 0xFF} for value in diagnostic_parameters
     ):
         diagnostic_parameters = None
 
+    values = {name: dmp_uint(registers.get(reg)) for name, reg in UINT_FIELDS.items()}
+    values.update(
+        {name: dmp_bool(registers.get(reg)) for name, reg in BOOL_FIELDS.items()}
+    )
+    values.update(
+        {
+            name: option_name(table, dmp_uint(registers.get(reg)))
+            for name, (reg, table) in OPTION_FIELDS.items()
+        }
+    )
     return NiceStatus(
+        **values,
         state=state,
         position=round(position, 1) if position is not None else None,
         current_position=current,
@@ -112,74 +218,11 @@ def status_from_dmp_registers(
             key: value.value.hex(" ") if value.value is not None else ""
             for key, value in registers.items()
         },
-        max_open_position=dmp_uint(registers.get("04/12")),
-        partial_open_1_position=dmp_uint(registers.get("04/21")),
-        partial_open_2_position=dmp_uint(registers.get("04/22")),
-        partial_open_3_position=dmp_uint(registers.get("04/23")),
-        opening_speed=dmp_uint(registers.get("04/42")),
-        closing_speed=dmp_uint(registers.get("04/43")),
-        opening_force=dmp_uint(registers.get("04/4A")),
-        closing_force=dmp_uint(registers.get("04/4B")),
-        pause_time=dmp_uint(registers.get("04/81")),
-        photo_close_time=dmp_uint(registers.get("04/85")),
-        photo_close_mode=dmp_uint(registers.get("04/86")),
-        always_close_time=dmp_uint(registers.get("04/89")),
-        always_close_mode=dmp_uint(registers.get("04/8A")),
-        maintenance_threshold=dmp_uint(registers.get("04/B1")),
-        maintenance_count=dmp_uint(registers.get("04/B2")),
-        total_maneuver_count=dmp_uint(registers.get("04/B3")),
-        input_1_function=option_name(INPUT_FUNCTIONS, dmp_uint(registers.get("04/71"))),
-        input_2_function=option_name(INPUT_FUNCTIONS, dmp_uint(registers.get("04/72"))),
-        input_3_function=option_name(INPUT_FUNCTIONS, dmp_uint(registers.get("04/73"))),
-        input_4_function=option_name(INPUT_FUNCTIONS, dmp_uint(registers.get("04/74"))),
-        input_1=dmp_bool(registers.get("04/71")),
-        input_2=dmp_bool(registers.get("04/72")),
-        input_3=dmp_bool(registers.get("04/73")),
-        input_4=dmp_bool(registers.get("04/74")),
-        auto_close=dmp_bool(registers.get("04/80")),
-        photo_close=dmp_bool(registers.get("04/84")),
-        always_close=dmp_bool(registers.get("04/88")),
-        standby=dmp_bool(registers.get("04/8C")),
-        pre_flash=dmp_bool(registers.get("04/94")),
-        key_lock=dmp_bool(registers.get("04/9C")),
         limit_open=bool(io_byte & 0x01) if io_byte is not None else None,
         limit_closed=bool(io_byte & 0x02) if io_byte is not None else None,
         diagnostics_io_byte=io_byte,
         bluebus_devices=decode_bluebus_devices(dmp_bytes(registers.get("04/D0"))),
         controller_errors=decode_controller_errors(diagnostics_io),
-        transformation_ratio=dmp_uint(registers.get("04/10")),
-        min_closing_position=dmp_uint(registers.get("04/13")),
-        opening_slowdown_position=dmp_uint(registers.get("04/24")),
-        closing_slowdown_position=dmp_uint(registers.get("04/25")),
-        opening_slowdown_speed=dmp_uint(registers.get("04/45")),
-        closing_slowdown_speed=dmp_uint(registers.get("04/46")),
-        output_1_function=option_name(OUTPUT_FUNCTIONS, dmp_uint(registers.get("04/51"))),
-        output_2_function=option_name(OUTPUT_FUNCTIONS, dmp_uint(registers.get("04/52"))),
-        courtesy_light_time=dmp_uint(registers.get("04/5B")),
-        step_step_mode=option_name(COMMAND_MODES, dmp_uint(registers.get("04/61"))),
-        standby_time=dmp_uint(registers.get("04/8D")),
-        standby_mode=option_name(STANDBY_MODES, dmp_uint(registers.get("04/8E"))),
-        pre_flash_open_time=dmp_uint(registers.get("04/95")),
-        pre_flash_close_time=dmp_uint(registers.get("04/99")),
-        automation_blocked=dmp_bool(registers.get("04/9A")),
-        slowdown=dmp_bool(registers.get("04/A2")),
-        partial_open_mode=option_name(COMMAND_MODES, dmp_uint(registers.get("04/62"))),
-        open_mode=option_name(COMMAND_MODES, dmp_uint(registers.get("04/63"))),
-        close_mode=option_name(COMMAND_MODES, dmp_uint(registers.get("04/64"))),
-        stop_mode=option_name(COMMAND_MODES, dmp_uint(registers.get("04/65"))),
-        photo_closing_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/68"))),
-        photo_opening_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/69"))),
-        photo_3_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/6A"))),
-        alt_opening_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/6B"))),
-        alt_closing_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/6C"))),
-        obstacle_opening_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/78"))),
-        obstacle_closing_reaction=option_name(COMMAND_MODES, dmp_uint(registers.get("04/79"))),
-        electric_lock_time=dmp_uint(registers.get("04/5A")),  # raw, scaled with INFO
-        suction_cup_time=dmp_uint(registers.get("04/5C")),  # raw, scaled with INFO
-        starting_torque_time=dmp_uint(registers.get("04/91")),  # raw, scaled with INFO
-        starting_torque=dmp_bool(registers.get("04/90")),
-        slave_mode=dmp_bool(registers.get("04/98")),
-        maintenance_mode=option_name(MAINTENANCE_MODES, dmp_uint(registers.get("04/B0"))),
         last_maneuvers=decode_last_maneuvers(dmp_bytes(registers.get("04/DA"))),
         motor_temperature=_motor_temperature(diagnostic_parameters),
         service_voltage=(

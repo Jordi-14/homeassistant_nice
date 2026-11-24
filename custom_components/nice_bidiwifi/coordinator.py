@@ -62,6 +62,9 @@ from .connection import (
     NiceConnectionRoute,
 )
 from .connection_router import NiceConnectionRouter
+from .command_executor import CommandExecutor
+from .parameters import ParameterRepository, SupportState
+from .errors import NiceParameterError, NiceResponseError, is_request_rejection
 from .controllers.base import controller_defines
 from .controllers.events import NiceEventController
 from .controllers.administration import NiceAdministrationController
@@ -97,10 +100,12 @@ from .models.commands import (
     CommandKind,
     NiceCommand,
     NiceCommandResult,
+    CommandVerification,
 )
 from .models.config import NiceEntryConfig
-from .protocol.t4.info import DmpInfo, decode_version_entry
-from .protocol.t4.settings import SETTINGS, DmpSetting
+from .protocol.t4.info import decode_version_entry
+from .protocol.t4.settings import SETTINGS, SETTINGS_BY_REGISTER, DmpSetting
+from .protocol.t4.status import STATUS_FIELD_REGISTERS
 from .protocol.t4.actions import T4_ACTION_BY_KEY
 from .write_policy import dmp_write_block_reason
 
@@ -220,9 +225,10 @@ class NiceBidiDataUpdateCoordinator(
         self.position_controller._init_position_state(hass, entry)
         self._extended_status_cache: NiceBidiStatus | None = None
         # Value format (DMP INFO) of each writable setting, read once from the controller.
-        self.setting_info: dict[str, DmpInfo] = {}
+        self.parameters = ParameterRepository(self.entry_config.device_id)
+        self.setting_info = self.parameters.setting_info
         # INFO of read-only registers whose value needs the controller's scale, keyed "GG/PP".
-        self.register_info: dict[str, DmpInfo] = {}
+        self.register_info = self.parameters.register_info
         # 04/03 elements as the app joins them, e.g. "RBA3R10, RB600" (board, motor), read once.
         self.controller_configuration: str | None = None
         self._setting_info_task: asyncio.Task | None = None
@@ -247,6 +253,7 @@ class NiceBidiDataUpdateCoordinator(
         self.client = NiceConnectionRouter(
             self.entry_config,
             self.connection_health,
+            parameters=self.parameters,
         )
         super().__init__(
             hass,
@@ -258,6 +265,7 @@ class NiceBidiDataUpdateCoordinator(
         self.event_controller = NiceEventController(self)
         self.administration_controller = NiceAdministrationController(self)
         self.motion_trace = MotionTraceController(self)
+        self.command_executor = CommandExecutor(self.hass.async_add_executor_job)
 
     def __getattr__(self, name: str):
         """Expose composed controller operations through the stable coordinator API."""
@@ -364,7 +372,7 @@ class NiceBidiDataUpdateCoordinator(
             value = await self.hass.async_add_executor_job(
                 partial(self.client.read_dmp_indexed, 0x04, 0x03, index, preemptible=True)
             )
-            if (text := decode_version_entry(value)) is None:
+            if (text := decode_version_entry(value, index_size=info.index_size)) is None:
                 return None  # incomplete: try again later, never store a part
             entries.append(text)
         return ", ".join(entries) or None
@@ -399,6 +407,7 @@ class NiceBidiDataUpdateCoordinator(
                 break
             if info is not None:
                 store[key] = info
+                self.parameters.record_info(self.parameters.address(group, parameter), info)
         if self.controller_configuration is None:
             try:
                 self.controller_configuration = await self._async_read_controller_configuration()
@@ -676,7 +685,10 @@ class NiceBidiDataUpdateCoordinator(
             return status
         registers = dict(cached.registers)
         registers.update(status.registers)
-        values = {name: getattr(cached, name) for name in EXTENDED_STATUS_FIELD_NAMES}
+        values = {
+            name: getattr(status if STATUS_FIELD_REGISTERS.get(name) in status.registers else cached, name)
+            for name in EXTENDED_STATUS_FIELD_NAMES
+        }
         return replace(status, registers=registers, **values)
 
     def _supports_high_level_actions(self) -> bool:
@@ -778,11 +790,42 @@ class NiceBidiDataUpdateCoordinator(
         size: int = 1,
     ) -> None:
         """Write a BusT4/DMP register and refresh extended status."""
+        setting = SETTINGS_BY_REGISTER.get((group, parameter))
+        if setting is None:
+            raise HomeAssistantError("Nice DMP write is not in the reviewed parameter catalog")
         block_reason = dmp_write_block_reason(self.device_info, group, parameter)
         if block_reason is not None:
             raise HomeAssistantError(f"Nice DMP write is disabled for this controller: {block_reason}")
         if self.data is not None and self.data.is_moving:
             raise HomeAssistantError("Nice DMP writes are blocked while the gate is moving")
+        if self.calibration_state == CALIBRATION_STATE_RUNNING:
+            raise HomeAssistantError("Nice DMP writes are blocked during calibration")
+        if reason := self.setting_write_block_reason(setting):
+            raise HomeAssistantError(f"Nice setting {setting.key} cannot be written: {reason}")
+        try:
+            self._prepare_parameter_write(setting, value)
+        except NiceParameterError as err:
+            raise HomeAssistantError(f"Nice setting {setting.key} cannot be written: {err}") from err
+        if setting.key not in self.setting_info:
+            try:
+                info = await self.hass.async_add_executor_job(partial(
+                    self.client.read_dmp_info, group, parameter, preemptible=True,
+                ))
+            except NiceResponseError as err:
+                if not err.unsupported:
+                    raise HomeAssistantError(f"Nice parameter metadata failed: {err}") from err
+                self.parameters.record_info(self.parameters.address(group, parameter), None, state=SupportState.UNSUPPORTED)
+            except NiceReadPreemptedError as err:
+                raise HomeAssistantError("Nice metadata read yielded to a pending command; retry the setting") from err
+            except NiceBidiError as err:
+                raise HomeAssistantError(f"Nice parameter metadata failed: {err}") from err
+            else:
+                if info is not None:
+                    self.parameters.record_info(self.parameters.address(group, parameter), info)
+        try:
+            self._prepare_parameter_write(setting, value)
+        except NiceParameterError as err:
+            raise HomeAssistantError(f"Nice setting {setting.key} cannot be written: {err}") from err
         await self._async_cancel_position_target()
         await self._async_cancel_calibration(
             reason=f"config_write:{group:02X}/{parameter:02X}"
@@ -795,6 +838,10 @@ class NiceBidiDataUpdateCoordinator(
         value: int,
     ) -> None:
         """Write one reviewed semantic DMP setting."""
+        if SETTINGS_BY_REGISTER.get((setting.group, setting.parameter)) != setting:
+            raise HomeAssistantError("Nice setting is not in the reviewed parameter catalog")
+        if reason := self.setting_write_block_reason(setting):
+            raise HomeAssistantError(f"Nice setting {setting.key} cannot be written: {reason}")
         await self.async_write_dmp_register(
             setting.group,
             setting.parameter,
@@ -807,11 +854,50 @@ class NiceBidiDataUpdateCoordinator(
         setting: DmpSetting,
     ) -> str | None:
         """Return a device-specific block reason for a reviewed setting."""
-        return dmp_write_block_reason(
-            self.device_info,
-            setting.group,
-            setting.parameter,
-        )
+        self.parameters.setting_info = self.setting_info
+        return self.parameters.block_reason(setting, self.device_info)
+
+    def _prepare_parameter_write(self, setting: DmpSetting, value: int):
+        """Validate before side effects and again after asynchronous boundaries."""
+        if self.data is not None and self.data.is_moving:
+            raise NiceParameterError("configuration write blocked: gate started moving")
+        if self.calibration_state == CALIBRATION_STATE_RUNNING:
+            raise NiceParameterError("configuration write blocked during calibration")
+        self.parameters.setting_info = self.setting_info
+        dynamic_max = None
+        if setting.dynamic_max_field and self.data is not None:
+            dynamic_max = getattr(self.data, setting.dynamic_max_field) or self.data.open_position
+        return self.parameters.prepare_write(setting, value, device=self.device_info, dynamic_max=dynamic_max)
+
+    async def _async_execute_command(self, command: NiceCommand, operation, *, label="command") -> NiceCommandResult:
+        """Shared dispatch, failure classification and connection bookkeeping."""
+        started = time.monotonic()
+        try:
+            result = await self.command_executor.execute(command, operation)
+        except (NiceBidiError, OSError, ValueError) as err:
+            self._store_failed_command(command, started, err)
+            if command.kind is CommandKind.T4_ACTION and nice_bidi_error_code(err) == "5":
+                self._rejected_t4_actions.add(command.key)
+                self.async_update_listeners()
+            if isinstance(err, NiceBidiAuthError):
+                await self.hass.async_add_executor_job(self.client.close)
+                self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
+                message = "authentication"
+            elif is_request_rejection(err) or isinstance(err, ValueError):
+                self._set_connection_state(CONNECTION_STATE_CONNECTED)
+                message = label
+            else:
+                await self.hass.async_add_executor_job(self.client.close)
+                self._set_connection_state(CONNECTION_STATE_FAILED)
+                message = label
+            self.last_error = str(err)
+            self._clear_position_simulation()
+            raise HomeAssistantError(f"Nice {message} failed: {err}") from err
+        self._set_connection_state(CONNECTION_STATE_CONNECTED)
+        self._store_accepted_command(command, started, result=result)
+        self.last_error = None
+        self._extend_post_command_fast_poll_window()
+        return result
 
     async def _async_send_action(
         self,
@@ -822,34 +908,13 @@ class NiceBidiDataUpdateCoordinator(
         simulation_target_position: float | None = None,
     ) -> None:
         """Send an open, close, or stop command without touching target watchers."""
-        started = time.monotonic()
         command = NiceCommand(key=action, kind=CommandKind.DOOR_ACTION)
         stop_started_from_motion = action == "stop" and (
             self._position_simulation_action is not None
             or (self.data is not None and self.data.is_moving)
         )
         stop_display_position = self.display_position if stop_started_from_motion else None
-        try:
-            await self.hass.async_add_executor_job(self.client.send_action, action)
-        except NiceBidiAuthError as err:
-            self._store_failed_command(command, started, err)
-            await self.hass.async_add_executor_job(self.client.close)
-            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
-            self.last_error = str(err)
-            self._clear_position_simulation()
-            raise HomeAssistantError(f"Nice authentication failed: {err}") from err
-        except (NiceBidiConnectionError, OSError) as err:
-            self._store_failed_command(command, started, err)
-            await self.hass.async_add_executor_job(self.client.close)
-            self._set_connection_state(CONNECTION_STATE_FAILED)
-            self.last_error = str(err)
-            self._clear_position_simulation()
-            raise HomeAssistantError(f"Nice command failed: {err}") from err
-
-        self._set_connection_state(CONNECTION_STATE_CONNECTED)
-        self._store_accepted_command(command, started)
-        self.last_error = None
-        self._extend_post_command_fast_poll_window()
+        await self._async_execute_command(command, partial(self.client.send_action, action))
         if action == "stop":
             self._recent_stop_command_monotonic = time.monotonic()
             self._recent_stop_started_from_motion = stop_started_from_motion
@@ -873,33 +938,9 @@ class NiceBidiDataUpdateCoordinator(
             raise HomeAssistantError(
                 f"Nice T4 action {action!r} is not advertised by this device"
             )
-        started = time.monotonic()
         command = NiceCommand(key=action, kind=CommandKind.T4_ACTION)
-        try:
-            send = self.client.send_t4_action if self.t4_actions_via_nhk else self.client.send_dep_action
-            await self.hass.async_add_executor_job(send, action)
-        except NiceBidiAuthError as err:
-            self._store_failed_command(command, started, err)
-            await self.hass.async_add_executor_job(self.client.close)
-            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
-            self.last_error = str(err)
-            self._clear_position_simulation()
-            raise HomeAssistantError(f"Nice authentication failed: {err}") from err
-        except (NiceBidiConnectionError, OSError) as err:
-            if nice_bidi_error_code(err) == "5":
-                self._rejected_t4_actions.add(action)
-                self.async_update_listeners()
-            self._store_failed_command(command, started, err)
-            await self.hass.async_add_executor_job(self.client.close)
-            self._set_connection_state(CONNECTION_STATE_FAILED)
-            self.last_error = str(err)
-            self._clear_position_simulation()
-            raise HomeAssistantError(f"Nice command failed: {err}") from err
-
-        self._set_connection_state(CONNECTION_STATE_CONNECTED)
-        self._store_accepted_command(command, started)
-        self.last_error = None
-        self._extend_post_command_fast_poll_window()
+        send = self.client.send_t4_action if self.t4_actions_via_nhk else self.client.send_dep_action
+        await self._async_execute_command(command, partial(send, action))
         if action in DEP_MOVEMENT_ACTIONS:
             self._recent_stop_command_monotonic = None
             self._recent_stop_started_from_motion = False
@@ -949,9 +990,16 @@ class NiceBidiDataUpdateCoordinator(
         size: int = 1,
         refresh: bool = True,
     ) -> None:
-        """Write a BusT4/DMP register without touching target watchers."""
+        """Validate a reviewed parameter, write once and verify only that value."""
+        setting = SETTINGS_BY_REGISTER.get((group, parameter))
+        if setting is None:
+            raise HomeAssistantError("Nice DMP write is not in the reviewed parameter catalog")
+        try:
+            prepared = self._prepare_parameter_write(setting, value)
+        except NiceParameterError as err:
+            raise HomeAssistantError(f"Nice setting {setting.key} cannot be written: {err}") from err
         command_name = f"dmp_{group:02X}_{parameter:02X}_set"
-        started = time.monotonic()
+        size = len(prepared.payload)
         command = NiceCommand(
             key=command_name,
             kind=CommandKind.DMP_WRITE,
@@ -962,40 +1010,71 @@ class NiceBidiDataUpdateCoordinator(
                 ("size", size),
             ),
         )
+        def before_dispatch():
+            current = self._prepare_parameter_write(setting, value)
+            if current.payload != prepared.payload or current.byte_order != prepared.byte_order:
+                raise NiceParameterError("controller metadata changed before dispatch; retry the setting")
+        result = await self._async_execute_command(command,
+            partial(self.client.write_parameter, prepared, before_dispatch=before_dispatch), label="DMP write")
+        # Verification is a read, not a retry of the potentially completed write.
+        raw = None
+        verification_error = None
+        readback_failure = None
         try:
-            await self.hass.async_add_executor_job(
-                lambda: self.client.write_dmp_register(group, parameter, value, size=size)
+            raw = await self.hass.async_add_executor_job(partial(
+                self.client.read_dmp_value, group, parameter, preemptible=True,
+            ))
+        except (NiceBidiError, OSError) as err:
+            verification_error = type(err).__name__
+            readback_failure = err
+        # Another command may have completed while this readback was waiting.
+        if self.last_command_result is not result:
+            return
+        if readback_failure is not None and not isinstance(readback_failure, (NiceReadPreemptedError, NiceResponseError)):
+            self._set_connection_state(
+                CONNECTION_STATE_AUTH_FAILED if isinstance(readback_failure, NiceBidiAuthError) else CONNECTION_STATE_FAILED
             )
-        except NiceBidiAuthError as err:
-            self._store_failed_command(command, started, err)
-            await self.hass.async_add_executor_job(self.client.close)
-            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
-            self.last_error = str(err)
-            raise HomeAssistantError(f"Nice authentication failed: {err}") from err
-        except (NiceBidiConnectionError, OSError, ValueError) as err:
-            self._store_failed_command(command, started, err)
-            await self.hass.async_add_executor_job(self.client.close)
-            self._set_connection_state(CONNECTION_STATE_FAILED)
-            self.last_error = str(err)
-            raise HomeAssistantError(f"Nice DMP write failed: {err}") from err
-
-        self._set_connection_state(CONNECTION_STATE_CONNECTED)
-        self._store_accepted_command(command, started)
-        self.last_error = None
-        self._extend_post_command_fast_poll_window()
-        self.update_interval = MOVING_UPDATE_INTERVAL
-        self._extended_scan_requests += 1
-        self._extended_status_next_refresh_monotonic = 0.0
-        if refresh:
-            await self.async_request_refresh()
+            self.last_error = f"Setting sent; readback unavailable: {readback_failure}"
+        observed = self.parameters.observe(self.parameters.address(group, parameter), raw, source="readback")
+        verification = (
+            CommandVerification.UNAVAILABLE if observed.raw_value is None
+            else CommandVerification.VERIFIED if observed.raw_value == value
+            else CommandVerification.MISMATCH
+        )
+        details = (*result.details, ("requested_value", value), ("readback_value", observed.raw_value))
+        if verification_error:
+            details += (("readback_error", verification_error),)
+        verified_result = replace(result, verification=verification, details=details)
+        if self.last_command_result is result:
+            self.last_command_result = verified_result
+        key = f"{group:02X}/{parameter:02X}"
+        for attribute in ("data", "_extended_status_cache"):
+            snapshot = getattr(self, attribute)
+            if snapshot is None:
+                continue
+            registers = dict(snapshot.registers)
+            if raw is not None:
+                registers[key] = raw.hex(" ")
+            else:
+                registers.pop(key, None)
+            status_value = bool(observed.raw_value) if setting.kind == "boolean" and observed.raw_value is not None else observed.raw_value
+            updated = replace(snapshot, registers=registers, **{setting.key: status_value})
+            if attribute == "data":
+                self.async_set_updated_data(updated)
+            else:
+                self._extended_status_cache = updated
+        if verification is CommandVerification.MISMATCH:
+            self.last_error = f"{setting.key} read back as {observed.raw_value}, requested {value}"
+            raise HomeAssistantError(f"Nice setting verification failed: {self.last_error}")
 
     def _store_accepted_command(
         self,
         command: NiceCommand,
         started: float,
+        *, result: NiceCommandResult | None = None,
     ) -> None:
         """Store a successful normalized acknowledgement and compatibility fields."""
-        result = NiceCommandResult(
+        result = result or NiceCommandResult(
             command=command,
             acknowledgement=CommandAcknowledgement.ACCEPTED,
             latency_ms=round((time.monotonic() - started) * 1000),
@@ -1013,12 +1092,7 @@ class NiceBidiDataUpdateCoordinator(
         error: Exception,
     ) -> None:
         """Store a rejected normalized acknowledgement."""
-        self.last_command_result = NiceCommandResult(
-            command=command,
-            acknowledgement=CommandAcknowledgement.REJECTED,
-            latency_ms=round((time.monotonic() - started) * 1000),
-            error_code=nice_bidi_error_code(error),
-        )
+        self.last_command_result = self.command_executor.failed_result(command, started, error)
 
     async def async_reconnect(self) -> None:
         """Force the current NHK/TLS session to be recreated."""

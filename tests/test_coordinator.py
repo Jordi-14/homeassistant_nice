@@ -193,7 +193,7 @@ async def test_controller_configuration_count_is_capped(hass: HomeAssistant) -> 
 
     def read(group, parameter, index, preemptible=False):
         reads.append(index)
-        return bytes([index]) + b"X"
+        return index.to_bytes(2, "big") + b"X"
 
     client.read_dmp_indexed = read
     instance.client = client
@@ -1310,8 +1310,10 @@ async def test_write_dmp_register_records_command_metadata(hass: HomeAssistant) 
     assert instance.connection_state == coordinator_module.CONNECTION_STATE_CONNECTED
     assert instance.last_command == "dmp_04_80_set"
     assert isinstance(instance.last_command_latency_ms, int)
-    assert instance.update_interval == coordinator_module.MOVING_UPDATE_INTERVAL
-    assert instance._extended_status_next_refresh_monotonic == 0.0
+    assert instance.update_interval == coordinator_module.IDLE_UPDATE_INTERVAL
+    assert instance._extended_status_next_refresh_monotonic == 999999.0
+    assert client.value_reads == [(0x04, 0x80)]
+    assert instance.last_command_result.verification == "verified"
 
 
 async def test_scan_request_during_a_scan_is_kept(hass: HomeAssistant) -> None:

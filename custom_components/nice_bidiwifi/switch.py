@@ -226,6 +226,7 @@ class NiceBidiConfigSwitch(NiceCoordinatorEntity, SwitchEntity):
             and status is not None
             and self.coordinator.calibration_state != CALIBRATION_STATE_RUNNING
             and not status.is_moving
+            and self.coordinator.setting_write_block_reason(self.entity_description.setting) is None
             and self.is_on is not None
         )
 

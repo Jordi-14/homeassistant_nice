@@ -13,9 +13,11 @@ from .connection import NiceConnectionHealth, NiceConnectionRoute, NiceRouteStat
 from .errors import (
     RUNTIME_RETRYABLE_CONNECT_ERROR_CODES,
     is_unsupported_request_error,
+    is_request_rejection,
     nice_error_code,
 )
 from .models.config import ConnectionMode, NiceEntryConfig, NiceEndpoint
+from .parameters import ParameterRepository
 from .protocol.nhk.administration import LOG_EVENTS_PER_SCOPE, MAX_T4_LOG_ROWS
 from .transport.lan import LegacyLanTlsTransport
 from .transport.relay import RelayTlsTransport
@@ -42,11 +44,13 @@ class NiceConnectionRouter:
         client_factory: Callable[..., NiceBidiClient] = NiceBidiClient,
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        parameters: ParameterRepository | None = None,
     ) -> None:
         self._mode = config.connection.mode
         self._health = health
         self._monotonic = monotonic
         self._sleep = sleep
+        self.parameters = parameters if parameters is not None else ParameterRepository(config.device_id)
         self._lock = threading.RLock()
         self._waiting_commands = 0
         self._waiting_commands_lock = threading.Lock()
@@ -55,6 +59,7 @@ class NiceConnectionRouter:
             "device_id": config.device_id,
             "t4_timeout_ms": config.t4_timeout_ms,
             "should_yield": self._command_waiting,
+            "parameters": self.parameters,
         }
         local_kwargs: dict[str, Any] = {}
         if config.legacy_local_tls:
@@ -223,10 +228,11 @@ class NiceConnectionRouter:
             # rejections stay retryable across reloads and restarts. Credential
             # rejections such as Code 1 still trigger reauthentication.
             if nice_error_code(err) in RUNTIME_RETRYABLE_CONNECT_ERROR_CODES:
-                raise NiceBidiConnectionError(str(err)) from err
+                raise NiceBidiConnectionError(str(err), layer=err.layer, code=err.code,
+                                              request_type=err.request_type) from err
             raise
         except (NiceBidiConnectionError, OSError) as err:
-            if is_unsupported_request_error(err):
+            if is_request_rejection(err):
                 # The route works; only this request is unsupported.
                 self._mark_success(route, active=active)
                 self._authenticated_once = True
@@ -336,13 +342,13 @@ class NiceConnectionRouter:
             with self._waiting_commands_lock:
                 self._waiting_commands -= 1
 
-    def _write(self, method: str, *args, **kwargs) -> None:
+    def _write(self, method: str, *args, **kwargs):
         """Execute a command once; an ambiguous failure is never replayed."""
         self._acquire_for_command()
         try:
             route = self._selected
             try:
-                self._call(route, method, *args, **kwargs)
+                return self._call(route, method, *args, **kwargs)
             except (NiceBidiConnectionError, OSError):
                 if (
                     self._mode is ConnectionMode.LOCAL_WITH_CLOUD_FALLBACK
@@ -387,6 +393,9 @@ class NiceConnectionRouter:
     def read_dmp_info(self, group: int, parameter: int, **kwargs):
         return self._read("read_dmp_info", group, parameter, **kwargs)
 
+    def read_dmp_value(self, group: int, parameter: int, **kwargs):
+        return self._read("read_dmp_value", group, parameter, **kwargs)
+
     def read_logs(self, event_count: int = LOG_EVENTS_PER_SCOPE):
         return self._read("read_logs", event_count)
 
@@ -408,6 +417,9 @@ class NiceConnectionRouter:
     def send_t4_action(self, action: str) -> None:
         self._write("send_t4_action", action)
 
+    def write_parameter(self, prepared, *, before_dispatch=None):
+        return self._write("write_parameter", prepared, before_dispatch=before_dispatch)
+
     def write_dmp_register(
         self,
         group: int,
@@ -415,13 +427,17 @@ class NiceConnectionRouter:
         value: int,
         *,
         size: int = 1,
-    ) -> None:
-        self._write(
+        byte_order: str = "big",
+        before_dispatch: Callable[[], None] | None = None,
+    ):
+        return self._write(
             "write_dmp_register",
             group,
             parameter,
             value,
             size=size,
+            **({"byte_order": byte_order} if byte_order != "big" else {}),
+            **({"before_dispatch": before_dispatch} if before_dispatch is not None else {}),
         )
 
     def update_interface_name(self, name: str) -> None:
