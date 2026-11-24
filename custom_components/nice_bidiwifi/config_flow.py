@@ -27,6 +27,10 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
+from .enrollment import EnrollmentClient, EnrollmentIdentity, ProvisioningClient
+from .pairing_intents import PairingIntents
+from .protocol.nhk.access import UserRole, setup_check
+from .errors import NiceParameterError, NiceResponseError
 from .client import NiceBidiAuthError, NiceBidiClient, NiceBidiConnectionError
 from .cloud import (
     NiceCloudAccessory,
@@ -80,6 +84,8 @@ CONF_CLOUD_ACCESSORIES = "cloud_accessories"
 CONF_CLOUD_CONFIRM = "cloud_confirm"
 
 CREDENTIAL_SOURCE_MANUAL = "manual"
+CREDENTIAL_SOURCE_PAIR = "direct_pair"
+CREDENTIAL_SOURCE_NETWORK = "network_setup"
 CREDENTIAL_SOURCE_MYNICE = "mynice"
 RECOMMENDED_CONNECTION_MODE = ConnectionMode.LOCAL_WITH_CLOUD_FALLBACK
 IMPLEMENTED_CONNECTION_MODES = tuple(ConnectionMode)
@@ -110,9 +116,7 @@ _TIMEOUT_SELECTOR = selector.NumberSelector(
         unit_of_measurement="ms",
     )
 )
-_ADVANCED_SELECTOR = selector.BooleanSelector(
-    selector.BooleanSelectorConfig()
-)
+_ADVANCED_SELECTOR = selector.BooleanSelector(selector.BooleanSelectorConfig())
 _CONNECTION_MODE_SELECTOR = selector.SelectSelector(
     selector.SelectSelectorConfig(
         options=[mode.value for mode in IMPLEMENTED_CONNECTION_MODES],
@@ -125,6 +129,8 @@ _CREDENTIAL_SOURCE_SELECTOR = selector.SelectSelector(
         options=[
             CREDENTIAL_SOURCE_MANUAL,
             CREDENTIAL_SOURCE_MYNICE,
+            CREDENTIAL_SOURCE_PAIR,
+            CREDENTIAL_SOURCE_NETWORK,
         ],
         translation_key=CONF_CREDENTIAL_SOURCE,
         mode=selector.SelectSelectorMode.LIST,
@@ -266,41 +272,47 @@ def _local_schema(
     """Return normal setup fields for the selected routes."""
     user_input = user_input or {}
     fields: dict[vol.Marker, object] = {
-            vol.Required(
-                CONF_NAME,
-                default=user_input.get(CONF_NAME, DEFAULT_NAME),
-            ): _TEXT_SELECTOR,
-            vol.Required(
-                CONF_TARGET_MAC,
-                default=user_input.get(CONF_TARGET_MAC, ""),
-            ): _TEXT_SELECTOR,
-            vol.Required(
-                CONF_USERNAME,
-                default=user_input.get(CONF_USERNAME, ""),
-            ): _TEXT_SELECTOR,
-            vol.Required(
-                CONF_PASSWORD,
-                default=user_input.get(CONF_PASSWORD, ""),
-            ): _PASSWORD_SELECTOR,
-            vol.Optional(
-                CONF_ADVANCED,
-                default=bool(user_input.get(CONF_ADVANCED, False)),
-            ): _ADVANCED_SELECTOR,
+        vol.Required(
+            CONF_NAME,
+            default=user_input.get(CONF_NAME, DEFAULT_NAME),
+        ): _TEXT_SELECTOR,
+        vol.Required(
+            CONF_TARGET_MAC,
+            default=user_input.get(CONF_TARGET_MAC, ""),
+        ): _TEXT_SELECTOR,
+        vol.Required(
+            CONF_USERNAME,
+            default=user_input.get(CONF_USERNAME, ""),
+        ): _TEXT_SELECTOR,
+        vol.Required(
+            CONF_PASSWORD,
+            default=user_input.get(CONF_PASSWORD, ""),
+        ): _PASSWORD_SELECTOR,
+        vol.Optional(
+            CONF_ADVANCED,
+            default=bool(user_input.get(CONF_ADVANCED, False)),
+        ): _ADVANCED_SELECTOR,
     }
     if mode is not ConnectionMode.CLOUD_ONLY:
-        fields[vol.Required(
-            CONF_HOST,
-            default=user_input.get(CONF_HOST, ""),
-        )] = _TEXT_SELECTOR
+        fields[
+            vol.Required(
+                CONF_HOST,
+                default=user_input.get(CONF_HOST, ""),
+            )
+        ] = _TEXT_SELECTOR
     if mode is not ConnectionMode.LOCAL_ONLY:
-        fields[vol.Required(
-            CONF_RELAY_HOST,
-            default=user_input.get(CONF_RELAY_HOST, DEFAULT_RELAY_HOST),
-        )] = _TEXT_SELECTOR
-        fields[vol.Required(
-            CONF_RELAY_PORT,
-            default=user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT),
-        )] = _PORT_SELECTOR
+        fields[
+            vol.Required(
+                CONF_RELAY_HOST,
+                default=user_input.get(CONF_RELAY_HOST, DEFAULT_RELAY_HOST),
+            )
+        ] = _TEXT_SELECTOR
+        fields[
+            vol.Required(
+                CONF_RELAY_PORT,
+                default=user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT),
+            )
+        ] = _PORT_SELECTOR
     return vol.Schema(fields)
 
 
@@ -338,31 +350,35 @@ def _advanced_schema(
     """Return advanced local protocol fields."""
     user_input = user_input or {}
     fields: dict[vol.Marker, object] = {
-            vol.Optional(
-                CONF_SOURCE_ID,
-                default=user_input.get(CONF_SOURCE_ID, ""),
-            ): _TEXT_SELECTOR,
-            vol.Optional(
-                CONF_DEVICE_ID,
-                default=user_input.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID),
-            ): _DEVICE_ID_SELECTOR,
-            vol.Optional(
+        vol.Optional(
+            CONF_SOURCE_ID,
+            default=user_input.get(CONF_SOURCE_ID, ""),
+        ): _TEXT_SELECTOR,
+        vol.Optional(
+            CONF_DEVICE_ID,
+            default=user_input.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID),
+        ): _DEVICE_ID_SELECTOR,
+        vol.Optional(
+            CONF_T4_TIMEOUT_MS,
+            default=user_input.get(
                 CONF_T4_TIMEOUT_MS,
-                default=user_input.get(
-                    CONF_T4_TIMEOUT_MS,
-                    DEFAULT_T4_TIMEOUT_MS,
-                ),
-            ): _TIMEOUT_SELECTOR,
+                DEFAULT_T4_TIMEOUT_MS,
+            ),
+        ): _TIMEOUT_SELECTOR,
     }
     if mode is not ConnectionMode.CLOUD_ONLY:
-        fields[vol.Optional(
-            CONF_PORT,
-            default=user_input.get(CONF_PORT, DEFAULT_PORT),
-        )] = _PORT_SELECTOR
-        fields[vol.Optional(
-            CONF_LEGACY_LOCAL_TLS,
-            default=bool(user_input.get(CONF_LEGACY_LOCAL_TLS, False)),
-        )] = _ADVANCED_SELECTOR
+        fields[
+            vol.Optional(
+                CONF_PORT,
+                default=user_input.get(CONF_PORT, DEFAULT_PORT),
+            )
+        ] = _PORT_SELECTOR
+        fields[
+            vol.Optional(
+                CONF_LEGACY_LOCAL_TLS,
+                default=bool(user_input.get(CONF_LEGACY_LOCAL_TLS, False)),
+            )
+        ] = _ADVANCED_SELECTOR
     return vol.Schema(fields)
 
 
@@ -376,63 +392,73 @@ def _schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     except ValueError:
         mode = ConnectionMode.LOCAL_ONLY
     fields: dict[vol.Marker, object] = {
-            vol.Required(
-                CONF_CONNECTION_MODE,
-                default=mode.value,
-            ): _CONNECTION_MODE_SELECTOR,
-            vol.Required(
-                CONF_NAME,
-                default=user_input.get(CONF_NAME, DEFAULT_NAME),
-            ): _TEXT_SELECTOR,
-            vol.Required(
-                CONF_TARGET_MAC,
-                default=user_input.get(CONF_TARGET_MAC, ""),
-            ): _TEXT_SELECTOR,
-            vol.Required(
-                CONF_USERNAME,
-                default=user_input.get(CONF_USERNAME, ""),
-            ): _TEXT_SELECTOR,
-            vol.Required(
-                CONF_PASSWORD,
-                default=user_input.get(CONF_PASSWORD, ""),
-            ): _PASSWORD_SELECTOR,
-            vol.Optional(
-                CONF_SOURCE_ID,
-                default=user_input.get(CONF_SOURCE_ID, ""),
-            ): _TEXT_SELECTOR,
-            vol.Optional(
-                CONF_DEVICE_ID,
-                default=user_input.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID),
-            ): _DEVICE_ID_SELECTOR,
-            vol.Optional(
+        vol.Required(
+            CONF_CONNECTION_MODE,
+            default=mode.value,
+        ): _CONNECTION_MODE_SELECTOR,
+        vol.Required(
+            CONF_NAME,
+            default=user_input.get(CONF_NAME, DEFAULT_NAME),
+        ): _TEXT_SELECTOR,
+        vol.Required(
+            CONF_TARGET_MAC,
+            default=user_input.get(CONF_TARGET_MAC, ""),
+        ): _TEXT_SELECTOR,
+        vol.Required(
+            CONF_USERNAME,
+            default=user_input.get(CONF_USERNAME, ""),
+        ): _TEXT_SELECTOR,
+        vol.Required(
+            CONF_PASSWORD,
+            default=user_input.get(CONF_PASSWORD, ""),
+        ): _PASSWORD_SELECTOR,
+        vol.Optional(
+            CONF_SOURCE_ID,
+            default=user_input.get(CONF_SOURCE_ID, ""),
+        ): _TEXT_SELECTOR,
+        vol.Optional(
+            CONF_DEVICE_ID,
+            default=user_input.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID),
+        ): _DEVICE_ID_SELECTOR,
+        vol.Optional(
+            CONF_T4_TIMEOUT_MS,
+            default=user_input.get(
                 CONF_T4_TIMEOUT_MS,
-                default=user_input.get(
-                    CONF_T4_TIMEOUT_MS,
-                    DEFAULT_T4_TIMEOUT_MS,
-                ),
-            ): _TIMEOUT_SELECTOR,
+                DEFAULT_T4_TIMEOUT_MS,
+            ),
+        ): _TIMEOUT_SELECTOR,
     }
-    fields[vol.Optional(
-        CONF_HOST,
-        default=user_input.get(CONF_HOST, ""),
-    )] = _TEXT_SELECTOR
-    fields[vol.Optional(
-        CONF_PORT,
-        default=user_input.get(CONF_PORT, DEFAULT_PORT),
-    )] = _PORT_SELECTOR
-    fields[vol.Optional(
-        CONF_RELAY_HOST,
-        default=user_input.get(CONF_RELAY_HOST, DEFAULT_RELAY_HOST),
-    )] = _TEXT_SELECTOR
-    fields[vol.Optional(
-        CONF_RELAY_PORT,
-        default=user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT),
-    )] = _PORT_SELECTOR
+    fields[
+        vol.Optional(
+            CONF_HOST,
+            default=user_input.get(CONF_HOST, ""),
+        )
+    ] = _TEXT_SELECTOR
+    fields[
+        vol.Optional(
+            CONF_PORT,
+            default=user_input.get(CONF_PORT, DEFAULT_PORT),
+        )
+    ] = _PORT_SELECTOR
+    fields[
+        vol.Optional(
+            CONF_RELAY_HOST,
+            default=user_input.get(CONF_RELAY_HOST, DEFAULT_RELAY_HOST),
+        )
+    ] = _TEXT_SELECTOR
+    fields[
+        vol.Optional(
+            CONF_RELAY_PORT,
+            default=user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT),
+        )
+    ] = _PORT_SELECTOR
     if mode is not ConnectionMode.CLOUD_ONLY:
-        fields[vol.Optional(
-            CONF_LEGACY_LOCAL_TLS,
-            default=bool(user_input.get(CONF_LEGACY_LOCAL_TLS, False)),
-        )] = _ADVANCED_SELECTOR
+        fields[
+            vol.Optional(
+                CONF_LEGACY_LOCAL_TLS,
+                default=bool(user_input.get(CONF_LEGACY_LOCAL_TLS, False)),
+            )
+        ] = _ADVANCED_SELECTOR
     return vol.Schema(fields)
 
 
@@ -526,8 +552,7 @@ async def _async_remove_ignored_discovery_entry(
         if entry.source != SOURCE_IGNORE:
             continue
         entry_identity = normalize_device_id(
-            entry.unique_id
-            or str(entry.data.get(CONF_TARGET_MAC) or "")
+            entry.unique_id or str(entry.data.get(CONF_TARGET_MAC) or "")
         )
         if entry_identity == identity:
             await hass.config_entries.async_remove(entry.entry_id)
@@ -594,7 +619,7 @@ async def _async_fetch_cloud_accessories(
 
 def _error_from_exception(err: Exception) -> str:
     if isinstance(err, NiceBidiAuthError):
-        return "invalid_auth"
+        return "pairing_identity_rejected" if getattr(err,"code",None)=="1" else "invalid_auth"
     if isinstance(err, NiceUnsupportedError):
         return "unsupported_device"
     if isinstance(err, NiceProtocolError):
@@ -659,6 +684,270 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
     _cloud_state: _CloudBootstrapFlowState | None = None
     _connection_mode: ConnectionMode = DEFAULT_NEW_CONNECTION_MODE
 
+    def __init__(self):
+        self._pair_data = None
+        self._pair_identity = None
+        self._pair_password = None
+        self._pair_role = UserRole.UNKNOWN
+        self._pair_kind = "request_access"
+
+    @staticmethod
+    def async_get_options_flow(config_entry):
+        from .options_flow import NiceAccessOptionsFlow
+
+        return NiceAccessOptionsFlow(config_entry)
+
+    def _pair_schema(self):
+        return vol.Schema(
+            {
+                vol.Required(CONF_NAME, default=DEFAULT_NAME): _TEXT_SELECTOR,
+                vol.Required(CONF_HOST): _TEXT_SELECTOR,
+                vol.Required(CONF_PORT, default=DEFAULT_PORT): _PORT_SELECTOR,
+                vol.Required(CONF_TARGET_MAC): _TEXT_SELECTOR,
+                vol.Required(
+                    "enrollment_kind", default="request_access"
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=["first_user", "request_access"],
+                        translation_key="enrollment_kind",
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                ),
+                vol.Optional("setup_code"): _PASSWORD_SELECTOR,
+                vol.Optional(CONF_LEGACY_LOCAL_TLS, default=False): _ADVANCED_SELECTOR,
+                vol.Required("confirm_enrollment", default=False): _ADVANCED_SELECTOR,
+            }
+        )
+
+    async def _enrollment_exchange(self, *, first=False, setup_code=None, verify=False):
+        data = self._pair_data
+        identity = self._pair_identity
+
+        def execute():
+            client = EnrollmentClient(
+                data[CONF_HOST],
+                data[CONF_PORT],
+                identity,
+                legacy_tls=data.get(CONF_LEGACY_LOCAL_TLS, False),
+            )
+            try:
+                return (
+                    client.verify()
+                    if verify
+                    else client.pair_once(first_user=first, setup_code=setup_code)
+                )
+            finally:
+                client.close()
+
+        return await self.hass.async_add_executor_job(execute)
+
+    async def async_step_network_probe(self, user_input=None):
+        errors = {}
+        if user_input is not None:
+            target = normalize_device_id(str(user_input.get(CONF_TARGET_MAC, "")))
+            if target is None:
+                errors["base"] = "invalid_device_id"
+            elif not user_input.get("confirm_probe"):
+                errors["base"] = "network_probe_confirmation_required"
+            else:
+                await self.async_set_unique_id(target, raise_on_progress=False)
+                self._abort_if_unique_id_configured()
+
+                def read():
+                    client = ProvisioningClient(
+                        user_input[CONF_HOST],
+                        int(user_input[CONF_PORT]),
+                        EnrollmentIdentity.new(target),
+                        legacy_tls=user_input.get(CONF_LEGACY_LOCAL_TLS, False),
+                    )
+                    try:
+                        return client.read_info(), client.scan()
+                    finally:
+                        client.close()
+
+                try:
+                    info, networks = await self.hass.async_add_executor_job(read)
+                except Exception:
+                    errors["base"] = "network_probe_failed"
+                else:
+                    return self.async_show_form(
+                        step_id="network_results",
+                        data_schema=vol.Schema({}),
+                        description_placeholders={
+                            "model": info.model or "unknown",
+                            "networks": str(len(networks)),
+                        },
+                    )
+        return self.async_show_form(
+            step_id="network_probe",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_HOST): _TEXT_SELECTOR,
+                    vol.Required(CONF_PORT, default=443): _PORT_SELECTOR,
+                    vol.Required(CONF_TARGET_MAC): _TEXT_SELECTOR,
+                    vol.Optional(
+                        CONF_LEGACY_LOCAL_TLS, default=False
+                    ): _ADVANCED_SELECTOR,
+                    vol.Required("confirm_probe", default=False): _ADVANCED_SELECTOR,
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_network_results(self, user_input=None):
+        return await self.async_step_user()
+
+    async def async_step_pairing(self, user_input=None):
+        errors = {}
+        if self._connection_mode is ConnectionMode.CLOUD_ONLY:
+            return self.async_abort(reason="pairing_requires_local")
+        if user_input is not None:
+            if not user_input.get("confirm_enrollment"):
+                errors["base"] = "enrollment_confirmation_required"
+            else:
+                target = normalize_device_id(str(user_input.get(CONF_TARGET_MAC, "")))
+                if target is None:
+                    errors["base"] = "invalid_device_id"
+                elif user_input.get("enrollment_kind") not in {
+                    "first_user",
+                    "request_access",
+                }:
+                    errors["base"] = "invalid_enrollment_kind"
+                elif user_input[
+                    "enrollment_kind"
+                ] == "first_user" and not user_input.get("setup_code"):
+                    errors["base"] = "setup_code_required"
+                else:
+                    if user_input["enrollment_kind"] == "first_user":
+                        try:
+                            setup_check(user_input["setup_code"], "00000000")
+                        except NiceParameterError:
+                            return self.async_show_form(
+                                step_id="pairing",
+                                data_schema=self._pair_schema(),
+                                errors={"base": "invalid_setup_code"},
+                            )
+                    await self.async_set_unique_id(target, raise_on_progress=False)
+                    self._abort_if_unique_id_configured()
+                    self._pair_data = _with_local_defaults(
+                        {
+                            key: value
+                            for key, value in user_input.items()
+                            if key
+                            in {CONF_HOST, CONF_PORT, CONF_NAME, CONF_LEGACY_LOCAL_TLS}
+                        }
+                        | {
+                            CONF_TARGET_MAC: target,
+                            CONF_CONNECTION_MODE: self._connection_mode.value,
+                        }
+                    )
+                    intents = PairingIntents(self.hass)
+                    try:
+                        self._pair_identity, state, self._pair_kind = await intents.get(
+                            target, user_input["enrollment_kind"]
+                        )
+                        if state in {"dispatched", "approved"}:
+                            return await self.async_step_pairing_wait()
+                        if not await intents.claim(self._pair_identity):
+                            return await self.async_step_pairing_wait()
+                    except Exception:
+                        return self.async_show_form(
+                            step_id="pairing",
+                            data_schema=self._pair_schema(),
+                            errors={"base": "enrollment_storage_unavailable"},
+                        )
+                    try:
+                        reply = await self._enrollment_exchange(
+                            first=self._pair_kind == "first_user",
+                            setup_code=user_input.get("setup_code")
+                            if user_input["enrollment_kind"] == "first_user"
+                            else None,
+                        )
+                        self._pair_password = reply.password
+                        self._pair_role = reply.role
+                    except NiceResponseError as error:
+                        if error.delivery == "unknown":
+                            return await self.async_step_pairing_wait()
+                        await intents.set_state(target, "rejected")
+                        errors["base"] = "enrollment_rejected"
+                    except Exception as error:
+                        if getattr(error, "delivery", None) == "not_sent":
+                            await intents.set_state(target, "rejected")
+                            return self.async_show_form(
+                                step_id="pairing",
+                                data_schema=self._pair_schema(),
+                                errors={"base": "cannot_connect"},
+                            )
+                        # Delivery may be unknown. Keep the same saved identity
+                        # and use VERIFY rather than replaying PAIR.
+                        return await self.async_step_pairing_wait()
+                    else:
+                        if (
+                            reply.role in {UserRole.ADMIN, UserRole.USER}
+                            and reply.password is not None
+                        ):
+                            return await self.async_step_pairing_finish()
+                        return await self.async_step_pairing_wait()
+        return self.async_show_form(
+            step_id="pairing", data_schema=self._pair_schema(), errors=errors
+        )
+
+    async def async_step_pairing_wait(self, user_input=None):
+        errors = {}
+        if self._pair_identity is None or self._pair_data is None:
+            return self.async_abort(reason="pairing_identity_unavailable")
+        if user_input is not None:
+            try:
+                reply = await self._enrollment_exchange(verify=True)
+                self._pair_password = reply.password or self._pair_password
+                self._pair_role = reply.role
+                if (
+                    reply.role in {UserRole.ADMIN, UserRole.USER}
+                    and self._pair_password is not None
+                ):
+                    return await self.async_step_pairing_finish()
+                errors["base"] = "pairing_not_approved"
+            except Exception:
+                errors["base"] = "pairing_verification_failed"
+        return self.async_show_form(
+            step_id="pairing_wait", data_schema=vol.Schema({}), errors=errors
+        )
+
+    async def async_step_pairing_finish(self, user_input=None):
+        if self._pair_password is None or self._pair_role not in {
+            UserRole.ADMIN,
+            UserRole.USER,
+        }:
+            return await self.async_step_pairing_wait()
+        if self._pair_kind == "first_user" and self._pair_role is not UserRole.ADMIN:
+            return self.async_show_form(
+                step_id="pairing_wait",
+                data_schema=vol.Schema({}),
+                errors={"base": "first_user_admin_not_confirmed"},
+            )
+        data = {
+            **self._pair_data,
+            CONF_USERNAME: self._pair_identity.username,
+            CONF_SOURCE_ID: self._pair_identity.source_id,
+            CONF_PASSWORD: self._pair_password.hex().upper(),
+        }
+        try:
+            await _async_validate_input(self.hass, data)
+        except Exception:
+            return self.async_show_form(
+                step_id="pairing_finish",
+                data_schema=vol.Schema({}),
+                errors={"base": "pairing_connection_not_ready"},
+            )
+        await self.async_set_unique_id(
+            self._pair_identity.target_mac, raise_on_progress=False
+        )
+        self._abort_if_unique_id_configured()
+        # The entry manager persists credentials after this result is returned.
+        # Retain the durable identity until setup sees the saved credential entry.
+        self._pair_password = None
+        return self.async_create_entry(title=data[CONF_NAME], data=data)
+
     async def async_step_user(
         self,
         user_input: dict[str, Any] | None = None,
@@ -683,6 +972,10 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                     if credential_source == CREDENTIAL_SOURCE_MYNICE:
                         return await self.async_step_cloud_auth()
+                    if credential_source == CREDENTIAL_SOURCE_PAIR:
+                        return await self.async_step_pairing()
+                    if credential_source == CREDENTIAL_SOURCE_NETWORK:
+                        return await self.async_step_network_probe()
                     if credential_source != CREDENTIAL_SOURCE_MANUAL:
                         errors["base"] = "invalid_credential_source"
                     else:
@@ -744,9 +1037,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                         if accessory.identity not in configured_ids
                     )
                     if not accessories:
-                        return self.async_abort(
-                            reason="all_accessories_configured"
-                        )
+                        return self.async_abort(reason="all_accessories_configured")
                     self._cloud_state = _CloudBootstrapFlowState(
                         accessories=accessories,
                         skipped_records=result.skipped_records,
@@ -836,13 +1127,9 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                     if state.mode is not ConnectionMode.LOCAL_ONLY
                     else None
                 ),
-                relay_port=int(
-                    user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT)
-                ),
+                relay_port=int(user_input.get(CONF_RELAY_PORT, DEFAULT_RELAY_PORT)),
                 name=str(user_input.get(CONF_NAME, accessory.name)),
-                device_id=int(
-                    user_input.get(CONF_DEVICE_ID, accessory.device_id)
-                ),
+                device_id=int(user_input.get(CONF_DEVICE_ID, accessory.device_id)),
                 t4_timeout_ms=int(
                     user_input.get(
                         CONF_T4_TIMEOUT_MS,
@@ -912,15 +1199,9 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Create an already validated extra accessory from cloud bootstrap."""
         data = _with_local_defaults(
-            {
-                key: value
-                for key, value in import_data.items()
-                if key in CONFIG_FIELDS
-            }
+            {key: value for key, value in import_data.items() if key in CONFIG_FIELDS}
         )
-        identity = normalize_device_id(
-            str(data.get(CONF_TARGET_MAC) or "")
-        )
+        identity = normalize_device_id(str(data.get(CONF_TARGET_MAC) or ""))
         if identity is None:
             return self.async_abort(reason="missing_identity")
         data[CONF_TARGET_MAC] = identity
@@ -994,9 +1275,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle a Nice Bonjour discovery."""
         discovered = NiceDiscoveryInfo.from_service(
             host=discovery_info.host,
-            addresses=tuple(
-                str(address) for address in discovery_info.ip_addresses
-            ),
+            addresses=tuple(str(address) for address in discovery_info.ip_addresses),
             port=discovery_info.port,
             name=discovery_info.name,
             hostname=discovery_info.hostname,
@@ -1059,9 +1338,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="zeroconf_confirm",
-            data_schema=_discovery_schema(
-                {CONF_NAME: discovered.name}
-            ),
+            data_schema=_discovery_schema({CONF_NAME: discovered.name}),
             description_placeholders={
                 "name": discovered.name,
                 "host": discovered.host,
@@ -1077,9 +1354,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Validate and create a new local entry."""
         errors: dict[str, str] = {}
-        identity = normalize_device_id(
-            str(data.get(CONF_TARGET_MAC) or "")
-        )
+        identity = normalize_device_id(str(data.get(CONF_TARGET_MAC) or ""))
         if identity is None:
             errors["base"] = "invalid_device_id"
         else:
@@ -1103,9 +1378,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                 data_schema=_discovery_schema(data),
                 description_placeholders={
                     "name": str(
-                        data.get(CONF_DISCOVERY_NAME)
-                        or data.get(CONF_NAME)
-                        or "Nice"
+                        data.get(CONF_DISCOVERY_NAME) or data.get(CONF_NAME) or "Nice"
                     ),
                     "host": str(data.get(CONF_HOST, "")),
                     "model": str(
@@ -1188,15 +1461,13 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             data = _merge_entry_data(entry, user_input)
             expected_identity = normalize_device_id(
-                entry.unique_id
-                or str(entry.data.get(CONF_TARGET_MAC) or "")
+                entry.unique_id or str(entry.data.get(CONF_TARGET_MAC) or "")
             )
             if data[CONF_TARGET_MAC] != expected_identity:
                 errors["base"] = "wrong_device"
             else:
                 cannot_release_session = (
-                    release_existing_session
-                    and not entry.state.recoverable
+                    release_existing_session and not entry.state.recoverable
                 )
                 release_before_validation = (
                     release_existing_session
@@ -1206,9 +1477,7 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                     errors["base"] = "cannot_connect"
                 elif (
                     release_before_validation
-                    and not await self.hass.config_entries.async_unload(
-                        entry.entry_id
-                    )
+                    and not await self.hass.config_entries.async_unload(entry.entry_id)
                 ):
                     _LOGGER.warning(
                         "Nice %s could not release the existing NHK session",
@@ -1231,15 +1500,11 @@ class NiceBidiConfigFlow(ConfigFlow, domain=DOMAIN):
                         validation_succeeded = True
                     finally:
                         if release_before_validation:
-                            await self.hass.config_entries.async_setup(
-                                entry.entry_id
-                            )
+                            await self.hass.config_entries.async_setup(entry.entry_id)
 
                     if validation_succeeded:
                         if not release_before_validation:
-                            await self.hass.config_entries.async_reload(
-                                entry.entry_id
-                            )
+                            await self.hass.config_entries.async_reload(entry.entry_id)
                         return self.async_abort(reason=success_reason)
             user_input = data
 

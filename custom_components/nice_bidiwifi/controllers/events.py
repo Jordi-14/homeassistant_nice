@@ -121,6 +121,7 @@ class NiceEventController(RuntimeController):
         self._obstruction_state = None
         self._coordinator.incidents.new_session()
         self._coordinator.diagnostic_runtime.invalidate()
+        self._coordinator.access.invalidate()
         self._coordinator.observations.apply_update(
             {"obstacle": None},
             {},

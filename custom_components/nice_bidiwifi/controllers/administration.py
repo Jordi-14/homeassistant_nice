@@ -79,6 +79,10 @@ class NiceAdministrationController(RuntimeController):
             raise HomeAssistantError(
                 f"Nice {action} is blocked while the gate is moving"
             )
+        try:
+            await self._coordinator.access.async_prepare_admin()
+        except NiceBidiError as err:
+            raise HomeAssistantError(str(err)) from err
         await self._coordinator.position_controller._async_cancel_position_target()
         await self._coordinator.calibration_controller._async_cancel_calibration(
             reason=f"administration:{action}"
@@ -330,7 +334,7 @@ class NiceAdministrationController(RuntimeController):
         await self._async_prepare_mutation("name update")
 
         def update_and_verify():
-            self._coordinator.client.update_interface_name(validated)
+            self._coordinator.client.update_interface_name(validated,before_dispatch=self._coordinator.access.mutation_guard())
             info = self._coordinator.client.read_info()
             if info.interface_name != validated:
                 raise NiceBidiConnectionError(
@@ -356,7 +360,7 @@ class NiceAdministrationController(RuntimeController):
         )
 
         def update_and_verify():
-            self._coordinator.client.update_interface_clock(clock)
+            self._coordinator.client.update_interface_clock(clock,before_dispatch=self._coordinator.access.mutation_guard())
             info = self._coordinator.client.read_info()
             try:
                 reported = datetime.strptime(
@@ -395,7 +399,7 @@ class NiceAdministrationController(RuntimeController):
         await self._async_prepare_mutation("interface reboot")
         await self._async_execute(
             "reboot_interface",
-            self._coordinator.client.reboot_interface,
+            partial(self._coordinator.client.reboot_interface,before_dispatch=self._coordinator.access.mutation_guard()),
             read_only=False,
             verification="change_acknowledgement",
         )

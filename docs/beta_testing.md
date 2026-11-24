@@ -170,3 +170,26 @@ No new calibration, force/safety parameter change, installer procedure or delibe
 - Check reload/reconnect, entity IDs and diagnostic export. Failed reads must not make older evidence look freshly captured. The polling-order fix from the entity audit is included, so unread optional parameters get priority over repeat reads.
 
 See [diagnostic contracts and gaps](diagnostic_parity.md) for retention, redaction, decoder provenance and remaining missing-native layouts.
+
+## Phase 5: v0.9.0b8
+
+- Existing entries should load with unchanged identifiers and credentials. Check
+  ordinary control, route recovery and movement animation as before. No new
+  calibration or controller relearning is required.
+- Open Configure, inspect users, and compare the reported module role and counts
+  with MyNice. Optionally enable Module permission and disable it again afterward.
+- With approved administrator credentials, check that existing configuration
+  entities become available when role inspection completes. An unknown or ordinary
+  role must not acquire configuration rights.
+- On a suitable test installation only, exercise first-user pairing or a new
+  administrator-approved access request. Reopen an interrupted flow and confirm
+  it resumes approval checks without another PAIR.
+- On a suitable test user, check explicit approval/permission confirmation and
+  readback. Preserve your established administrator and HA access. Do not attempt
+  cloud ownership transfer or physical user deletion through these options.
+- Wi-Fi setup remains unavailable; the separate AP probe is read-only. The flow
+  must not collect a Wi-Fi password or silently change an existing endpoint.
+- Diagnostics should show session state, role and counts without usernames,
+  controller identifiers, device passwords, setup codes, SSIDs or keys.
+
+See [Onboarding and module access](onboarding_access.md) for the complete contract.

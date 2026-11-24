@@ -133,7 +133,7 @@ async def test_name_write_reports_round_trip_mismatch(
     hass: HomeAssistant,
 ) -> None:
     coordinator = _coordinator(hass)
-    coordinator.client.update_interface_name = lambda name: None
+    coordinator.client.update_interface_name = lambda name, **kwargs: None
 
     with pytest.raises(HomeAssistantError, match="verification failed"):
         await coordinator.async_update_interface_name("Courtyard gate")

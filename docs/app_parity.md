@@ -6,6 +6,8 @@ Target: the combined capabilities of MyNice Welcome 1.3.1 and MyNice Pro 2.18 r1
 
 The supplied JADX exports contain 3939 indexed primary source items. Alternate decompiler passes are deduplicated by relative Java path, preferring fewer unrecovered methods. Synthetic classes, generated bindings/navigation helpers and build resources are excluded. Supporting classes retain their methods so event paths and repository helpers are not silently omitted.
 
+Phase 5 setup and module-access behavior, recovery and blocked workflows are documented in [Onboarding and module access](onboarding_access.md).
+
 The complete machine-readable index is [app_inventory.json](../custom_components/nice_bidiwifi/app_inventory.json). Every entry has a stable ID, app version, relative source path, SHA-256, public/native/unrecovered methods, delivery destination, phase and known gap dependencies. Destination assignment is an initial routing by source name; phase implementation must follow the actual call path and refine it. One source item can serve several user features. App IDs and enum constructors are not wire codes.
 
 ## Source coverage
@@ -122,7 +124,7 @@ Implementation, device support, permissions and current availability are separat
 | `interface.reboot` | implemented | 1 | reboot | none |
 | `controller.configuration` | partial | 3 | none | controller.menu_wire, controller.index_identity, controller.binding_map |
 | `diagnostics.complete` | partial | 4 | none | none |
-| `setup.access` | partial | 5 | none | none |
+| `setup.access` | partial | 5 | none | setup.wnc_recovery, setup.ownership_removal, setup.cloud_registration, runtime.connection.code1 |
 | `installer.lifecycle` | planned | 6 | none | none |
 | `cloud.organization` | partial | 7 | none | none |
 | `controller.mc824h.motor_parameters` | blocked | 3 | None | mc824h.motor_parameter_layout |

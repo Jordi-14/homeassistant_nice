@@ -47,6 +47,7 @@ async def _instance(hass):
     instance = _coordinator(hass)
     instance.client = FakeClient()
     instance.async_set_updated_data(make_status(state="closed"))
+    await instance.access.async_refresh()
     return instance
 
 

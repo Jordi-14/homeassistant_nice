@@ -380,6 +380,8 @@ async def async_get_config_entry_diagnostics(
             if capabilities is not None
             else None
         ),
+        "access": coordinator.access.diagnostics() if hasattr(coordinator, "access") else {},
+        "session_authentication": coordinator.client.session_diagnostics if hasattr(coordinator.client, "session_diagnostics") else {},
         "diagnostic_profile": diagnostic_profile(device_info),
         "diagnostic_screens": coordinator.diagnostic_runtime.report() if hasattr(coordinator, "diagnostic_runtime") else {},
         "incident_timeline": coordinator.incidents.export() if hasattr(coordinator, "incidents") else {},

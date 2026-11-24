@@ -291,6 +291,7 @@ class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
             and not self._disabled_for_device()
             and not status.is_moving
             and self.native_value is not None
+            and (not hasattr(self.coordinator,"access") or str(self.coordinator.access.role)=="admin")
         )
 
     @property

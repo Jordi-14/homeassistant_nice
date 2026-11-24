@@ -28,6 +28,8 @@ from .errors import (
     nice_error_code as nice_bidi_error_code,
 )
 from .models.commands import CommandAcknowledgement, CommandReceipt
+from .session_state import SessionState
+from .protocol.nhk.access import parse_pairings, validate_user_change, user_change_body, parse_response
 from .parameters import ParameterRepository, PreparedParameterWrite, SupportState
 from .models.credentials import NiceCredentials as NiceBidiCredentials
 from .models.administration import (
@@ -182,6 +184,7 @@ class NiceBidiClient:
         self._transport_factory = transport_factory
         self._route_name = route_name
         self._should_yield = should_yield
+        self.session_state = SessionState()
         self._transport: FrameTransport | None = None
         self._dispatcher: ResponseDispatcher | None = None
         self._event_callbacks: list[RawEventCallback] = []
@@ -385,6 +388,41 @@ class NiceBidiClient:
         """Read a bounded, redacted summary of local access groups."""
         return self._run_with_reconnect(self._read_groups_locked)
 
+    def read_pairings(self):
+        return self._run_with_reconnect(self._read_pairings_locked, preemptible=True)
+
+    def _read_pairings_locked(self):
+        return parse_pairings(self._signed_exchange_locked("PAIRINGS"))
+
+    def change_user(self, target, operation, role, *, before_dispatch=None):
+        if operation not in {"approve", "edit"}:
+            raise NiceParameterError("Unresolved access-management operation")
+        def execute():
+            snapshot = self._read_pairings_locked()
+            validate_user_change(snapshot, (self.credentials.username,self.credentials.source), target, operation, role)
+            if before_dispatch is not None:
+                before_dispatch()
+            if self._should_yield is not None and self._should_yield():
+                error = NiceReadPreemptedError("Access change yielded before dispatch")
+                error.delivery = "not_sent"
+                raise error
+            kind = "USER_NEW" if operation == "approve" else "USER_EDIT"
+            response = self._signed_exchange_locked(kind,user_change_body(target,role))
+            parse_response(response,kind)
+            verified = self._read_pairings_locked()
+            current = verified.principal(*target.identity)
+            if current is None or current.role is not role:
+                raise NiceBidiConnectionError("Access mutation was acknowledged but readback did not confirm it")
+            return verified
+        return self._run_command_once(execute,before_dispatch=before_dispatch)
+
+    def identify_interface(self, *, before_dispatch=None):
+        def execute():
+            request_id = self._next_request_id()
+            xml = self._start_request(request_id,"IDENTIFY") + "</Request>\r\n"
+            parse_response(self._send_locked(xml,expected_type="IDENTIFY",expected_id=request_id),"IDENTIFY")
+        return self._run_command_once(execute,before_dispatch=before_dispatch)
+
     def update_interface_name(self, name: str, *, before_dispatch=None) -> None:
         """Update the shared Wi-Fi interface name once."""
         validated = validate_interface_name(name)
@@ -505,6 +543,13 @@ class NiceBidiClient:
                         raise NiceReadPreemptedError("Read yielded after connecting")
                     return operation()
                 except (OSError, ssl.SSLError, NiceBidiConnectionError) as exc:
+                    if nice_bidi_error_code(exc) in {"3", "4"} and getattr(exc,"request_type",None) != "CONNECT":
+                        self._session_key = None
+                        self.session_state.invalidate(nice_bidi_error_code(exc))
+                        if attempt == 0 and self._transport is not None and self._transport.connected:
+                            self._connect_locked()
+                            continue
+                        raise NiceBidiAuthError("Session/signature verification was rejected after bounded recovery",layer="nhk",code=nice_bidi_error_code(exc),request_type="CONNECT") from exc
                     if is_request_rejection(exc):
                         raise
                     if preemptible and self._should_yield is not None and self._should_yield():
@@ -546,6 +591,9 @@ class NiceBidiClient:
                 self._close_locked()
                 raise
             except (OSError, ssl.SSLError, NiceBidiConnectionError) as exc:
+                if nice_bidi_error_code(exc) in {"3", "4"}:
+                    self._session_key = None
+                    self.session_state.invalidate(nice_bidi_error_code(exc))
                 if is_request_rejection(exc):
                     raise
                 self._close_locked()
@@ -587,6 +635,7 @@ class NiceBidiClient:
         raise NiceBidiConnectionError(str(last_error)) from last_error
 
     def _connect_locked(self) -> None:
+        self.session_state.before_connect()
         client_challenge = f"{secrets.randbits(32):08X}"
         xml = (
             self._start_request(0, "CONNECT")
@@ -599,6 +648,7 @@ class NiceBidiClient:
         auth_match = re.search(r"<Authentication\b([^>]*)>", text)
         session_id = _attr(auth_match.group(1), "id") if auth_match else None
         if "<Error>" in text:
+            self.session_state.rejected(nice_bidi_error_code(text))
             raise NiceBidiAuthError(_response_error_summary(response), layer="nhk",
                                    code=nice_bidi_error_code(text), request_type="CONNECT")
         if not server_challenge or session_id is None:
@@ -615,6 +665,7 @@ class NiceBidiClient:
             raise NiceProtocolError("Invalid NHK session fields") from err
         self._session_id = parsed_session_id
         self._sequence = 1
+        self.session_state.connected()
         self._session_key = _sha256(
             self.credentials.password,
             server_bytes,
@@ -636,6 +687,7 @@ class NiceBidiClient:
             and (self._dispatcher is None or self._dispatcher.failure is None)
         ):
             return
+        self.session_state.before_connect()
         self._close_locked()
         self._open_locked()
         self._connect_locked()
@@ -658,6 +710,7 @@ class NiceBidiClient:
         self._session_key = None
         self._session_id = 0
         self._sequence = 1
+        self.session_state.closed()
 
     def _start_request(self, request_id: int, request_type: str) -> str:
         return (

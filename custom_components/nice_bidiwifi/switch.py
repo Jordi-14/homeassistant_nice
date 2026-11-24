@@ -229,6 +229,7 @@ class NiceBidiConfigSwitch(NiceCoordinatorEntity, SwitchEntity):
             and not status.is_moving
             and self.coordinator.setting_write_block_reason(self.entity_description.setting) is None
             and self.is_on is not None
+            and (not hasattr(self.coordinator,"access") or str(self.coordinator.access.role)=="admin")
         )
 
     @property
