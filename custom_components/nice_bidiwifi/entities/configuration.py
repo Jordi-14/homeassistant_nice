@@ -6,6 +6,7 @@ from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.exceptions import HomeAssistantError
 
 from ..configuration import MAX_INDEXED_ELEMENTS
 from ..controller_catalog import PARAMETERS, parameter_for_setting
@@ -98,7 +99,7 @@ class ConfigurationSelect(ConfigurationEntity, SelectEntity):
     def __init__(self, coordinator, entry, definition):
         super().__init__(coordinator, entry, definition, "select")
         self._attr_translation_key = definition.setting.key
-        self._attr_name = None
+        del self._attr_name
 
     @property
     def available(self):
@@ -106,16 +107,19 @@ class ConfigurationSelect(ConfigurationEntity, SelectEntity):
 
     @property
     def options(self):
-        return [label for label, _ in self.view.options]
+        return [f"code_{code}" for _, code in self.view.options]
 
     @property
     def current_option(self):
-        value = self.view.value
+        value = f"code_{self.view.raw_value}"
         return value if value in self.options else None
 
     async def async_select_option(self, option):
+        choices = {f"code_{code}": label for label, code in self.view.options}
+        if option not in choices:
+            raise HomeAssistantError("Option is not advertised by this controller")
         await self.coordinator.configuration.async_write(
-            self.definition.key, option, option=True
+            self.definition.key, choices[option], option=True
         )
 
 
@@ -126,7 +130,7 @@ class ConfigurationNumber(ConfigurationEntity, NumberEntity):
         super().__init__(coordinator, entry, definition, "number")
         self._attr_translation_key = "controller_parameter_value"
         self._attr_translation_placeholders = {"parameter": definition.title}
-        self._attr_name = None
+        del self._attr_name
         # Existing bus_t4_* entities retain their identities and raw integer API.
 
     @property

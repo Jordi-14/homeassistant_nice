@@ -151,14 +151,14 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_LOG_TEST_4` | `04/DF` | blocked | controller.parameter_format |
 | `CTRL_LOOP_ACTIVATION_MODE` | `04/EA` | selective INFO/GET | controller.menu_wire |
 | `CTRL_LOOP_ACTIVATION_TIME` | `04/EB` | selective INFO/GET | controller.menu_wire |
-| `CTRL_LOOP_CALIBRATION` | `04/E5` | selective INFO/GET | controller.menu_wire |
+| `CTRL_LOOP_CALIBRATION` | `04/E5` | blocked | controller.parameter_format |
 | `CTRL_LOOP_FREQUENCY_VIEW` | `04/ED` | blocked | controller.parameter_format |
 | `CTRL_LOOP_OFF` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_LOOP_ON` | `unresolved` | blocked | controller.action_binding |
-| `CTRL_LOOP_RECALIBRATION_TIME` | `04/E9` | selective INFO/GET | controller.menu_wire |
+| `CTRL_LOOP_RECALIBRATION_TIME` | `04/E9` | blocked | controller.parameter_format |
 | `CTRL_LOOP_SENSIBILITY` | `04/E4` | selective INFO/GET | controller.menu_wire |
 | `CTRL_LOOP_SUPPLY` | `04/E6` | selective INFO/GET | controller.menu_wire |
-| `CTRL_LOOP_WORKING_ACTIVATE` | `04/E7` | selective INFO/GET | controller.menu_wire |
+| `CTRL_LOOP_WORKING_ACTIVATE` | `04/E7` | blocked | controller.parameter_format |
 | `CTRL_LOOP_WORKING_MODE` | `04/E8` | selective INFO/GET | controller.menu_wire |
 | `CTRL_MAINTENANCE_MANAGEMENT` | `04/B0` | selective INFO/GET | controller.menu_wire |
 | `CTRL_MAINTENANCE_MANEUVERS_COUNTER` | `04/B2` | selective INFO/GET | controller.menu_wire |
@@ -309,7 +309,7 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_STR_VERSION_CONFIGURATION` | `04/03` | controller_configuration | controller.parameter_format |
 | `CTRL_TEST4` | `04/EF` | blocked | controller.parameter_format |
 | `CTRL_TESTING_STEP_STEP` | `unresolved` | blocked | controller.action_binding |
-| `CTRL_TEST_MODE` | `04/A9` | selective INFO/GET | controller.menu_wire |
+| `CTRL_TEST_MODE` | `04/A9` | blocked | controller.parameter_format |
 | `CTRL_THRESHOLD_ALARM_MAINTENANCE` | `04/B1` | selective INFO/GET | existing scalar setter |
 | `CTRL_TIMER_COURTESY_LIGHT` | `unresolved` | existing action | existing t4.courtesy_light_timer |
 | `CTRL_TIME_COURTESY_LIGHT` | `04/5B` | selective INFO/GET | controller.menu_wire |

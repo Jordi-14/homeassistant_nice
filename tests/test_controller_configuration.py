@@ -129,15 +129,15 @@ async def test_read_views_keep_named_options_and_legacy_number_identity(hass):
         config_entry(),
         next(row for row in NUMBERS if row.setting.key == "photo_close_mode"),
     )
-    assert select.current_option == "17: Open until disengagement"
-    assert select.options == ["16: Open fully", "17: Open until disengagement"]
+    assert select.current_option == "code_17"
+    assert select.options == ["code_16", "code_17"]
     assert old.unique_id.endswith("_bus_t4_photo_close_mode")
     assert select.unique_id.endswith("_parameter_04_86")
     instance.async_write_setting = AsyncMock()
     await select.async_select_option(select.current_option)
     instance.async_write_setting.assert_awaited_once_with(definition.setting, 17)
     with pytest.raises(HomeAssistantError, match="not advertised"):
-        await select.async_select_option("18: Stop")
+        await select.async_select_option("code_18")
     await instance.async_shutdown()
 
 
@@ -297,4 +297,69 @@ async def test_first_class_new_setter_validates_menu_and_reads_back_without_unkn
     assert instance.configuration.view(definition.key).value == 2.5
     assert instance.data.state == "closed"
     assert not hasattr(instance.data, "config_electric_lock_time")
+    await instance.async_shutdown()
+
+
+def test_execute_and_relearning_symbols_are_never_configuration_get_candidates():
+    for definition in PARAMETERS:
+        if any(
+            token in definition.symbol
+            for token in (
+                "SEARCH",
+                "DELETE",
+                "RESET",
+                "CALIBRATION",
+                "TEST",
+                "CMD_",
+                "ACTIVATE",
+                "RESERVED",
+                "PASSWORD",
+            )
+        ):
+            assert not definition.safe_read, definition.symbol
+
+
+def test_named_choices_have_valid_stable_translation_keys_in_all_languages():
+    import json
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "custom_components/nice_bidiwifi"
+    for path in [
+        root / "strings.json",
+        root / "translations/en.json",
+        root / "translations/ca.json",
+    ]:
+        data = json.loads(path.read_text())["entity"]["select"]
+        for key in ["photo_close_mode", "always_close_mode"]:
+            assert all(
+                re.fullmatch(r"code_\d+", option) for option in data[key]["state"]
+            )
+        assert data["photo_close_mode"]["state"]["code_17"]
+
+
+async def test_alias_names_use_ha_translations_instead_of_becoming_nameless(hass):
+    from types import SimpleNamespace
+
+    instance = await _instance(hass)
+    select = ConfigurationSelect(
+        instance, config_entry(), parameter_for_setting("photo_close_mode")
+    )
+    select.platform_data = SimpleNamespace(
+        platform_name="nice_bidiwifi", domain="select"
+    )
+    translations = {
+        "component.nice_bidiwifi.entity.select.photo_close_mode.name": "Photo close mode"
+    }
+    assert select._name_internal(None, translations) == "Photo close mode"
+    number = ConfigurationNumber(
+        instance, config_entry(), parameter_for_setting("pause_time")
+    )
+    number.platform_data = SimpleNamespace(
+        platform_name="nice_bidiwifi", domain="number"
+    )
+    translations = {
+        "component.nice_bidiwifi.entity.number.controller_parameter_value.name": "{parameter} (engineering units)"
+    }
+    assert number._name_internal(None, translations) == "Pause time (engineering units)"
     await instance.async_shutdown()

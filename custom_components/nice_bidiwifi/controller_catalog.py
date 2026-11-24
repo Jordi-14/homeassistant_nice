@@ -165,6 +165,20 @@ class ControllerParameter:
             and self.binding is not None
             and self.binding[0] == 4
             and self.binding[1] in READ_PARAMETERS
+            and not any(
+                token in self.symbol
+                for token in (
+                    "SEARCH",
+                    "DELETE",
+                    "RESET",
+                    "CALIBRATION",
+                    "TEST",
+                    "CMD_",
+                    "ACTIVATE",
+                    "RESERVED",
+                    "PASSWORD",
+                )
+            )
         )
 
     @property
