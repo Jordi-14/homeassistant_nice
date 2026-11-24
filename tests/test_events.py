@@ -90,13 +90,11 @@ def _live_position_event(
 ) -> bytes:
     """Build one encrypted CU_WIFI 04/40 event."""
     key = b"event-key"
-    payload = bytearray.fromhex(
-        "55 0f 00 ff 00 03 01 08 f5 04 40 00 00 4c ff ff 52 0f"
-    )
+    payload = bytearray.fromhex("55 0f 00 ff 00 03 01 08 f5 04 40 00 00 4c ff ff 52 0f")
     payload[11] = state_byte
     encrypted = xor_sha256(bytes(payload), key)
     properties = (
-        f"<Devices><Device id=\"1\"><Properties><DoorStatus>{door_status}"
+        f'<Devices><Device id="1"><Properties><DoorStatus>{door_status}'
         "</DoorStatus></Properties></Device></Devices>"
         if door_status is not None
         else ""
@@ -118,7 +116,12 @@ def _t4_event(*messages: str, xml: str = "", event_type: str = "T4_EVENT") -> by
     elements = ""
     for message in messages:
         inner = bytes.fromhex(message)
-        body = bytes.fromhex("00 ff 00 03 01") + bytes([len(inner) + 1, 0]) + inner + b"\x00"
+        body = (
+            bytes.fromhex("00 ff 00 03 01")
+            + bytes([len(inner) + 1, 0])
+            + inner
+            + b"\x00"
+        )
         plain = bytes([0x55, len(body)]) + body + bytes([len(body)])
         elements += (
             f'<T4 key="{base64.b64encode(key).decode()}">'
@@ -126,7 +129,11 @@ def _t4_event(*messages: str, xml: str = "", event_type: str = "T4_EVENT") -> by
             + "</T4>"
         )
     return frame_xml(
-        f'<Event type="{event_type}" id="44">' + xml + "<Interface>" + elements + "</Interface></Event>"
+        f'<Event type="{event_type}" id="44">'
+        + xml
+        + "<Interface>"
+        + elements
+        + "</Interface></Event>"
     )
 
 
@@ -193,7 +200,11 @@ def test_event_parser_merges_payloads_in_one_frame() -> None:
 def test_event_only_payload_keeps_xml_event_kind() -> None:
     """A 04/82 payload does not turn an XML diagnostic into a live status."""
     event = parse_nhk_event_frame(
-        _t4_event("04 82 03 00", event_type="DIAGNOSTIC", xml='<Devices><Device id="1"><Properties></Properties></Device></Devices>')
+        _t4_event(
+            "04 82 03 00",
+            event_type="DIAGNOSTIC",
+            xml='<Devices><Device id="1"><Properties></Properties></Device></Devices>',
+        )
     )[0]
     assert event.kind is NiceEventKind.DIAGNOSTIC
     assert event.category is NiceEventCategory.DIAGNOSTIC
@@ -223,7 +234,9 @@ async def test_t4_diagnostic_obstacle_and_last_cause(hass) -> None:
     entry.add_to_hass(hass)
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
     coordinator.client = FakeClient()
-    coordinator.async_set_updated_data(make_status(obstacle=False))
+    coordinator.async_set_updated_data(
+        replace(make_status(obstacle=False), registers={"NHK/Obstruct": "false"})
+    )
     controller = coordinator.event_controller
     controller.ensure_registered()
     controller.reconcile_polled_obstacle(coordinator.data)
@@ -249,9 +262,7 @@ async def test_t4_diagnostic_obstacle_and_last_cause(hass) -> None:
 def _live_scalar_position_event(raw_position: int) -> bytes:
     """Build one encrypted RBA4R10-style raw 04/40 event."""
     key = b"event-key"
-    payload = bytearray.fromhex(
-        "55 0e ff 01 00 03 01 07 fb 04 40 83 00 00 00 a4 0e"
-    )
+    payload = bytearray.fromhex("55 0e ff 01 00 03 01 07 fb 04 40 83 00 00 00 a4 0e")
     payload[12:14] = raw_position.to_bytes(2, "big")
     encrypted = xor_sha256(bytes(payload), key)
     return frame_xml(
@@ -351,9 +362,7 @@ def test_event_parser_keeps_terminal_04_40_state_position_only() -> None:
 
 def test_event_parser_prefers_04_40_motion_over_stale_door_status() -> None:
     """A live movement byte wins over a stale terminal DoorStatus value."""
-    event = parse_nhk_event_frame(
-        _live_position_event(0x83, door_status="open")
-    )[0]
+    event = parse_nhk_event_frame(_live_position_event(0x83, door_status="open"))[0]
 
     assert event.raw_state == "open"
     assert event.t4_state == "opening"
@@ -451,8 +460,9 @@ async def test_event_controller_updates_existing_status_fields_and_fallback(
 
     assert coordinator.data.state == "opening"
     assert coordinator.data.obstacle is True
-    assert coordinator.data.maintenance_count == 7001
-    assert coordinator.data.total_maneuver_count == 7001
+    assert coordinator.data.maintenance_count == 10
+    assert coordinator.diagnostic_runtime.event_counters["nhk_manoeuvre_count"] == 7001
+    assert coordinator.data.total_maneuver_count == 10
     assert coordinator.data.maintenance_threshold == 7000
     assert coordinator.protocol_event_count == 1
     assert coordinator.latest_event.category is NiceEventCategory.BLUEBUS_ERROR
@@ -477,11 +487,15 @@ async def test_event_controller_updates_existing_status_fields_and_fallback(
 
 async def test_obstruction_event_requires_a_new_true_observation(hass) -> None:
     """A latched true flag does not create another obstruction notification."""
-    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="obstruct-edge")
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=config_entry_data(), entry_id="obstruct-edge"
+    )
     entry.add_to_hass(hass)
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
     coordinator.client = FakeClient()
-    coordinator.async_set_updated_data(make_status(obstacle=False))
+    coordinator.async_set_updated_data(
+        replace(make_status(obstacle=False), registers={"NHK/Obstruct": "false"})
+    )
     controller = coordinator.event_controller
     controller.ensure_registered()
     controller.reconcile_polled_obstacle(coordinator.data)
@@ -503,7 +517,9 @@ async def test_obstruction_event_requires_a_new_true_observation(hass) -> None:
 
 async def test_unknown_poll_keeps_obstacle_until_reconnect(hass) -> None:
     """Unknown DMP data cannot erase a fresh live obstacle observation."""
-    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="obstruct-poll")
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=config_entry_data(), entry_id="obstruct-poll"
+    )
     entry.add_to_hass(hass)
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
     client = FakeClient()
@@ -536,7 +552,9 @@ async def test_unknown_poll_keeps_obstacle_until_reconnect(hass) -> None:
 
 async def test_internal_reconnect_does_not_replay_latched_obstruction(hass) -> None:
     """A successful client retry still starts a new obstruction baseline."""
-    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="obstruct-retry")
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=config_entry_data(), entry_id="obstruct-retry"
+    )
     entry.add_to_hass(hass)
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
     client = FakeClient()
@@ -544,7 +562,8 @@ async def test_internal_reconnect_does_not_replay_latched_obstruction(hass) -> N
     controller = coordinator.event_controller
     controller.ensure_registered()
     controller._handle_raw_frame(_obstruction_event(True))
-    assert coordinator.latest_event.category is NiceEventCategory.OBSTRUCTION
+    assert coordinator.latest_event.category is NiceEventCategory.STATE_CHANGE
+    assert coordinator.latest_event.obstruction_evidence == "baseline"
 
     client.reconnect_count += 1
     controller._handle_raw_frame(_obstruction_event(True))
@@ -621,7 +640,10 @@ def test_event_payload_hex_is_kept_for_04_02_and_04_82_only() -> None:
     event = parse_nhk_event_frame(_t4_event("04 02 83 01 64 64"))[0]
     assert event.t4_payload_hex == "04 02 83 01 64 64"
     assert event.as_diagnostics()["t4_payload_hex"] == "04 02 83 01 64 64"
-    assert parse_nhk_event_frame(_t4_event("04 82 03 00"))[0].t4_payload_hex == "04 82 03 00"
+    assert (
+        parse_nhk_event_frame(_t4_event("04 82 03 00"))[0].t4_payload_hex
+        == "04 82 03 00"
+    )
     assert parse_nhk_event_frame(_live_position_event(0x00))[0].t4_payload_hex is None
     merged = parse_nhk_event_frame(_t4_event("04 02 04 00", "04 40 00 00 4c"))[0]
     assert merged.t4_payload_hex == "04 02 04 00"
@@ -639,7 +661,9 @@ class _Clock:
 
 
 async def _abnormal_coordinator(hass, **status_values):
-    entry = MockConfigEntry(domain=DOMAIN, data=config_entry_data(), entry_id="abnormal")
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=config_entry_data(), entry_id="abnormal"
+    )
     entry.add_to_hass(hass)
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
     coordinator.client = FakeClient()
@@ -671,23 +695,31 @@ async def test_unexpected_stop_without_command_fires_event(hass, monkeypatch) ->
 
 
 # LOCAL-DIAGNOSTIC(pr55): the cause decides whether a stop is explained.
-async def test_stop_for_command_arrival_fires_only_without_a_cause(hass, monkeypatch) -> None:
+async def test_stop_for_command_arrival_fires_only_without_a_cause(
+    hass, monkeypatch
+) -> None:
     _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
     coordinator = await _abnormal_coordinator(hass)
 
-    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 88 11 00 00"))  # photo_open
+    coordinator.event_controller._handle_raw_frame(
+        _t4_event("04 02 88 11 00 00")
+    )  # photo_open
     await hass.async_block_till_done()
     assert events == []
 
-    coordinator.event_controller._handle_raw_frame(_t4_event("04 02 88 00 00 00"))  # none
+    coordinator.event_controller._handle_raw_frame(
+        _t4_event("04 02 88 00 00 00")
+    )  # none
     await hass.async_block_till_done()
     assert len(events) == 1
     assert events[0].data["reason"] == "unexpected_stop"
     await coordinator.async_shutdown()
 
 
-async def test_stop_after_recent_command_or_partial_stop_is_normal(hass, monkeypatch) -> None:
+async def test_stop_after_recent_command_or_partial_stop_is_normal(
+    hass, monkeypatch
+) -> None:
     clock = _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
     coordinator = await _abnormal_coordinator(hass)
@@ -790,7 +822,9 @@ async def test_normal_full_travel_is_applied(hass, monkeypatch) -> None:
     await coordinator.async_shutdown()
 
 
-async def test_abnormal_stop_scans_at_most_once_per_30_seconds(hass, monkeypatch) -> None:
+async def test_abnormal_stop_scans_at_most_once_per_30_seconds(
+    hass, monkeypatch
+) -> None:
     clock = _Clock(monkeypatch)
     coordinator = await _abnormal_coordinator(hass, state="open")
     controller = coordinator.event_controller
@@ -815,7 +849,9 @@ def _nhk_xml(state: str) -> str:
     )
 
 
-async def test_cycle_4_open_stop_is_unexpected_even_after_a_command(hass, monkeypatch) -> None:
+async def test_cycle_4_open_stop_is_unexpected_even_after_a_command(
+    hass, monkeypatch
+) -> None:
     """Cause none right after an HA command is still unexpected; it reports travel time."""
     clock = _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
@@ -838,7 +874,9 @@ async def test_cycle_4_open_stop_is_unexpected_even_after_a_command(hass, monkey
     await coordinator.async_shutdown()
 
 
-async def test_abnormal_stop_after_command_only_forces_the_next_scan(hass, monkeypatch) -> None:
+async def test_abnormal_stop_after_command_only_forces_the_next_scan(
+    hass, monkeypatch
+) -> None:
     clock = _Clock(monkeypatch)
     coordinator = await _abnormal_coordinator(hass, state="open")
     coordinator._extended_status_next_refresh_monotonic = 1e9
@@ -938,7 +976,9 @@ async def test_one_event_when_04_02_and_nhk_both_match(hass, monkeypatch) -> Non
     await coordinator.async_shutdown()
 
 
-async def test_repeated_door_status_frames_do_not_rearm_the_nhk_move(hass, monkeypatch) -> None:
+async def test_repeated_door_status_frames_do_not_rearm_the_nhk_move(
+    hass, monkeypatch
+) -> None:
     """A normal 30 s open with DoorStatus=opening every second is not implausible."""
     clock = _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
@@ -960,7 +1000,11 @@ async def test_force_limiter_is_a_controller_fault(hass, monkeypatch) -> None:
     _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
     coordinator = await _abnormal_coordinator(
-        hass, state="closing", current_position=51, closed_position=0, open_position=5133
+        hass,
+        state="closing",
+        current_position=51,
+        closed_position=0,
+        open_position=5133,
     )
     coordinator.event_controller._handle_raw_frame(_t4_event("04 02 91 00 00 00"))
     await hass.async_block_till_done()
@@ -970,7 +1014,9 @@ async def test_force_limiter_is_a_controller_fault(hass, monkeypatch) -> None:
     await coordinator.async_shutdown()
 
 
-async def test_close_on_idle_open_gate_read_as_stop_is_unexpected(hass, monkeypatch) -> None:
+async def test_close_on_idle_open_gate_read_as_stop_is_unexpected(
+    hass, monkeypatch
+) -> None:
     """2026-11-14 cycle 1: HA close on an open gate came back as a stop with cause oview."""
     clock = _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
@@ -995,7 +1041,11 @@ async def test_open_command_stopping_a_moving_gate_is_normal(hass, monkeypatch) 
     clock = _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
     coordinator = await _abnormal_coordinator(
-        hass, state="closing", current_position=3000, closed_position=0, open_position=5114
+        hass,
+        state="closing",
+        current_position=3000,
+        closed_position=0,
+        open_position=5114,
     )
     coordinator.last_command = "open"
     coordinator.last_command_monotonic = clock.now
@@ -1045,7 +1095,9 @@ async def test_nhk_stop_4_s_after_a_stop_command_is_normal(hass, monkeypatch) ->
     await coordinator.async_shutdown()
 
 
-async def test_one_stop_seen_twice_with_two_reasons_fires_once(hass, monkeypatch) -> None:
+async def test_one_stop_seen_twice_with_two_reasons_fires_once(
+    hass, monkeypatch
+) -> None:
     """A force-limiter 04/02 and the NHK stop of the same stop must not count twice."""
     clock = _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
@@ -1116,7 +1168,9 @@ async def test_nhk_and_04_02_report_one_stop_once(hass, monkeypatch) -> None:
     await coordinator.async_shutdown()
 
 
-async def test_photocell_reversal_during_close_is_not_abnormal(hass, monkeypatch) -> None:
+async def test_photocell_reversal_during_close_is_not_abnormal(
+    hass, monkeypatch
+) -> None:
     """2026-11-14 cycle 6: the photocell beam was blocked while the gate closed.
 
     The controller reversed with opening_from_command and cause none (not photo_*),
@@ -1125,7 +1179,11 @@ async def test_photocell_reversal_during_close_is_not_abnormal(hass, monkeypatch
     clock = _Clock(monkeypatch)
     events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
     coordinator = await _abnormal_coordinator(
-        hass, state="closing", current_position=1287, closed_position=0, open_position=5251
+        hass,
+        state="closing",
+        current_position=1287,
+        closed_position=0,
+        open_position=5251,
     )
     controller = coordinator.event_controller
     coordinator.last_command = "close"

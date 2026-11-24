@@ -74,8 +74,7 @@ class TestNiceBidiSensorProperties:
         assert set(keys).isdisjoint(description.key for description in SENSORS)
         assert all(not description.protected for description in ROUTE_SENSORS)
         assert all(
-            description.entity_registry_visible_default
-            for description in ROUTE_SENSORS
+            description.entity_registry_visible_default for description in ROUTE_SENSORS
         )
 
     def test_route_sensors_report_active_and_available_connections(self) -> None:
@@ -221,7 +220,9 @@ class TestNiceBidiSensorProperties:
     def test_issue_15_diagnostics_are_unavailable_without_d2_payload(self) -> None:
         coordinator = FakeCoordinator()
         coordinator.data = make_status(
-            diagnostics_parameters="00 00 00 00", motor_temperature=None, service_voltage=None
+            diagnostics_parameters="00 00 00 00",
+            motor_temperature=None,
+            service_voltage=None,
         )
 
         assert (
@@ -311,9 +312,16 @@ async def test_async_setup_entry_adds_all_sensors() -> None:
 def test_bluebus_devices_sensor_counts_faults() -> None:
     coordinator = FakeCoordinator()
     coordinator.data = make_status(
-        bluebus_devices={"photo": "on", "cmd_1": "not_working", "photo_2": "stand_by", "photo_open": "undefined"}
+        bluebus_devices={
+            "photo": "on",
+            "cmd_1": "not_working",
+            "photo_2": "stand_by",
+            "photo_open": "undefined",
+        }
     )
-    sensor = NiceBidiSensor(coordinator, config_entry(), _description("bluebus_devices"))
+    sensor = NiceBidiSensor(
+        coordinator, config_entry(), _description("bluebus_devices")
+    )
     assert sensor.native_value == 1
     assert sensor.extra_state_attributes == {
         "photo": "on",
@@ -338,13 +346,25 @@ def test_last_maneuvers_sensor_ignores_undefined_slots() -> None:
 def test_last_maneuvers_sensor() -> None:
     coordinator = FakeCoordinator()
     names = (
-        "ok", "ok", "obstacle_detected", "ok", "undefined",
-        "photo_intervention", "detected_obstacle_by_encoder", "ok",
+        "ok",
+        "ok",
+        "obstacle_detected",
+        "ok",
+        "undefined",
+        "photo_intervention",
+        "detected_obstacle_by_encoder",
+        "ok",
     )
     coordinator.data = make_status(last_maneuvers=names)
     sensor = NiceBidiSensor(coordinator, config_entry(), _description("last_maneuvers"))
     assert sensor.native_value == 3
-    assert sensor.extra_state_attributes == {"maneuvers": list(names), "obstacle_count": 2}
+    assert sensor.extra_state_attributes == {
+        "maneuvers": list(names),
+        "obstacle_count": 2,
+        "history_quality": "reported_slots",
+        "confirmed_success_count": None,
+        "slot_order": "vendor_index_order_newest_unknown",
+    }
 
     coordinator.data = make_status(last_maneuvers=None)
     assert sensor.native_value is None
@@ -377,7 +397,7 @@ def test_last_maneuvers_sensor_is_unknown_when_log_is_stale() -> None:
     assert sensor.extra_state_attributes["maneuvers"] == ["ok"] * 8
 
     coordinator.data = replace(make_status(), last_maneuvers_stale=False)
-    assert sensor.native_value == 0
+    assert sensor.native_value is None
     assert "stale" not in sensor.extra_state_attributes
 
 
@@ -387,10 +407,14 @@ def test_scaled_time_sensor_uses_controller_info() -> None:
 
     coordinator = FakeCoordinator()
     coordinator.data = replace(make_status(), electric_lock_time=20)
-    entity = NiceBidiSensor(coordinator, config_entry(), _description("electric_lock_time"))
+    entity = NiceBidiSensor(
+        coordinator, config_entry(), _description("electric_lock_time")
+    )
 
     assert entity.native_value is None
-    coordinator.register_info = {"04/5A": decode_dmp_info(bytes.fromhex("010011110164 01000a".replace(" ", "")))}
+    coordinator.register_info = {
+        "04/5A": decode_dmp_info(bytes.fromhex("010011110164 01000a".replace(" ", "")))
+    }
     assert entity.native_value == 2.0
 
 
@@ -404,16 +428,24 @@ def test_diagnostic_registers_are_decoded_with_their_info() -> None:
         registers={
             "04/D1": "01 00 40 00 05 04 00 00 00 00 00 02 01 00",
             "04/D2": "00 ee 00 00 00 00 00 0b 00 20 00 1e 00 00 00 1c 00 00 00 00 00 4c 00 00 12 d4 00 00",
-        }
+        },
     )
     coordinator.register_info = {
-        "04/D1": decode_dmp_info(bytes.fromhex("0181e1410e0f0743000dffffffff3c1fff0100")),
+        "04/D1": decode_dmp_info(
+            bytes.fromhex("0181e1410e0f0743000dffffffff3c1fff0100")
+        ),
         "04/D2": decode_dmp_info(
-            bytes.fromhex("0281e2410e80008000800080648000806400008000000000008064000080000000")
+            bytes.fromhex(
+                "0281e2410e80008000800080648000806400008000000000008064000080000000"
+            )
         ),
     }
-    io = NiceBidiSensor(coordinator, config_entry(), _description("diagnostics_io_byte"))
-    hw = NiceBidiSensor(coordinator, config_entry(), _description("diagnostics_parameters"))
+    io = NiceBidiSensor(
+        coordinator, config_entry(), _description("diagnostics_io_byte")
+    )
+    hw = NiceBidiSensor(
+        coordinator, config_entry(), _description("diagnostics_parameters")
+    )
 
     assert io.extra_state_attributes["motor_m1"] is True
     assert "loop_1" not in io.extra_state_attributes

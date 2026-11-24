@@ -86,9 +86,30 @@ async def test_diagnostics_redacts_sensitive_data(hass) -> None:
 
     stream = diagnostics["event_stream"]
     assert stream["controller_event_history_error"] == "NiceBidiConnectionError: busy"
-    assert [row["id"] for row in stream["controller_event_history"]] == [1028, 1027, 1013, 655]
+    assert [row["id"] for row in stream["controller_event_history"]] == [
+        1028,
+        1027,
+        1013,
+        655,
+    ]
     assert set(stream["controller_event_history"][0]) == {
-        "id", "time", "dep", "change_state", "cause", "data_hex"
+        "id",
+        "time",
+        "dep",
+        "change_state",
+        "cause",
+        "data_hex",
+        "protocol",
+        "event_class",
+        "basic_diagnostic",
+        "advanced_diagnostic",
+        "command",
+        "obstruction",
+        "confidence",
+        "physical_cause",
+        "actor",
+        "details",
+        "event_description",
     }
     assert "7ndZS2whmyxS8wwgxC" not in str(diagnostics)
     assert "LTECwFJ40pD" not in str(diagnostics)
@@ -132,7 +153,10 @@ async def test_diagnostics_redacts_sensitive_data(hass) -> None:
     assert diagnostics["device_info"]["interface_name_present"] is True
     assert "interface_name" not in diagnostics["device_info"]
     assert diagnostics["administration"]["mutation_blocked_while_moving"] is True
-    assert diagnostics["administration"]["writes_replayed_after_ambiguous_failure"] is False
+    assert (
+        diagnostics["administration"]["writes_replayed_after_ambiguous_failure"]
+        is False
+    )
     assert diagnostics["administration"]["logs"]["retained_count"] == 1
     assert diagnostics["administration"]["groups"]["summaries"] == [
         {

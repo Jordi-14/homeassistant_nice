@@ -67,6 +67,8 @@ from .models.status import STATE_OPENING, STATE_CLOSING
 from .observations import ObservationStore
 from .feature_runtime import FeatureRuntime
 from .configuration import ControllerConfiguration
+from .incidents import IncidentTimeline
+from .diagnostic_runtime import DiagnosticRuntime
 from .runtime_tasks import RuntimeTasks
 from .scheduler import OperationExpired
 from .parameters import ParameterRepository, SupportState
@@ -276,6 +278,8 @@ class NiceBidiDataUpdateCoordinator(
         self.tasks = RuntimeTasks(hass)
         self.features = FeatureRuntime(self)
         self.configuration = ControllerConfiguration(self)
+        self.incidents = IncidentTimeline(entry.data)
+        self.diagnostic_runtime = DiagnosticRuntime(self)
         self.event_controller = NiceEventController(self)
         self.administration_controller = NiceAdministrationController(self)
         self.motion_trace = MotionTraceController(self)
@@ -349,11 +353,13 @@ class NiceBidiDataUpdateCoordinator(
             return self.data or self.observations.snapshot()
         status = self.event_controller.reconcile_polled_obstacle(status)
         status = self.observations.apply_poll(status, token)
+        self.incidents.measurement(self.position_controller._normalize_live_scalar_status(status))
         self._track_controller_limits(status)
         status = self.position_controller._normalize_status_for_display(self.position_controller._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
         self.event_controller.mark_connected()
         self.configuration.schedule_refresh()
+        self.diagnostic_runtime.schedule()
         if self._setting_info_task is None:
             self._setting_info_task = self.tasks.create(self._async_load_setting_info(), "nice-setting-info")
         return status
@@ -509,14 +515,16 @@ class NiceBidiDataUpdateCoordinator(
         try:
             include_extended = self._should_read_extended_status()
             scan_due = self._extended_scan_requests
-            trace_registers = () if include_extended else self.motion_trace.extra_registers()
+            trace_registers = () if include_extended else tuple(dict.fromkeys((*self.motion_trace.extra_registers(), *self.diagnostic_runtime.extra_registers())))
             status = self.client.read_status(
                 include_extended=include_extended,
                 preemptible=True,
                 **({"extra_registers": trace_registers} if trace_registers else {}),
             )
             if trace_registers:
-                self.motion_trace.record(status)
+                if self.motion_trace.enabled():
+                    self.motion_trace.record(status)
+                self.diagnostic_runtime.record_poll(status)
         except NiceBidiConnectionError as err:
             error_code = nice_bidi_error_code(err)
             if error_code not in DMP_STATUS_NHK_FALLBACK_ERROR_CODES:
@@ -1063,6 +1071,7 @@ class NiceBidiDataUpdateCoordinator(
         if verification_error:
             details += (("readback_error", verification_error),)
         verified_result = replace(result, verification=verification, details=details)
+        self.incidents.verification(command, verified_result)
         if self.command_executor.state.last_result is result:
             self.command_executor.state.last_result = verified_result
         key = f"{group:02X}/{parameter:02X}"
@@ -1099,6 +1108,7 @@ class NiceBidiDataUpdateCoordinator(
             acknowledgement=CommandAcknowledgement.ACCEPTED,
             latency_ms=round((time.monotonic() - started) * 1000),
         )
+        self.incidents.command(command, result)
         self.command_executor.state.last_result = result
         self.command_executor.state.last_command = command.key
         self.command_executor.state.last_command_monotonic = time.monotonic()
@@ -1113,6 +1123,7 @@ class NiceBidiDataUpdateCoordinator(
     ) -> None:
         """Store a rejected normalized acknowledgement."""
         self.command_executor.state.last_result = self.command_executor.failed_result(command, started, error)
+        self.incidents.command(command, self.command_executor.state.last_result)
 
     async def async_reconnect(self) -> None:
         """Force the current NHK/TLS session to be recreated."""
@@ -1120,6 +1131,7 @@ class NiceBidiDataUpdateCoordinator(
             return
         self.observations.invalidate()
         self.configuration.invalidate()
+        self.diagnostic_runtime.invalidate()
         await self._async_cancel_background_tasks(calibration_reason="reconnect")
         self.event_controller.mark_reconnecting()
         self._set_connection_state(CONNECTION_STATE_RECONNECTING)
@@ -1132,6 +1144,7 @@ class NiceBidiDataUpdateCoordinator(
         """Close the persistent connection."""
         self.observations.invalidate(close=True)
         self.configuration.invalidate()
+        self.diagnostic_runtime.invalidate()
         # a still-valid issue is recreated by the first poll after setup
         ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
         await self._async_cancel_background_tasks(calibration_reason="shutdown")

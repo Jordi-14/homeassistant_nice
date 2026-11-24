@@ -130,6 +130,22 @@ Implementation, device support, permissions and current availability are separat
 | `installer.fg01h.force_map` | blocked | 6 | None | fg01h.force_map_learning |
 | `transport.core` | blocked | 5 | None | transport.core |
 | `transport.proview` | blocked | 5 | None | transport.proview |
+| `diagnostics.incident_timeline` | implemented | 4 | snapshot | none |
+| `diagnostics.screen.counters` | implemented | 4 | diagnostic | none |
+| `diagnostics.screen.bluebus` | implemented | 4 | diagnostic | none |
+| `diagnostics.screen.io` | implemented | 4 | diagnostic | none |
+| `diagnostics.screen.hardware` | implemented | 4 | diagnostic | none |
+| `diagnostics.screen.maneuvers` | implemented | 4 | diagnostic | none |
+| `diagnostics.screen.inverter` | implemented | 4 | diagnostic | none |
+| `diagnostics.screen.advanced_history` | implemented | 4 | diagnostic | diagnostics.advanced_history |
+| `diagnostics.screen.automation_state` | blocked | 4 | none | diagnostics.automation_structure |
+| `diagnostics.screen.other` | blocked | 4 | none | diagnostics.other_layouts |
+| `diagnostics.screen.visual` | blocked | 4 | none | diagnostics.other_layouts |
+| `diagnostics.screen.test_history` | blocked | 4 | none | diagnostics.test_history |
+| `diagnostics.screen.advanced_test_history` | blocked | 4 | none | diagnostics.test_history |
+| `diagnostics.screen.receiver_events` | blocked | 4 | none | diagnostics.receiver_layouts |
+| `diagnostics.screen.power_supply` | blocked | 4 | none | diagnostics.psu_transport |
+| `diagnostics.screen.maintenance_reset` | blocked | 4 | none | diagnostics.maintenance_procedure |
 
 ## Controller command evidence
 

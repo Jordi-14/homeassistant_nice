@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 
 class NiceEventKind(StrEnum):
@@ -53,10 +54,15 @@ class NiceEvent:
     t4_basic_diagnostic: str | None = None
     t4_advanced_diagnostic: str | None = None
     t4_command: str | None = None
+    t4_details: tuple[tuple[str, int], ...] | None = None
+    t4_event_description: str | None = None
+    t4_evidence: tuple[tuple[tuple[str, object], ...], ...] = ()
+    t4_evidence_truncated: bool = False
     # LOCAL-DIAGNOSTIC(pr55): implausible-travel flag; see controllers/events.py:_check_abnormal_stop.
     t4_implausible: bool | None = None
     obstruction: bool | None = None
     obstruction_source: str | None = None
+    obstruction_evidence: str | None = None
     protocol_timestamp: str | None = None
     basic_diagnostic_code: str | None = None
     cause_code: str | None = None
@@ -71,9 +77,9 @@ class NiceEvent:
     reset_device_class: str | None = None
     reset_cause: str | None = None
 
-    def as_event_attributes(self) -> dict[str, str | int | float | bool]:
+    def as_event_attributes(self) -> dict[str, Any]:
         """Return public attributes suitable for an EventEntity trigger."""
-        values: tuple[tuple[str, str | int | float | bool | None], ...] = (
+        values: tuple[tuple[str, Any], ...] = (
             ("kind", self.kind.value),
             ("event_id", self.event_id),
             ("device_id", self.device_id),
@@ -92,9 +98,17 @@ class NiceEvent:
             ("t4_basic_diagnostic", self.t4_basic_diagnostic),
             ("t4_advanced_diagnostic", self.t4_advanced_diagnostic),
             ("t4_command", self.t4_command),
+            ("t4_event_description", self.t4_event_description),
+            ("t4_details", dict(self.t4_details) if self.t4_details else None),
+            (
+                "t4_evidence",
+                [dict(part) for part in self.t4_evidence] if self.t4_evidence else None,
+            ),
+            ("t4_evidence_truncated", True if self.t4_evidence_truncated else None),
             ("t4_implausible", self.t4_implausible),
             ("obstruction", self.obstruction),
             ("obstruction_source", self.obstruction_source),
+            ("obstruction_evidence", self.obstruction_evidence),
             ("protocol_timestamp", self.protocol_timestamp),
             ("basic_diagnostic_code", self.basic_diagnostic_code),
             ("cause_code", self.cause_code),
@@ -111,7 +125,7 @@ class NiceEvent:
         )
         return {key: value for key, value in values if value is not None}
 
-    def as_diagnostics(self) -> dict[str, str | int | float | bool]:
+    def as_diagnostics(self) -> dict[str, Any]:
         """Return a bounded diagnostics representation without identifiers."""
         values = self.as_event_attributes()
         values.pop("device_id", None)

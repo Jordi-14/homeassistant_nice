@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from dataclasses import replace
 import xml.etree.ElementTree as ET
+import math
 
 from ...errors import NiceProtocolError
 from ...models.events import NiceEvent, NiceEventCategory, NiceEventKind
@@ -47,7 +49,8 @@ def _integer(value: str | None) -> int | None:
     if value is None:
         return None
     try:
-        return int(value, 10)
+        result = int(value, 10)
+        return result if 0 <= result <= 0xFFFFFFFFFFFFFFFF else None
     except ValueError:
         return None
 
@@ -56,7 +59,8 @@ def _number(value: str | None) -> float | None:
     if value is None:
         return None
     try:
-        return float(value)
+        result = float(value)
+        return result if math.isfinite(result) else None
     except ValueError:
         return None
 
@@ -174,17 +178,13 @@ def _parse_device_event(
         state=state,
         raw_state=raw_state,
         position=live_position,
-        t4_payload_kind=(
-            live_status.payload_kind if live_status is not None else None
-        ),
+        t4_payload_kind=(live_status.payload_kind if live_status is not None else None),
         t4_event_class=live_status.event_class if live_status is not None else None,
         t4_payload_hex=(
             live_status.event_payload_hex if live_status is not None else None
         ),
         t4_state=live_status.state if live_status is not None else None,
-        t4_raw_position=(
-            live_status.raw_position if live_status is not None else None
-        ),
+        t4_raw_position=(live_status.raw_position if live_status is not None else None),
         t4_position_scale=(
             live_status.position_scale if live_status is not None else None
         ),
@@ -197,6 +197,10 @@ def _parse_device_event(
             live_status.advanced_diagnostic if live_status is not None else None
         ),
         t4_command=live_status.command if live_status is not None else None,
+        t4_details=live_status.event_details if live_status is not None else None,
+        t4_event_description=live_status.event_description
+        if live_status is not None
+        else None,
         obstruction=obstruction,
         obstruction_source=obstruction_source,
         protocol_timestamp=_text(root, "Timestamp"),
@@ -246,25 +250,46 @@ def parse_nhk_event_frame(
 
     kind = _event_kind(root)
     observed_at = received_at or datetime.now(UTC)
-    all_devices = [
-        node for node in root.iter() if _local_name(node.tag) == "Device"
-    ]
-    devices = [
-        node
-        for node in all_devices
-        if node.get("id") in {None, str(device_id)}
-    ]
+    all_devices = [node for node in root.iter() if _local_name(node.tag) == "Device"]
+    devices = [node for node in all_devices if node.get("id") in {None, str(device_id)}]
     if all_devices and not devices:
         return ()
     if not all_devices:
         devices = [root]
+    evidence = tuple(
+        tuple(
+            (key, value)
+            for key, value in {
+                "payload_index": index,
+                "payload_kind": payload.payload_kind,
+                "event_class": payload.event_class,
+                "event_description": payload.event_description,
+                "state": payload.state,
+                "raw_position": payload.raw_position,
+                "position_scale": payload.position_scale,
+                "change_state": payload.change_state,
+                "cause": payload.cause,
+                "basic_diagnostic": payload.basic_diagnostic,
+                "advanced_diagnostic": payload.advanced_diagnostic,
+                "command": payload.command,
+                "obstruction": payload.obstruction,
+                **dict(payload.event_details or ()),
+            }.items()
+            if value is not None
+        )
+        for index, payload in enumerate(parsed_payloads[:16])
+    )
     return tuple(
-        _parse_device_event(
-            root,
-            device,
-            kind=kind,
-            received_at=observed_at,
-            live_status=live_status,
+        replace(
+            _parse_device_event(
+                root,
+                device,
+                kind=kind,
+                received_at=observed_at,
+                live_status=live_status,
+            ),
+            t4_evidence=evidence,
+            t4_evidence_truncated=len(parsed_payloads) > 16,
         )
         for device in devices
     )

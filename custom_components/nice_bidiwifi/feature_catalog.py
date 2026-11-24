@@ -37,21 +37,84 @@ class EvidenceGap:
 
 
 GAPS = (
-    EvidenceGap("controller.menu_wire", "Controller menu permissions need a verified wire decoder",
-                "The Java T4MenuEntry permission fields are recovered, but the binary STD_MENU decoder is native. Installer and ordinary-user rights cannot be inferred from INFO ranges.",
-                "Recover menu framing/continuation, native record decoding and account-role selection; test explicit denial before enabling additional writes."),
-    EvidenceGap("controller.parameter_format", "Controller value format or operation is not verified",
-                "A symbol/register alone does not establish its type, scale, unit or procedure semantics.",
-                "Verify dynamic INFO and matching value fixtures, then add a scoped decoder and reviewed binding."),
-    EvidenceGap("controller.binding_map", "App parameter has no cross-checked wire binding",
-                "The exported app ID cannot be used as a DMP register. The research dump contains unresolved and contradictory pairs.",
-                "Cross-check the actual native map or an app trace against the Java symbol before enabling access."),
-    EvidenceGap("controller.index_identity", "Indexed element identities and writes remain unverified",
-                "An index is kept separate but is not assumed to be motor 1 or motor 2; model-specific layouts and write permissions are missing.",
-                "Recover the model-specific index-to-motor/leaf mapping, units and SET contract with sanitized fixtures."),
-    EvidenceGap("controller.action_binding", "Additional Pro action binding is not verified",
-                "The Welcome action codes are implemented; extra Pro enum IDs and a partially inconsistent native extraction do not establish executable codes.",
-                "Recover exact command encodings and device authorization; retain explicit unsupported and denied outcomes."),
+    EvidenceGap(
+        "diagnostics.receiver_layouts",
+        "Receiver event layouts and redaction are incomplete",
+        "Native receiver payloads can contain remote identifiers, rolling codes or keys; their full scoped decoder is not established.",
+        "Recover the receiver-specific parser and fixture-backed redaction before retaining any payload. Known controller channel events remain numeric/labelled evidence only.",
+    ),
+    EvidenceGap(
+        "diagnostics.advanced_history",
+        "Advanced history requires controller-specific INFO decoding",
+        "04/DB is not universally an AdvancedDiagnostic byte array; relation to 04/DA slots is unknown.",
+        "Use a complete supported scalar/indexed INFO format or recover the model-specific structured decoder.",
+    ),
+    EvidenceGap(
+        "diagnostics.inverter_format",
+        "Inverter hardware descriptor layout is missing",
+        "The shared hardware decoder needs the controller's complete 16-bit availability/scale descriptors.",
+        "Capture matching INFO and GET and validate them against the app's inverter screen.",
+    ),
+    EvidenceGap(
+        "diagnostics.automation_structure",
+        "Automation state structure layout is unverified",
+        "The native T4AutomationState layout and format mapping are incomplete in the supplied evidence.",
+        "Recover the exact structure, per-motor fields and app rendering with sanitized fixtures.",
+    ),
+    EvidenceGap(
+        "diagnostics.other_layouts",
+        "Other/visual diagnostic layouts are unresolved",
+        "04/D5 and 04/D6 names do not establish their complete structure or field semantics.",
+        "Recover native decoding or matching app INFO/value fixtures before enabling a reader.",
+    ),
+    EvidenceGap(
+        "diagnostics.test_history",
+        "Test-history layouts are unverified",
+        "04/DD and 04/DE do not have established record identity, ordering and timestamp layouts.",
+        "Recover and validate complete history records, without starting a controller test procedure.",
+    ),
+    EvidenceGap(
+        "diagnostics.psu_transport",
+        "Dedicated PSU/battery profile access remains unresolved",
+        "App PSU symbols do not establish the target transport, addressing and complete telemetry layout.",
+        "Complete the device adapter and source-backed power/battery decoder; NHK battery events remain reported codes, not invented percentages.",
+    ),
+    EvidenceGap(
+        "diagnostics.maintenance_procedure",
+        "Maintenance reset procedure is not verified",
+        "A 04/B4 symbol does not establish execution payload, permissions or safe completion/recovery.",
+        "Recover the complete procedure under the shared procedure and authorization contracts.",
+    ),
+    EvidenceGap(
+        "controller.menu_wire",
+        "Controller menu permissions need a verified wire decoder",
+        "The Java T4MenuEntry permission fields are recovered, but the binary STD_MENU decoder is native. Installer and ordinary-user rights cannot be inferred from INFO ranges.",
+        "Recover menu framing/continuation, native record decoding and account-role selection; test explicit denial before enabling additional writes.",
+    ),
+    EvidenceGap(
+        "controller.parameter_format",
+        "Controller value format or operation is not verified",
+        "A symbol/register alone does not establish its type, scale, unit or procedure semantics.",
+        "Verify dynamic INFO and matching value fixtures, then add a scoped decoder and reviewed binding.",
+    ),
+    EvidenceGap(
+        "controller.binding_map",
+        "App parameter has no cross-checked wire binding",
+        "The exported app ID cannot be used as a DMP register. The research dump contains unresolved and contradictory pairs.",
+        "Cross-check the actual native map or an app trace against the Java symbol before enabling access.",
+    ),
+    EvidenceGap(
+        "controller.index_identity",
+        "Indexed element identities and writes remain unverified",
+        "An index is kept separate but is not assumed to be motor 1 or motor 2; model-specific layouts and write permissions are missing.",
+        "Recover the model-specific index-to-motor/leaf mapping, units and SET contract with sanitized fixtures.",
+    ),
+    EvidenceGap(
+        "controller.action_binding",
+        "Additional Pro action binding is not verified",
+        "The Welcome action codes are implemented; extra Pro enum IDs and a partially inconsistent native extraction do not establish executable codes.",
+        "Recover exact command encodings and device authorization; retain explicit unsupported and denied outcomes.",
+    ),
     EvidenceGap(
         "native.t4_library.pro_2_18",
         "Pro native encoder/decoder unavailable",
@@ -252,7 +315,13 @@ def _features() -> tuple[FeatureDefinition, ...]:
                 if phase in (3, 4, 5, 7)
                 else Implementation.PLANNED,
                 phase,
-                gaps=("controller.menu_wire", "controller.index_identity", "controller.binding_map") if key == "controller.configuration" else (),
+                gaps=(
+                    "controller.menu_wire",
+                    "controller.index_identity",
+                    "controller.binding_map",
+                )
+                if key == "controller.configuration"
+                else (),
             )
         )
     for key, title, phase, gap in (
@@ -285,6 +354,36 @@ def _features() -> tuple[FeatureDefinition, ...]:
                 phase,
                 FeatureBinding(None, None, (("opcode", None),), ("opcode",)),
                 gaps=(gap,),
+            )
+        )
+    rows.append(
+        FeatureDefinition(
+            "diagnostics.incident_timeline",
+            "Incident evidence timeline",
+            implemented,
+            4,
+            FeatureBinding("snapshot", "incident_timeline"),
+            evidence=("incidents.py; bounded sanitized receipt-ordered evidence",),
+        )
+    )
+    from .diagnostic_runtime import DIAGNOSTICS
+
+    for definition in DIAGNOSTICS:
+        rows.append(
+            FeatureDefinition(
+                "diagnostics.screen." + definition.key,
+                definition.title,
+                Implementation.IMPLEMENTED
+                if definition.decoder is not None
+                else Implementation.BLOCKED,
+                4,
+                FeatureBinding("diagnostic", definition.key)
+                if definition.decoder is not None
+                else None,
+                gaps=(definition.gap,) if definition.gap else (),
+                evidence=(
+                    "diagnostic_runtime.py; reviewed app screen/decoder contract",
+                ),
             )
         )
     return tuple(rows)

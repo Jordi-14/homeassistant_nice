@@ -6,14 +6,8 @@ from dataclasses import dataclass, replace
 
 from ...models.status import STATE_CLOSING, STATE_OPENING
 from .dmp import STATUS_BY_BYTE
+from .semantics import decode_event_meaning
 from .enums import (
-    ADVANCED_DIAGNOSTIC,
-    ADVANCED_DIAGNOSTIC_OBSTRUCTION_CODES,
-    AUTOMATION_STATUS_DIAGNOSTICS,
-    AUTOMATION_STATUS_OBSTACLE_CODES,
-    EVT_CHANGE_STATE,
-    EVT_MOV_COMMAND,
-    EVT_STATE_CAUSE,
     LOG_REPLY_STATUS,
 )
 
@@ -63,6 +57,8 @@ class CuwifiLiveStatus:
     advanced_diagnostic: str | None = None
     command: str | None = None
     obstruction: bool | None = None  # from the 0x23 diagnostics block only
+    event_details: tuple[tuple[str, int], ...] | None = None
+    event_description: str | None = None
     event_class: str | None = None
     event_payload_hex: str | None = None  # 04/02 and 04/82 only
 
@@ -166,41 +162,24 @@ def parse_cuwifi_live_status_payload(plain: bytes) -> CuwifiLiveStatus | None:
             position_scale=position_scale,
         )
 
-    if message[1] == 0x02:
+    meaning = decode_event_meaning(message[0], message[1], message[2:])
+    if meaning is not None:
         data = message[2:]
-        basic = advanced = obstruction = None
-        if len(data) >= 7 and data[4] == 0x23:
-            basic = AUTOMATION_STATUS_DIAGNOSTICS.get(data[5], "undefined")
-            advanced = ADVANCED_DIAGNOSTIC.get(data[6], "undefined")
-            obstruction = (
-                data[5] in AUTOMATION_STATUS_OBSTACLE_CODES
-                or data[6] in ADVANCED_DIAGNOSTIC_OBSTRUCTION_CODES
-            )
         return CuwifiLiveStatus(
-            state=STATUS_BY_BYTE.get(data[0], CHANGE_STATE_MOVEMENT.get(data[0])),
+            state=STATUS_BY_BYTE.get(data[0], CHANGE_STATE_MOVEMENT.get(data[0])) if message[1] == 2 and data else None,
             position=None,
             payload_hex=payload_hex,
-            payload_kind="04/02",
-            event_class=LOG_REPLY_STATUS[EVENT_CLASS_STATUS[0x02]],
-            event_payload_hex=payload_hex,
-            change_state=EVT_CHANGE_STATE.get(data[0], "undefined"),
-            cause=(
-                EVT_STATE_CAUSE.get(data[1], "undefined") if len(data) > 1 else None
-            ),
-            basic_diagnostic=basic,
-            advanced_diagnostic=advanced,
-            obstruction=obstruction,
-        )
-
-    if message[1] == 0x82:
-        return CuwifiLiveStatus(
-            state=None,
-            position=None,
-            payload_hex=payload_hex,
-            payload_kind="04/82",
-            event_class=LOG_REPLY_STATUS[EVENT_CLASS_STATUS[0x82]],
-            event_payload_hex=payload_hex,
-            command=EVT_MOV_COMMAND.get(message[2], "undefined"),
+            payload_kind=f"04/{message[1]:02X}",
+            event_class=meaning.event_class,
+            event_details=meaning.details,
+            event_description=meaning.description,
+            event_payload_hex=payload_hex if message[1] in {2, 0x82} else None,
+            change_state=meaning.change_state,
+            cause=meaning.cause,
+            basic_diagnostic=meaning.basic,
+            advanced_diagnostic=meaning.advanced,
+            obstruction=meaning.obstruction,
+            command=meaning.command,
         )
 
     return None

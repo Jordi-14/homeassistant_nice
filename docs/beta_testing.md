@@ -158,3 +158,15 @@ If reporting a problem, include the loaded version, time and time zone, controll
 - Download diagnostics, including when setup has failed. Check the configuration ledger and gap reasons. An unnamed module should no longer produce a text-entity error.
 
 No new calibration, force/safety parameter change, installer procedure or deliberate obstruction test is needed. Additional setters needing the unresolved native menu decoder remain read-only.
+
+## Diagnostic and incident beta (0.9.0b7)
+
+- Check ordinary open, Stop, close and reversal behavior. No deliberate obstruction, parameter change, maintenance reset or controller relearning is required.
+- Compare the app's event/history view with the decoded entries in downloaded integration diagnostics. Live and stored equivalents should have the same state/cause/diagnostic names. Module timestamps remain separate from HA receipt time.
+- Under disabled entities, optionally enable BlueBus, I/O, hardware, inverter, counter or advanced-history evidence cards. Unsupported/unverified screens should explain their state instead of producing guessed values. Hardware/inverter percentages require the controller's descriptors; M1/M2 stay separate. Disable optional cards afterward if unneeded.
+- Check the incident timeline for commands, readings and reported fault codes. A command-arrival event must not identify an external sender, and a limiter level alone must not report a limiter trip. A baseline or retained true Obstruct flag must not create repeated new obstructions.
+- All-zero maneuver history can now show unknown with `all_zero_unverified`. This is an uncertainty correction, not proof that a new fault occurred. Advanced DB slots are not assumed to align with DA or use the same enums.
+- NHK and DMP counter channels should remain separate. A newly received NHK count must not overwrite both DMP counters.
+- Check reload/reconnect, entity IDs and diagnostic export. Failed reads must not make older evidence look freshly captured. The polling-order fix from the entity audit is included, so unread optional parameters get priority over repeat reads.
+
+See [diagnostic contracts and gaps](diagnostic_parity.md) for retention, redaction, decoder provenance and remaining missing-native layouts.

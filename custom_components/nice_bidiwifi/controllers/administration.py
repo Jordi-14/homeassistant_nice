@@ -24,6 +24,7 @@ from ..errors import (
     NiceBidiError,
     NiceReadPreemptedError,
     nice_error_code,
+    is_request_rejection,
 )
 from ..models.administration import (
     NiceAdministrationOperation,
@@ -66,6 +67,8 @@ class NiceAdministrationController(RuntimeController):
         return bool(capabilities and getattr(capabilities, name, None) is True)
 
     def _require_capability(self, name: str, action: str) -> None:
+        if self._coordinator.observations.closed:
+            raise HomeAssistantError("Nice integration is shutting down")
         if not self.administration_capability(name):
             raise HomeAssistantError(
                 f"Nice {action} is not supported by this shared Wi-Fi interface"
@@ -77,7 +80,9 @@ class NiceAdministrationController(RuntimeController):
                 f"Nice {action} is blocked while the gate is moving"
             )
         await self._coordinator.position_controller._async_cancel_position_target()
-        await self._coordinator.calibration_controller._async_cancel_calibration(reason=f"administration:{action}")
+        await self._coordinator.calibration_controller._async_cancel_calibration(
+            reason=f"administration:{action}"
+        )
 
     def _notify_entities(self) -> None:
         callback = getattr(self._coordinator, "async_update_listeners", None)
@@ -131,6 +136,9 @@ class NiceAdministrationController(RuntimeController):
         read_only: bool,
         verification: str = "not_required",
     ) -> Any:
+        generation = self._coordinator.observations.generation
+        if self._coordinator.observations.closed:
+            raise HomeAssistantError("Nice integration is shutting down")
         started = time.monotonic()
         attempted_route = getattr(
             self._coordinator.client,
@@ -141,12 +149,25 @@ class NiceAdministrationController(RuntimeController):
             "Starting Nice administration action=%s read_only=%s selected_route=%s",
             action,
             read_only,
-            getattr(self._coordinator.client, "selected_route", self._coordinator.active_connection_route),
+            getattr(
+                self._coordinator.client,
+                "selected_route",
+                self._coordinator.active_connection_route,
+            ),
         )
         try:
             result = await self._coordinator.hass.async_add_executor_job(operation)
         except NiceBidiAuthError as err:
-            await self._coordinator.hass.async_add_executor_job(self._coordinator.client.close)
+            if (
+                generation != self._coordinator.observations.generation
+                or self._coordinator.observations.closed
+            ):
+                raise HomeAssistantError(
+                    "Nice administration result belongs to an obsolete session"
+                ) from err
+            await self._coordinator.hass.async_add_executor_job(
+                self._coordinator.client.close
+            )
             self._coordinator._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
             self._coordinator.connection_runtime.last_error = str(err)
             self._record_operation(
@@ -162,8 +183,24 @@ class NiceAdministrationController(RuntimeController):
                 f"Nice authentication failed during {action}"
             ) from err
         except (NiceBidiConnectionError, NiceBidiError, OSError, ValueError) as err:
-            await self._coordinator.hass.async_add_executor_job(self._coordinator.client.close)
-            self._coordinator._set_connection_state(CONNECTION_STATE_FAILED)
+            if (
+                generation != self._coordinator.observations.generation
+                or self._coordinator.observations.closed
+            ):
+                raise HomeAssistantError(
+                    "Nice administration result belongs to an obsolete session"
+                ) from err
+            healthy_rejection = (
+                is_request_rejection(err)
+                or getattr(err, "delivery", None) == "not_sent"
+                or read_only
+                and not isinstance(err, (NiceBidiConnectionError, OSError))
+            )
+            if not healthy_rejection:
+                await self._coordinator.hass.async_add_executor_job(
+                    self._coordinator.client.close
+                )
+                self._coordinator._set_connection_state(CONNECTION_STATE_FAILED)
             self._coordinator.connection_runtime.last_error = str(err)
             self._record_operation(
                 action=action,
@@ -176,6 +213,13 @@ class NiceAdministrationController(RuntimeController):
             )
             raise HomeAssistantError(f"Nice {action} failed: {err}") from err
 
+        if (
+            generation != self._coordinator.observations.generation
+            or self._coordinator.observations.closed
+        ):
+            raise HomeAssistantError(
+                "Nice administration result belongs to an obsolete session"
+            )
         self._coordinator._set_connection_state(CONNECTION_STATE_CONNECTED)
         self._coordinator.connection_runtime.last_error = None
         self._record_operation(
@@ -200,6 +244,7 @@ class NiceAdministrationController(RuntimeController):
             snapshot,
             retrieved_at=datetime.now(UTC),
         )
+        self._coordinator.incidents.interface_logs(self.interface_log_snapshot)
         self._notify_entities()
 
     async def async_refresh_controller_history(
@@ -211,6 +256,7 @@ class NiceAdministrationController(RuntimeController):
         and a rejected history request leaves the session healthy.
         """
         started = time.monotonic()
+        generation = self._coordinator.observations.generation
         try:
             self._require_capability("logs", "controller history")
             rows = await self._coordinator.hass.async_add_executor_job(
@@ -221,6 +267,11 @@ class NiceAdministrationController(RuntimeController):
                 )
             )
         except Exception as err:  # noqa: BLE001 - best-effort diagnostics read
+            if (
+                generation != self._coordinator.observations.generation
+                or self._coordinator.observations.closed
+            ):
+                return
             self.controller_event_history_error = (
                 "preempted"
                 if isinstance(err, NiceReadPreemptedError)
@@ -240,7 +291,13 @@ class NiceAdministrationController(RuntimeController):
                     f"Nice controller history refresh failed: {err}"
                 ) from err
         else:
+            if (
+                generation != self._coordinator.observations.generation
+                or self._coordinator.observations.closed
+            ):
+                return
             self.controller_event_history = rows[:CONTROLLER_HISTORY_LIMIT]
+            self._coordinator.incidents.history(self.controller_event_history)
             self.controller_event_history_error = None
             if raise_errors:
                 self._record_operation(
@@ -315,8 +372,7 @@ class NiceAdministrationController(RuntimeController):
                     "clock write was acknowledged but INFO returned an invalid date"
                 ) from err
             if (
-                abs((reported - expected).total_seconds())
-                > CLOCK_TOLERANCE_SECONDS
+                abs((reported - expected).total_seconds()) > CLOCK_TOLERANCE_SECONDS
                 or info.interface_zone != clock.zone
                 or info.interface_dst != clock.dst
             ):
@@ -343,6 +399,8 @@ class NiceAdministrationController(RuntimeController):
             read_only=False,
             verification="change_acknowledgement",
         )
-        await self._coordinator.hass.async_add_executor_job(self._coordinator.client.close)
+        await self._coordinator.hass.async_add_executor_job(
+            self._coordinator.client.close
+        )
         self._coordinator._set_connection_state(CONNECTION_STATE_RECONNECTING)
         self._coordinator.event_controller.mark_reconnecting()

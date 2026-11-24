@@ -128,14 +128,18 @@ def dgx_percent(value: int, full_scale: int) -> int:
     return (((value >> shift) * 100) & 0xFFFC) // (full_scale >> shift) & 0xFF
 
 
-def decode_hardware_diagnostic(data: bytes | None, info: DmpInfo | None) -> dict[str, int] | None:
+def decode_hardware_diagnostic(data: bytes | None, info: DmpInfo | None, *, include_primary: bool = False) -> dict[str, int] | None:
     """Return the available 04/D2 fields by name; percent fields need INFO, others are raw values."""
     if not data or len(data) < 2 or all(b in (0x00, 0xFF) for b in data):
         return None
     out: dict[str, int] = {}
     for index, (name, percent) in enumerate(HARDWARE_FIELDS[: len(data) // 2]):
         if name is None:
-            continue
+            if not include_primary:
+                continue
+            name = {4: "service_voltage", 7: "motor_temperature"}.get(index)
+            if name is None:
+                continue
         scale = info.values[index] if info and info.values and index < len(info.values) else None
         if scale is not None and not scale & 0x8000:
             continue  # not available on this controller

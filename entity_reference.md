@@ -343,3 +343,7 @@ current device profile.
 Phase 3 adds disabled-by-default parameter sensors, named select aliases for photo-close/always-close modes, and engineering-unit number aliases. Existing `bus_t4_*` numbers and switches retain their unique IDs and raw integer API. New entity suffixes use `parameter_GG_PP`, with `_element_N` for separate indexed observations. New suggested entity IDs include the register to avoid claiming an existing entity's name.
 
 See [controller configuration](docs/controller_configuration.md) for the complete definition ledger, selective read behavior, scaling, unavailable reasons, menu-permission gaps and indexed-value restrictions. Additional model-specific writes remain blocked until their permissions and layouts are verified.
+
+## Diagnostic evidence cards and timeline
+
+Phase 4 adds disabled-by-default diagnostic screen sensors for counters, BlueBus, I/O, hardware, inverter, maneuver history and INFO-driven advanced history. Their IDs use `diagnostic_screen_<key>` and their attributes carry decoded fields, source, age and uncertainty. Unsupported or missing formats remain explicit. The existing last-maneuvers sensor now reports unknown for ambiguous all-zero history. Standard integration diagnostics include the bounded incident timeline and source-aware controller history; see [diagnostic parity](docs/diagnostic_parity.md).

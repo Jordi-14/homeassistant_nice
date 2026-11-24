@@ -45,6 +45,7 @@ from .protocol.t4.enums import (
     BLUEBUS_FAULT_STATUSES,
 )
 from .runtime import get_coordinator
+from .entities.diagnostics import diagnostic_entities
 from .entities.configuration import setup_configuration_sensors
 
 
@@ -144,6 +145,8 @@ def _last_maneuvers_count(coordinator: NiceBidiDataUpdateCoordinator) -> int | N
     # LOCAL-DIAGNOSTIC(pr55): stale log hides the value; see coordinator.py:_cache_extended_status.
     if names is None or coordinator.data.last_maneuvers_stale:
         return None
+    if all(name == "ok" for name in names):
+        return None  # zero slots do not establish initialized or fresh history
     return sum(name not in _NOT_FAILED_NAMES for name in names)
 
 
@@ -154,6 +157,9 @@ def _last_maneuvers_attributes(
     if names is None:
         return {}
     attributes = {
+        "history_quality": "all_zero_unverified" if all(name == "ok" for name in names) else "reported_slots",
+        "confirmed_success_count": None,
+        "slot_order": "vendor_index_order_newest_unknown",
         "maneuvers": list(names),
         "obstacle_count": sum(name in _OBSTACLE_NAMES for name in names),
     }
@@ -1415,6 +1421,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors from a config entry."""
     coordinator = get_coordinator(entry)
+    async_add_entities(diagnostic_entities(coordinator, entry))
     setup_configuration_sensors(coordinator, entry, async_add_entities)
     async_add_entities(
         build_described_entities(
