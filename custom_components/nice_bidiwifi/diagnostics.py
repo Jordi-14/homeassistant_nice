@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -9,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
+from .feature_catalog import GAPS
 from .const import (
     CONF_CONNECTION_MODE,
     CONF_LEGACY_LOCAL_TLS,
@@ -370,6 +372,13 @@ async def async_get_config_entry_diagnostics(
             if capabilities is not None
             else None
         ),
+        "feature_report": getattr(coordinator, "capability_report", {}),
+        "evidence_gaps": [asdict(gap) for gap in GAPS],
+        "observations": coordinator.observations.diagnostics(),
+        "runtime": {
+            "pending_tasks": coordinator.tasks.pending,
+            "scheduler": coordinator.client.scheduler_diagnostics if hasattr(coordinator.client, "scheduler_diagnostics") else None,
+        },
         "calibration": {
             "state": coordinator.calibration_state,
             "quality": coordinator.calibration_quality,

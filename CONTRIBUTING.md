@@ -569,3 +569,7 @@ diagnostics internals, and developer-only messages can stay in English.
 
 GitHub Actions run tests, linting, HACS validation, and Hassfest for
 repository-level checks.
+
+## Runtime extensions and app parity
+
+See [runtime contracts](docs/runtime_core.md), the [app inventory](docs/app_parity.md) and [evidence gaps](docs/protocol_gaps.md) before adding an app feature. Keep unresolved bindings blocked and add zero-side-effect tests. Regenerate the catalog documentation with `python scripts/render_capabilities.py`; CI verifies it stays synchronized.

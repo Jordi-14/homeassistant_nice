@@ -34,6 +34,7 @@ from custom_components.nice_bidiwifi.models.administration import (
     NiceInterfaceClock,
     NiceLogSnapshot,
 )
+from custom_components.nice_bidiwifi.observations import ObservationStore
 from custom_components.nice_bidiwifi.parameters import ParameterRepository
 from custom_components.nice_bidiwifi.protocol.t4.settings import DmpSetting
 from custom_components.nice_bidiwifi.write_policy import dmp_write_block_reason
@@ -345,8 +346,10 @@ class FakeClient:
             raise self.read_info_error
         return self.read_info_result
 
-    def send_action(self, action: str) -> None:
+    def send_action(self, action: str, *, before_dispatch=None) -> None:
         """Record a command or raise a configured error."""
+        if before_dispatch is not None:
+            before_dispatch()
         if self.send_action_error is not None:
             raise self.send_action_error
         self.actions.append(action)
@@ -371,8 +374,10 @@ class FakeClient:
             raise self.read_groups_error
         return self.read_groups_result
 
-    def update_interface_name(self, name: str) -> None:
+    def update_interface_name(self, name: str, *, before_dispatch=None) -> None:
         """Record a name update and expose it to the INFO round trip."""
+        if before_dispatch is not None:
+            before_dispatch()
         if self.update_interface_name_error is not None:
             raise self.update_interface_name_error
         self.updated_interface_names.append(name)
@@ -381,8 +386,10 @@ class FakeClient:
             interface_name=name,
         )
 
-    def update_interface_clock(self, clock: NiceInterfaceClock) -> None:
+    def update_interface_clock(self, clock: NiceInterfaceClock, *, before_dispatch=None) -> None:
         """Record a clock update and expose it to the INFO round trip."""
+        if before_dispatch is not None:
+            before_dispatch()
         if self.update_interface_clock_error is not None:
             raise self.update_interface_clock_error
         self.updated_interface_clocks.append(clock)
@@ -393,20 +400,26 @@ class FakeClient:
             interface_dst=clock.dst,
         )
 
-    def reboot_interface(self) -> None:
+    def reboot_interface(self, *, before_dispatch=None) -> None:
         """Record an interface reboot request."""
+        if before_dispatch is not None:
+            before_dispatch()
         if self.reboot_interface_error is not None:
             raise self.reboot_interface_error
         self.interface_reboots += 1
 
-    def send_dep_action(self, action: str) -> None:
+    def send_dep_action(self, action: str, *, before_dispatch=None) -> None:
         """Record a DEP command or raise a configured error."""
+        if before_dispatch is not None:
+            before_dispatch()
         if self.send_dep_action_error is not None:
             raise self.send_dep_action_error
         self.dep_actions.append(action)
 
-    def send_t4_action(self, action: str) -> None:
+    def send_t4_action(self, action: str, *, before_dispatch=None) -> None:
         """Record a T4Action (NHK CHANGE) command."""
+        if before_dispatch is not None:
+            before_dispatch()
         self.t4_actions.append(action)
 
     def write_dmp_register(
@@ -435,6 +448,10 @@ class FakeClient:
         self.closed = True
 
 
+    def shutdown(self):
+        self.close()
+
+
 class FakeCoordinator:
     """Minimal coordinator fake for entity unit tests."""
 
@@ -445,6 +462,8 @@ class FakeCoordinator:
         self.register_info = {}
         self.parameters = ParameterRepository()
         self.controller_configuration = None
+        self.observations = ObservationStore()
+        self.tasks = SimpleNamespace(pending=0)
         self.movement_speed_profile = {}
         self.capabilities = None
         self.status_polling_supported = True

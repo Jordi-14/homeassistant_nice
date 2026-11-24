@@ -72,7 +72,7 @@ from .client import (
 )
 from .connection import CONNECTION_STATE_AUTH_FAILED, CONNECTION_STATE_FAILED
 from .const import DOMAIN, ERROR_UPDATE_INTERVAL
-from .controllers.base import OwnerBoundController
+from .controllers.base import RuntimeController
 from .errors import NiceCalibrationError, nice_error_code
 from .models.calibration import CalibrationMode, CalibrationPositionSource
 from .position import (
@@ -104,7 +104,7 @@ CALIBRATION_LIVE_MAX_GAP_PERCENT = 15.0
 _CalibrationPositionSource = CalibrationPositionSource
 
 
-class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoordinator"]):
+class NiceBidiCalibrationController(RuntimeController["NiceBidiDataUpdateCoordinator"]):
     """Calibration state, movement routine, and report behavior."""
 
     def _init_calibration_state(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -189,7 +189,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         stop_error: str | None = None
         if stop:
             try:
-                await self._async_send_action("stop")
+                await self._coordinator._async_send_action("stop")
             except HomeAssistantError as err:
                 stop_error = str(err)
             else:
@@ -204,7 +204,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         )
         self.calibration_report = self._build_live_calibration_report("Calibration cancelled")
         self._log_calibration_report(self.calibration_report, f"cancelled ({reason})")
-        self.async_update_listeners()
+        self._coordinator.async_update_listeners()
 
     async def async_start_position_calibration(self) -> None:
         """Start a background position calibration run."""
@@ -212,8 +212,8 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         if task is not None and not task.done():
             raise HomeAssistantError("Nice position calibration is already running")
 
-        await self._async_cancel_position_target()
-        await self._async_cancel_post_command_refresh()
+        await self._coordinator.position_controller._async_cancel_position_target()
+        await self._coordinator.position_controller._async_cancel_post_command_refresh()
         self._calibration_events = []
         self.calibration_cancel_reason = None
         self.calibration_cancel_stop_requested = False
@@ -232,11 +232,8 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             poll_seconds=POSITION_TARGET_POLL_SECONDS,
             command_pause_seconds=CALIBRATION_COMMAND_PAUSE_SECONDS,
         )
-        self.async_update_listeners()
-        self._calibration_task = self.hass.async_create_task(
-            self._async_run_position_calibration(),
-            name=f"{DOMAIN} position calibration",
-        )
+        self._coordinator.async_update_listeners()
+        self._calibration_task = self._coordinator.tasks.create(self._async_run_position_calibration(), name=f"{DOMAIN} position calibration")
 
     async def _async_run_position_calibration(self) -> None:
         """Run a predefined movement pattern and store learned stop thresholds."""
@@ -246,11 +243,11 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             # Reuse actual readings gathered by the existing calibration movements.
             # A new scalar scale invalidates speeds collected with the older bounds.
             if profile.get("mode") == "live_scalar" and profile.get("bounds") != (self.calibration_profile or {}).get("bounds"):
-                self._movement_profile.reset("open")
-                self._movement_profile.reset("close")
-            self._movement_profile.finish()
-            profile["movement_speed_profile"] = self._movement_profile.export()
-            self._schedule_movement_profile_save()
+                self._coordinator.position_controller.estimator.profile.reset("open")
+                self._coordinator.position_controller.estimator.profile.reset("close")
+            self._coordinator.position_controller.estimator.profile.finish()
+            profile["movement_speed_profile"] = self._coordinator.position_controller.estimator.profile.export()
+            self._coordinator.position_controller._schedule_movement_profile_save()
             self._add_calibration_event("run", "Position calibration completed")
             profile["events"] = list(self._calibration_events)
             self.calibration_profile = profile
@@ -270,7 +267,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
                 else None
             )
             last_event = self._calibration_events[-1] if self._calibration_events else None
-            status = self.data
+            status = self._coordinator.data
             self._set_calibration_state(CalibrationState.CANCELLED)
             self.calibration_last_error = f"cancelled: {reason}"
             self._add_calibration_event(
@@ -282,7 +279,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
                 last_event_stage=last_event.get("stage") if last_event else None,
                 last_event_message=last_event.get("message") if last_event else None,
                 last_motion_state=status.state if status is not None else None,
-                last_command=self.last_command,
+                last_command=self._coordinator.command_executor.state.last_command,
             )
             self.calibration_report = self._build_live_calibration_report("Calibration cancelled")
             if self.calibration_cancel_reason is None:
@@ -305,7 +302,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             self._calibration_started_monotonic = None
             if self._calibration_task is task:
                 self._calibration_task = None
-            self.async_update_listeners()
+            self._coordinator.async_update_listeners()
 
     def _set_calibration_state(
         self,
@@ -339,7 +336,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
                 source,
             )
 
-        self._validate_position_bounds(start_status)
+        self._coordinator.position_controller._validate_position_bounds(start_status)
         self._add_calibration_event(
             "run",
             "Initial encoder bounds read",
@@ -663,7 +660,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             state=status.state,
             mode="time",
         )
-        await self._async_send_action(action, refresh=False, simulate=False)
+        await self._coordinator._async_send_action(action, refresh=False, simulate=False)
         started = time.monotonic()
         moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
         started_moving = False
@@ -736,7 +733,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             start_percent=start_status.position if start_status.position is not None else start_percent,
             state=start_status.state,
         )
-        await self._async_send_action(action, refresh=False, simulate=False)
+        await self._coordinator._async_send_action(action, refresh=False, simulate=False)
         moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
         movement_started_at: float | None = None
         movement_start_deadline = started + POSITION_SIMULATION_START_GRACE_SECONDS
@@ -884,7 +881,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             state=status.state,
             mode=source.mode,
         )
-        await self._async_send_action(action, refresh=False, simulate=False)
+        await self._coordinator._async_send_action(action, refresh=False, simulate=False)
         started = time.monotonic()
         moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
         started_moving = False
@@ -971,7 +968,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             start_percent=start_percent,
             state=start_status.state,
         )
-        await self._async_send_action(action, refresh=False, simulate=False)
+        await self._coordinator._async_send_action(action, refresh=False, simulate=False)
         moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
         movement_started_at: float | None = None
         movement_start_deadline = started + POSITION_SIMULATION_START_GRACE_SECONDS
@@ -1254,7 +1251,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             requested_stop_percent=round(requested_stop_percent, 2),
         )
         move_started = time.monotonic()
-        await self._async_send_action(action, refresh=False, simulate=False)
+        await self._coordinator._async_send_action(action, refresh=False, simulate=False)
         stop_command_percent: float | None = None
         stop_command_raw: int | None = None
         moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
@@ -1357,7 +1354,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             corrected_stop_raw=corrected_stop_raw,
             corrected_stop_percent=round(corrected_stop_percent, 2),
             move_duration_ms=move_duration_ms,
-            stop_command_latency_ms=self.last_command_latency_ms,
+            stop_command_latency_ms=self._coordinator.command_executor.state.last_command_latency_ms,
             speed_percent_per_second=round(speed_percent_per_second, 2) if speed_percent_per_second is not None else None,
         )
 
@@ -1385,7 +1382,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             "move_duration_ms": move_duration_ms,
             "speed_raw_per_second": None,
             "speed_percent_per_second": round(speed_percent_per_second, 2) if speed_percent_per_second is not None else None,
-            "stop_command_latency_ms": self.last_command_latency_ms,
+            "stop_command_latency_ms": self._coordinator.command_executor.state.last_command_latency_ms,
         }
 
     def _invalid_calibration_sample_with_position_source(
@@ -1422,7 +1419,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             stop_command_raw=stop_command_raw,
             stop_command_percent=round(stop_command_percent, 2),
             move_duration_ms=move_duration_ms,
-            stop_command_latency_ms=self.last_command_latency_ms,
+            stop_command_latency_ms=self._coordinator.command_executor.state.last_command_latency_ms,
         )
         return {
             "action": action,
@@ -1448,7 +1445,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             "move_duration_ms": move_duration_ms,
             "speed_raw_per_second": None,
             "speed_percent_per_second": None,
-            "stop_command_latency_ms": self.last_command_latency_ms,
+            "stop_command_latency_ms": self._coordinator.command_executor.state.last_command_latency_ms,
         }
 
     async def _async_wait_for_endpoint_after_stopped(self, action: str) -> NiceBidiStatus | None:
@@ -1486,7 +1483,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             )
             endpoint_status = await self._async_move_to_end(endpoint_action)
             if stop_raw is None:
-                stop_raw = self._raw_for_percent(endpoint_status, target)
+                stop_raw = self._coordinator.position_controller._raw_for_percent(endpoint_status, target)
                 self._add_calibration_event(
                     "attempt",
                     f"{action} {target}% attempt {attempt}: using nominal first stop threshold",
@@ -1494,7 +1491,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
                     target_percent=target,
                     attempt=attempt,
                     requested_stop_raw=stop_raw,
-                    requested_stop_percent=round(self._percent_for_raw(endpoint_status, stop_raw), 2),
+                    requested_stop_percent=round(self._coordinator.position_controller._percent_for_raw(endpoint_status, stop_raw), 2),
                 )
 
             sample = await self._async_calibrate_target(target, action, endpoint_action, attempt, stop_raw)
@@ -1621,13 +1618,13 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
     ) -> dict[str, Any]:
         """Measure one target approach and return its corrected stop threshold."""
         status = await self._async_read_motion_status()
-        self._validate_position_bounds(status)
+        self._coordinator.position_controller._validate_position_bounds(status)
         if status.current_position is None:
             raise HomeAssistantError("Nice current encoder position is not available")
 
         start_raw = status.current_position
-        target_raw = self._raw_for_percent(status, target)
-        if self._raw_reached(action, status, start_raw, target_raw):
+        target_raw = self._coordinator.position_controller._raw_for_percent(status, target)
+        if self._coordinator.position_controller._raw_reached(action, status, start_raw, target_raw):
             raise HomeAssistantError(f"Position calibration already crossed {target}% while preparing to {action}")
 
         self._add_calibration_event(
@@ -1637,13 +1634,13 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             target_percent=target,
             attempt=attempt,
             start_raw=start_raw,
-            start_percent=round(self._percent_for_raw(status, start_raw), 2),
+            start_percent=round(self._coordinator.position_controller._percent_for_raw(status, start_raw), 2),
             target_raw=target_raw,
             requested_stop_raw=requested_stop_raw,
-            requested_stop_percent=round(self._percent_for_raw(status, requested_stop_raw), 2),
+            requested_stop_percent=round(self._coordinator.position_controller._percent_for_raw(status, requested_stop_raw), 2),
         )
         move_started = time.monotonic()
-        await self._async_send_action(action, refresh=False, simulate=False)
+        await self._coordinator._async_send_action(action, refresh=False, simulate=False)
         stop_command_raw: int | None = None
         moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
         started_moving = False
@@ -1653,7 +1650,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
             status = await self._async_read_motion_status()
             current_raw = status.current_position
-            if current_raw is not None and self._raw_reached(action, status, current_raw, requested_stop_raw):
+            if current_raw is not None and self._coordinator.position_controller._raw_reached(action, status, current_raw, requested_stop_raw):
                 stop_command_raw = current_raw
                 self._add_calibration_event(
                     "attempt",
@@ -1662,9 +1659,9 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
                     target_percent=target,
                     attempt=attempt,
                     current_raw=current_raw,
-                    current_percent=round(self._percent_for_raw(status, current_raw), 2),
+                    current_percent=round(self._coordinator.position_controller._percent_for_raw(status, current_raw), 2),
                     requested_stop_raw=requested_stop_raw,
-                    requested_stop_percent=round(self._percent_for_raw(status, requested_stop_raw), 2),
+                    requested_stop_percent=round(self._coordinator.position_controller._percent_for_raw(status, requested_stop_raw), 2),
                     state=status.state,
                 )
                 await self._async_send_calibration_stop(
@@ -1709,14 +1706,14 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
 
         final_raw = settled.current_position
         error_raw = final_raw - target_raw
-        corrected_stop_raw = self._clamp_raw(status, stop_command_raw - error_raw)
+        corrected_stop_raw = self._coordinator.position_controller._clamp_raw(status, stop_command_raw - error_raw)
         move_duration_ms = round((time.monotonic() - move_started) * 1000)
         travel_raw = stop_command_raw - start_raw
         speed_raw_per_second = (travel_raw / move_duration_ms) * 1000 if move_duration_ms > 0 else None
-        final_percent = round(self._percent_for_raw(settled, final_raw), 2)
+        final_percent = round(self._coordinator.position_controller._percent_for_raw(settled, final_raw), 2)
         error_percent = round(final_percent - target, 2)
-        stop_command_percent = round(self._percent_for_raw(status, stop_command_raw), 2)
-        corrected_stop_percent = round(self._percent_for_raw(status, corrected_stop_raw), 2)
+        stop_command_percent = round(self._coordinator.position_controller._percent_for_raw(status, stop_command_raw), 2)
+        corrected_stop_percent = round(self._coordinator.position_controller._percent_for_raw(status, corrected_stop_raw), 2)
         self._add_calibration_event(
             "attempt",
             f"{action} {target}% attempt {attempt}: settled position read",
@@ -1732,7 +1729,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             corrected_stop_raw=corrected_stop_raw,
             corrected_stop_percent=corrected_stop_percent,
             move_duration_ms=move_duration_ms,
-            stop_command_latency_ms=self.last_command_latency_ms,
+            stop_command_latency_ms=self._coordinator.command_executor.state.last_command_latency_ms,
             speed_raw_per_second=round(speed_raw_per_second, 2) if speed_raw_per_second is not None else None,
         )
 
@@ -1744,10 +1741,10 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             "attempt": attempt,
             "target_percent": target,
             "start_raw": start_raw,
-            "start_percent": round(self._percent_for_raw(status, start_raw), 2),
+            "start_percent": round(self._coordinator.position_controller._percent_for_raw(status, start_raw), 2),
             "target_raw": target_raw,
             "requested_stop_raw": requested_stop_raw,
-            "requested_stop_percent": round(self._percent_for_raw(status, requested_stop_raw), 2),
+            "requested_stop_percent": round(self._coordinator.position_controller._percent_for_raw(status, requested_stop_raw), 2),
             "stop_command_raw": stop_command_raw,
             "stop_command_percent": stop_command_percent,
             "corrected_stop_raw": corrected_stop_raw,
@@ -1758,7 +1755,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             "error_percent": error_percent,
             "move_duration_ms": move_duration_ms,
             "speed_raw_per_second": round(speed_raw_per_second, 2) if speed_raw_per_second is not None else None,
-            "stop_command_latency_ms": self.last_command_latency_ms,
+            "stop_command_latency_ms": self._coordinator.command_executor.state.last_command_latency_ms,
         }
 
     def _invalid_calibration_sample(
@@ -1782,9 +1779,9 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         move_duration_ms = round((time.monotonic() - move_started) * 1000)
         travel_raw = stop_command_raw - start_raw
         speed_raw_per_second = (travel_raw / move_duration_ms) * 1000 if move_duration_ms > 0 else None
-        final_percent = round(self._percent_for_raw(settled, final_raw), 2) if final_raw is not None else None
-        stop_command_percent = round(self._percent_for_raw(status, stop_command_raw), 2)
-        requested_stop_percent = round(self._percent_for_raw(status, requested_stop_raw), 2)
+        final_percent = round(self._coordinator.position_controller._percent_for_raw(settled, final_raw), 2) if final_raw is not None else None
+        stop_command_percent = round(self._coordinator.position_controller._percent_for_raw(status, stop_command_raw), 2)
+        requested_stop_percent = round(self._coordinator.position_controller._percent_for_raw(status, requested_stop_raw), 2)
         self._add_calibration_event(
             "attempt",
             f"{action} {target}% attempt {attempt}: marked invalid",
@@ -1799,7 +1796,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             stop_command_raw=stop_command_raw,
             stop_command_percent=stop_command_percent,
             move_duration_ms=move_duration_ms,
-            stop_command_latency_ms=self.last_command_latency_ms,
+            stop_command_latency_ms=self._coordinator.command_executor.state.last_command_latency_ms,
             speed_raw_per_second=round(speed_raw_per_second, 2) if speed_raw_per_second is not None else None,
             state=settled.state,
         )
@@ -1811,7 +1808,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             "attempt": attempt,
             "target_percent": target,
             "start_raw": start_raw,
-            "start_percent": round(self._percent_for_raw(status, start_raw), 2),
+            "start_percent": round(self._coordinator.position_controller._percent_for_raw(status, start_raw), 2),
             "target_raw": target_raw,
             "requested_stop_raw": requested_stop_raw,
             "requested_stop_percent": requested_stop_percent,
@@ -1825,13 +1822,13 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             "error_percent": None,
             "move_duration_ms": move_duration_ms,
             "speed_raw_per_second": round(speed_raw_per_second, 2) if speed_raw_per_second is not None else None,
-            "stop_command_latency_ms": self.last_command_latency_ms,
+            "stop_command_latency_ms": self._coordinator.command_executor.state.last_command_latency_ms,
         }
 
     async def _async_measure_full_travel(self, action: str) -> dict[str, Any]:
         """Measure one full endpoint-to-endpoint movement for display speed."""
         status = await self._async_read_motion_status()
-        self._validate_position_bounds(status)
+        self._coordinator.position_controller._validate_position_bounds(status)
         if status.current_position is None or status.position is None:
             raise HomeAssistantError("Nice current position is not available")
 
@@ -1846,7 +1843,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             start_percent=start_percent,
             state=status.state,
         )
-        await self._async_send_action(action, refresh=False, simulate=False)
+        await self._coordinator._async_send_action(action, refresh=False, simulate=False)
         moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
         started_moving = False
         movement_start_deadline = started + POSITION_SIMULATION_START_GRACE_SECONDS
@@ -1910,7 +1907,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
     async def _async_move_to_end(self, action: str) -> NiceBidiStatus:
         """Move fully open or closed for a known calibration starting point."""
         status = await self._async_read_motion_status()
-        self._validate_position_bounds(status)
+        self._coordinator.position_controller._validate_position_bounds(status)
         if self._is_at_endpoint(status, action):
             self._add_calibration_event(
                 "endpoint",
@@ -1930,7 +1927,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
             current_percent=status.position,
             state=status.state,
         )
-        await self._async_send_action(action, refresh=False, simulate=False)
+        await self._coordinator._async_send_action(action, refresh=False, simulate=False)
         started = time.monotonic()
         moving_state = STATE_OPENING if action == "open" else STATE_CLOSING
         started_moving = False
@@ -2031,7 +2028,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         """Send Stop with bounded recovery for a confirmed invalid-command reply."""
         for rejection_count in (1, 2):
             try:
-                await self._async_send_action("stop", refresh=False, simulate=False)
+                await self._coordinator._async_send_action("stop", refresh=False, simulate=False)
             except HomeAssistantError as err:
                 if nice_error_code(err) != "5":
                     raise
@@ -2115,31 +2112,31 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
     async def _async_read_motion_status(self) -> NiceBidiStatus:
         """Read status during motion-sensitive operations."""
         try:
-            status = await self.hass.async_add_executor_job(self._read_motion_status)
+            status = await self._coordinator.hass.async_add_executor_job(self._read_motion_status)
         except NiceBidiAuthError as err:
-            await self.hass.async_add_executor_job(self.client.close)
-            self.connection_state = CONNECTION_STATE_AUTH_FAILED
-            self.last_error = str(err)
+            await self._coordinator.hass.async_add_executor_job(self._coordinator.client.close)
+            self._coordinator.connection_runtime.state = CONNECTION_STATE_AUTH_FAILED
+            self._coordinator.connection_runtime.last_error = str(err)
             raise
         except (NiceBidiConnectionError, OSError) as err:
-            await self.hass.async_add_executor_job(self.client.close)
-            self.connection_state = CONNECTION_STATE_FAILED
-            self.last_error = str(err)
-            self.update_interval = ERROR_UPDATE_INTERVAL
+            await self._coordinator.hass.async_add_executor_job(self._coordinator.client.close)
+            self._coordinator.connection_runtime.state = CONNECTION_STATE_FAILED
+            self._coordinator.connection_runtime.last_error = str(err)
+            self._coordinator.update_interval = ERROR_UPDATE_INTERVAL
             raise
 
-        status = self._normalize_status_for_display(self._apply_recent_stop_status_hint(status))
-        self._store_successful_status(status)
-        self.async_set_updated_data(status)
+        status = self._coordinator.position_controller._normalize_status_for_display(self._coordinator.position_controller._apply_recent_stop_status_hint(status))
+        self._coordinator._store_successful_status(status)
+        self._coordinator.async_set_updated_data(status)
         return status
 
     def _read_motion_status(self) -> NiceBidiStatus:
         """Read status through the active polling strategy."""
-        if self._use_nhk_status:
-            status = self.client.read_nhk_status()
+        if self._coordinator._use_nhk_status:
+            status = self._coordinator.client.read_nhk_status()
         else:
-            status = self.client.read_status()
-        return self._merge_cached_extended_status(status)
+            status = self._coordinator.client.read_status()
+        return self._coordinator._merge_cached_extended_status(status)
 
     def _calibrated_stop_percent(self, target: float, action: str) -> float | None:
         """Return an interpolated calibrated stop percentage for a target."""
@@ -2188,7 +2185,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         stop_percent = self._calibrated_stop_percent(float(target), action)
         if stop_percent is None:
             return None
-        return self._raw_for_percent(status, stop_percent)
+        return self._coordinator.position_controller._raw_for_percent(status, stop_percent)
 
     def _calibrated_stop_delay_seconds(self, current: float, target: float, action: str) -> float | None:
         """Return a calibrated stop delay for a target percentage."""
@@ -2204,16 +2201,16 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
         """Current display speed using a local band, with the full-travel fallback."""
         from .movement_profile import speed_at
 
-        position = self.data.position if self.data and self.data.position is not None else 50.0
+        position = self._coordinator.data.position if self._coordinator.data and self._coordinator.data.position is not None else 50.0
         return speed_at(position, self._position_speed_curve(action))
 
     def _position_speed_curve(self, action: str) -> tuple[float, ...]:
         """Do not let a startup sample restrict an already learned cruising band."""
         calibrated_speed = self._calibrated_travel_speed_percent_per_second(action)
-        fallback = calibrated_speed or self._observed_position_speed_percent_per_second.get(action)
+        fallback = calibrated_speed or self._coordinator.position_controller.estimator.observed_speeds.get(action)
         if fallback is None:
             fallback = POSITION_SIMULATION_FALLBACK_PERCENT_PER_SECOND / POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR
-        return self._movement_profile.curve(action, fallback, POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR)
+        return self._coordinator.position_controller.estimator.profile.curve(action, fallback, POSITION_SIMULATION_CALIBRATED_SPEED_FACTOR)
 
     def _calibrated_travel_speed_percent_per_second(self, action: str) -> float | None:
         """Return measured full-travel speed from calibration, with legacy fallback."""
@@ -2617,7 +2614,7 @@ class NiceBidiCalibrationController(OwnerBoundController["NiceBidiDataUpdateCoor
 
         if self.calibration_state == CALIBRATION_STATE_RUNNING:
             self.calibration_report = self._build_live_calibration_report(message)
-            self.async_update_listeners()
+            self._coordinator.async_update_listeners()
 
     def _log_calibration_report(self, report: CalibrationReport, reason: str) -> None:
         """Write the full calibration report to HA logs in bounded chunks."""

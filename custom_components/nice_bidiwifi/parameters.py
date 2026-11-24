@@ -108,6 +108,21 @@ class ParameterRepository:
     def metadata(self, setting: DmpSetting) -> DmpInfo | None:
         return self.setting_info.get(setting.key)
 
+    def support_for(self, address: ParameterAddress, operation: str) -> SupportState:
+        """Expose operation support without leaking mutable repository records."""
+        self._check_scope(address)
+        if operation not in {"info", "get", "set"}:
+            raise ValueError("Unknown parameter operation")
+        with self._lock:
+            record = self._records.get(address)
+            return record.support[operation] if record else SupportState.UNKNOWN
+
+    def observation_for(self, address: ParameterAddress) -> ParameterObservation | None:
+        self._check_scope(address)
+        with self._lock:
+            record = self._records.get(address)
+            return record.observation if record else None
+
     def _check_scope(self, address: ParameterAddress) -> None:
         if address.device_id != self.device_id:
             raise ValueError("Parameter belongs to a different device")

@@ -51,7 +51,9 @@ class RouteClient:
             raise result
         return result
 
-    def send_action(self, action: str) -> None:
+    def send_action(self, action: str, *, before_dispatch=None) -> None:
+        if before_dispatch is not None:
+            before_dispatch()
         self.commands.append(action)
         if self.read_results:
             result = self.read_results.popleft()
@@ -67,13 +69,19 @@ class RouteClient:
     def read_groups(self):
         return self.read_status()
 
-    def update_interface_name(self, name: str) -> None:
+    def update_interface_name(self, name: str, *, before_dispatch=None) -> None:
+        if before_dispatch is not None:
+            before_dispatch()
         self.administration_commands.append(("update_name", name))
 
-    def update_interface_clock(self, clock) -> None:
+    def update_interface_clock(self, clock, *, before_dispatch=None) -> None:
+        if before_dispatch is not None:
+            before_dispatch()
         self.administration_commands.append(("update_clock", clock))
 
-    def reboot_interface(self) -> None:
+    def reboot_interface(self, *, before_dispatch=None) -> None:
+        if before_dispatch is not None:
+            before_dispatch()
         self.administration_commands.append(("reboot", None))
 
     def add_event_callback(self, callback):

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 
 STATE_STOPPED = "stopped"
@@ -106,6 +106,9 @@ class NiceStatus:
     oxi_description: str | None = None
     oxi_receiver_type: str | None = None
     oxi_coding_type: str | None = None
+    observed_fields: frozenset[str] | None = field(default=None, compare=False)
+    fresh_registers: frozenset[str] | None = field(default=None, compare=False)
+    observation_times: Mapping[str, float] | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         """Freeze register observations with the rest of the status."""
@@ -114,6 +117,8 @@ class NiceStatus:
             "registers",
             MappingProxyType(dict(self.registers)),
         )
+        if self.observation_times is not None:
+            object.__setattr__(self, "observation_times", MappingProxyType(dict(self.observation_times)))
 
     @property
     def is_moving(self) -> bool:

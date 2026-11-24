@@ -35,7 +35,7 @@ from ..protocol.nhk.administration import (
     interface_clock_for,
     validate_interface_name,
 )
-from .base import OwnerBoundController
+from .base import RuntimeController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ TIME_VERIFICATION = "info_clock_round_trip"
 CLOCK_TOLERANCE_SECONDS = 120
 
 
-class NiceAdministrationController(OwnerBoundController):
+class NiceAdministrationController(RuntimeController):
     """Own bounded reads and safety-checked shared Wi-Fi mutations."""
 
     def __init__(self, owner) -> None:
@@ -62,7 +62,7 @@ class NiceAdministrationController(OwnerBoundController):
 
     def administration_capability(self, name: str) -> bool:
         """Return whether current INFO identifies a supported operation."""
-        capabilities = self.capabilities
+        capabilities = self._coordinator.capabilities
         return bool(capabilities and getattr(capabilities, name, None) is True)
 
     def _require_capability(self, name: str, action: str) -> None:
@@ -72,16 +72,15 @@ class NiceAdministrationController(OwnerBoundController):
             )
 
     async def _async_prepare_mutation(self, action: str) -> None:
-        status = self.data
-        if status is not None and status.is_moving:
+        if self._coordinator.reported_moving:
             raise HomeAssistantError(
                 f"Nice {action} is blocked while the gate is moving"
             )
-        await self._async_cancel_position_target()
-        await self._async_cancel_calibration(reason=f"administration:{action}")
+        await self._coordinator.position_controller._async_cancel_position_target()
+        await self._coordinator.calibration_controller._async_cancel_calibration(reason=f"administration:{action}")
 
     def _notify_entities(self) -> None:
-        callback = getattr(self.owner, "async_update_listeners", None)
+        callback = getattr(self._coordinator, "async_update_listeners", None)
         if callback is not None:
             callback()
 
@@ -100,7 +99,7 @@ class NiceAdministrationController(OwnerBoundController):
             action=action,
             status=status,
             read_only=read_only,
-            route=route or self.active_connection_route,
+            route=route or self._coordinator.active_connection_route,
             latency_ms=round((time.monotonic() - started) * 1000),
             completed_at=datetime.now(UTC),
             verification=verification,
@@ -134,22 +133,22 @@ class NiceAdministrationController(OwnerBoundController):
     ) -> Any:
         started = time.monotonic()
         attempted_route = getattr(
-            self.client,
+            self._coordinator.client,
             "selected_route",
-            self.active_connection_route,
+            self._coordinator.active_connection_route,
         )
         _LOGGER.debug(
             "Starting Nice administration action=%s read_only=%s selected_route=%s",
             action,
             read_only,
-            getattr(self.client, "selected_route", self.active_connection_route),
+            getattr(self._coordinator.client, "selected_route", self._coordinator.active_connection_route),
         )
         try:
-            result = await self.hass.async_add_executor_job(operation)
+            result = await self._coordinator.hass.async_add_executor_job(operation)
         except NiceBidiAuthError as err:
-            await self.hass.async_add_executor_job(self.client.close)
-            self._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
-            self.last_error = str(err)
+            await self._coordinator.hass.async_add_executor_job(self._coordinator.client.close)
+            self._coordinator._set_connection_state(CONNECTION_STATE_AUTH_FAILED)
+            self._coordinator.connection_runtime.last_error = str(err)
             self._record_operation(
                 action=action,
                 read_only=read_only,
@@ -163,9 +162,9 @@ class NiceAdministrationController(OwnerBoundController):
                 f"Nice authentication failed during {action}"
             ) from err
         except (NiceBidiConnectionError, NiceBidiError, OSError, ValueError) as err:
-            await self.hass.async_add_executor_job(self.client.close)
-            self._set_connection_state(CONNECTION_STATE_FAILED)
-            self.last_error = str(err)
+            await self._coordinator.hass.async_add_executor_job(self._coordinator.client.close)
+            self._coordinator._set_connection_state(CONNECTION_STATE_FAILED)
+            self._coordinator.connection_runtime.last_error = str(err)
             self._record_operation(
                 action=action,
                 read_only=read_only,
@@ -177,15 +176,15 @@ class NiceAdministrationController(OwnerBoundController):
             )
             raise HomeAssistantError(f"Nice {action} failed: {err}") from err
 
-        self._set_connection_state(CONNECTION_STATE_CONNECTED)
-        self.last_error = None
+        self._coordinator._set_connection_state(CONNECTION_STATE_CONNECTED)
+        self._coordinator.connection_runtime.last_error = None
         self._record_operation(
             action=action,
             read_only=read_only,
             started=started,
             status="completed",
             verification=verification,
-            route=self.active_connection_route,
+            route=self._coordinator.active_connection_route,
         )
         return result
 
@@ -194,7 +193,7 @@ class NiceAdministrationController(OwnerBoundController):
         self._require_capability("logs", "log retrieval")
         snapshot = await self._async_execute(
             "refresh_logs",
-            self.client.read_logs,
+            self._coordinator.client.read_logs,
             read_only=True,
         )
         self.interface_log_snapshot = replace(
@@ -214,9 +213,9 @@ class NiceAdministrationController(OwnerBoundController):
         started = time.monotonic()
         try:
             self._require_capability("logs", "controller history")
-            rows = await self.hass.async_add_executor_job(
+            rows = await self._coordinator.hass.async_add_executor_job(
                 partial(
-                    self.client.read_t4_logs,
+                    self._coordinator.client.read_t4_logs,
                     CONTROLLER_HISTORY_LIMIT,
                     preemptible=True,
                 )
@@ -258,7 +257,7 @@ class NiceAdministrationController(OwnerBoundController):
         self._require_capability("groups", "group retrieval")
         snapshot = await self._async_execute(
             "refresh_groups",
-            self.client.read_groups,
+            self._coordinator.client.read_groups,
             read_only=True,
         )
         self.access_group_snapshot = replace(
@@ -274,8 +273,8 @@ class NiceAdministrationController(OwnerBoundController):
         await self._async_prepare_mutation("name update")
 
         def update_and_verify():
-            self.client.update_interface_name(validated)
-            info = self.client.read_info()
+            self._coordinator.client.update_interface_name(validated)
+            info = self._coordinator.client.read_info()
             if info.interface_name != validated:
                 raise NiceBidiConnectionError(
                     "interface name write was acknowledged but INFO verification failed"
@@ -288,7 +287,7 @@ class NiceAdministrationController(OwnerBoundController):
             read_only=False,
             verification=NAME_VERIFICATION,
         )
-        self._store_device_info(info)
+        self._coordinator._store_device_info(info)
 
     async def async_sync_interface_time(self) -> None:
         """Synchronize and verify UTC, standard offset, and DST fields."""
@@ -296,12 +295,12 @@ class NiceAdministrationController(OwnerBoundController):
         await self._async_prepare_mutation("time synchronization")
         clock = interface_clock_for(
             datetime.now(UTC),
-            self.hass.config.time_zone,
+            self._coordinator.hass.config.time_zone,
         )
 
         def update_and_verify():
-            self.client.update_interface_clock(clock)
-            info = self.client.read_info()
+            self._coordinator.client.update_interface_clock(clock)
+            info = self._coordinator.client.read_info()
             try:
                 reported = datetime.strptime(
                     info.interface_date or "",
@@ -332,7 +331,7 @@ class NiceAdministrationController(OwnerBoundController):
             read_only=False,
             verification=TIME_VERIFICATION,
         )
-        self._store_device_info(info)
+        self._coordinator._store_device_info(info)
 
     async def async_reboot_interface(self) -> None:
         """Request an interface reboot after enforcing physical-state safety."""
@@ -340,10 +339,10 @@ class NiceAdministrationController(OwnerBoundController):
         await self._async_prepare_mutation("interface reboot")
         await self._async_execute(
             "reboot_interface",
-            self.client.reboot_interface,
+            self._coordinator.client.reboot_interface,
             read_only=False,
             verification="change_acknowledgement",
         )
-        await self.hass.async_add_executor_job(self.client.close)
-        self._set_connection_state(CONNECTION_STATE_RECONNECTING)
-        self.event_controller.mark_reconnecting()
+        await self._coordinator.hass.async_add_executor_job(self._coordinator.client.close)
+        self._coordinator._set_connection_state(CONNECTION_STATE_RECONNECTING)
+        self._coordinator.event_controller.mark_reconnecting()
