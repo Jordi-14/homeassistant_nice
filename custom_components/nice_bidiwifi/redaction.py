@@ -110,7 +110,7 @@ def redact_evidence_tree(value, secrets, *, depth=0):
             redact_evidence_tree(item, secrets, depth=depth + 1) for item in value[:512]
         ]
     if isinstance(value, str):
-        return redact_text(value[:1024], secrets)
+        return redact_text(value, secrets)[:1024]
     if isinstance(value, float) and not math.isfinite(value):
         return None
     return value

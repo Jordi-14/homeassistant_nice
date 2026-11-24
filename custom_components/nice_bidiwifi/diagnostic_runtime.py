@@ -477,6 +477,18 @@ class DiagnosticRuntime:
             }
         return {"state": "blocked", "gap": definition.gap}
 
+    def _counter_channels(self, view):
+        result = dict(view)
+        result.update(
+            nhk_counter_channel=dict(self.event_counters),
+            nhk_to_dmp_mapping="not_established",
+            dmp_channel_state=view["state"],
+            nhk_channel_state="available" if self.event_counters else "not_observed",
+        )
+        if self.event_counters and view["state"] != "available":
+            result["state"] = "available"
+        return result
+
     def view(self, key):
         definition = self.definition(key)
         capabilities = self._owner.capabilities
@@ -505,16 +517,18 @@ class DiagnosticRuntime:
                     "total_maneuver_count",
                 )
             }
-            return {
-                "state": "available"
-                if any(value is not None for value in values.values())
-                else "unavailable",
-                "values": values,
-                "source": "cached_dmp_status",
-                "counter_epoch_relationship": "unknown",
-                "nhk_counter_channel": dict(self.event_counters),
-                "nhk_to_dmp_mapping": "not_established",
-            }
+            return self._counter_channels(
+                {
+                    "state": "available"
+                    if any(value is not None for value in values.values())
+                    else "unavailable",
+                    "values": values,
+                    "source": "cached_dmp_status",
+                    "counter_epoch_relationship": "unknown",
+                    "nhk_counter_channel": dict(self.event_counters),
+                    "nhk_to_dmp_mapping": "not_established",
+                }
+            )
         if key in self._samples:
             sample = {
                 k: v for k, v in self._samples[key].items() if k != "observed_monotonic"
@@ -525,7 +539,7 @@ class DiagnosticRuntime:
                     nhk_to_dmp_mapping="not_established",
                 )
             captured = self._samples[key].get("observed_monotonic")
-            return {
+            result = {
                 **sample,
                 "source": "selective_get",
                 "age_seconds": max(0, round(time.monotonic() - captured, 3))
@@ -538,6 +552,8 @@ class DiagnosticRuntime:
                     ),
                 ),
             }
+
+            return self._counter_channels(result) if key == "counters" else result
 
         owner = self._owner
         address = owner.parameters.address(*definition.register)
@@ -584,9 +600,4 @@ class DiagnosticRuntime:
         }
 
     def report(self):
-        result = {row.key: self.view(row.key) for row in DIAGNOSTICS}
-        result["counters"].update(
-            nhk_counter_channel=dict(self.event_counters),
-            nhk_to_dmp_mapping="not_established",
-        )
-        return result
+        return {row.key: self.view(row.key) for row in DIAGNOSTICS}

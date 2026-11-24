@@ -549,3 +549,38 @@ def test_large_event_frame_reports_partial_payload_retention():
     timeline = IncidentTimeline({})
     timeline.event(parsed)
     assert all(row["values"]["frame_payloads_truncated"] for row in timeline.records)
+
+
+async def test_nhk_only_counter_channel_stays_visible_without_invented_dmp_values(hass):
+    owner = await instance(hass)
+    owner.async_set_updated_data(
+        make_status(
+            maintenance_count=None,
+            total_maneuver_count=None,
+            maintenance_threshold=None,
+        )
+    )
+    owner.diagnostic_runtime.event_counters.update(
+        nhk_manoeuvre_count=123, received_at="2026-11-24T12:00:00Z"
+    )
+    view = owner.diagnostic_runtime.view("counters")
+    assert view["state"] == "available"
+    assert view["nhk_channel_state"] == "available"
+    assert view["dmp_channel_state"] == "unavailable"
+    assert view["values"]["total_maneuver_count"] is None
+    assert view["nhk_counter_channel"]["nhk_manoeuvre_count"] == 123
+    owner.diagnostic_runtime._samples["counters"] = {"state": "unsupported"}
+    view = owner.diagnostic_runtime.view("counters")
+    assert view["state"] == "available" and view["dmp_channel_state"] == "unsupported"
+    await owner.async_shutdown()
+
+
+def test_secret_redaction_precedes_evidence_length_limits():
+    secret = "private-token-" * 100
+    timeline = IncidentTimeline({"access_token": secret})
+    timeline.add("event", "nhk", {"reason": secret + " trailing context"})
+    assert timeline.records[0]["values"]["reason"] == "<redacted> trailing context"
+    assert (
+        redact_evidence_tree({"message": secret + " tail"}, (secret,))["message"]
+        == "<redacted> tail"
+    )

@@ -90,7 +90,7 @@ class IncidentTimeline:
             if isinstance(value, float) and not math.isfinite(value):
                 continue
             if isinstance(value, str):
-                value = redact_text(value[:128], self._secrets)
+                value = redact_text(value, self._secrets)[:128]
             if isinstance(value, (str, int, float, bool)):
                 result[key] = value
         return result
