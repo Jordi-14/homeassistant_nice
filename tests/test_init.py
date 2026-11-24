@@ -64,6 +64,9 @@ class FakeCoordinator:
         """Record first refresh."""
         self.refreshed = True
 
+    def async_start_background_refresh(self) -> None:
+        self.background_requested = True
+
     async def async_shutdown(self) -> None:
         """Record shutdown."""
         self.shutdown = True

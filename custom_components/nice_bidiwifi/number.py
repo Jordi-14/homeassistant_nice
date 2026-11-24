@@ -13,6 +13,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .configuration import legacy_parameter_value
 from .calibration_constants import CALIBRATION_STATE_RUNNING
 from .client import NiceBidiStatus
 from .coordinator import NiceBidiDataUpdateCoordinator
@@ -22,6 +23,7 @@ from .entities.factory import (
     build_described_entities,
 )
 from .entity import NiceCoordinatorEntity
+from .entities.configuration import configuration_controls
 from .protocol.t4.info import DmpInfo
 from .runtime import get_coordinator
 from .protocol.t4.settings import (
@@ -242,6 +244,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up numbers from a config entry."""
     coordinator = get_coordinator(entry)
+    async_add_entities(configuration_controls(coordinator, entry, 'number'))
     async_add_entities(
         build_described_entities(
             coordinator,
@@ -296,7 +299,7 @@ class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
         status = self.coordinator.data
         if status is None:
             return None
-        return self.entity_description.value_fn(status)
+        return legacy_parameter_value(self.coordinator, self.entity_description.setting, self.entity_description.value_fn(status))
 
     @property
     def _info(self) -> DmpInfo | None:
@@ -357,7 +360,9 @@ class NiceBidiNumber(NiceCoordinatorEntity, NumberEntity):
             raise HomeAssistantError(
                 f"{self.entity_description.name} is disabled for this controller model"
             )
-        int_value = int(round(value))
+        int_value = int(value)
+        if isinstance(value, bool) or int_value != value:
+            raise ValueError("Setting value must be a whole number")
         min_value = self.native_min_value
         max_value = self.native_max_value
         if int_value < min_value or int_value > max_value:

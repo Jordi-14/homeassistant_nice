@@ -433,7 +433,7 @@ class FakeClient:
         self.dmp_writes.append((group, parameter, value, size))
         self.dmp_values.setdefault((group, parameter), value.to_bytes(size, byte_order))
 
-    def read_dmp_value(self, group, parameter, *, preemptible=False):
+    def read_dmp_value(self, group, parameter, *, preemptible=False, background=False):
         self.value_reads.append((group, parameter))
         if self.read_dmp_value_error is not None:
             raise self.read_dmp_value_error

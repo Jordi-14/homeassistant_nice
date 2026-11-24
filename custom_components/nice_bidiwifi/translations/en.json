@@ -248,5 +248,30 @@
         }
       }
     }
+  },
+  "entity": {
+    "select": {
+      "photo_close_mode": {
+        "name": "Photo close mode",
+        "state": {
+          "16: Open fully": "Open fully",
+          "17: Open until disengagement": "Open until disengagement",
+          "18: Stop": "Stop",
+          "19: Open fully 2": "Open fully 2"
+        }
+      },
+      "always_close_mode": {
+        "name": "Always close mode",
+        "state": {
+          "32: Always close": "Always close",
+          "33: Save closing": "Save closing"
+        }
+      }
+    },
+    "number": {
+      "controller_parameter_value": {
+        "name": "{parameter} (engineering units)"
+      }
+    }
   }
 }

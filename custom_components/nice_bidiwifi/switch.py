@@ -14,6 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .calibration_constants import CALIBRATION_STATE_RUNNING
 from .client import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING, STATE_PARTIALLY_OPEN, STATE_STOPPED, NiceBidiStatus
+from .configuration import legacy_parameter_value
 from .coordinator import NiceBidiDataUpdateCoordinator
 from .entities.factory import (
     NiceCapabilityKey,
@@ -236,7 +237,7 @@ class NiceBidiConfigSwitch(NiceCoordinatorEntity, SwitchEntity):
         status = self.coordinator.data
         if status is None:
             return None
-        return self.entity_description.value_fn(status)
+        return legacy_parameter_value(self.coordinator, self.entity_description.setting, self.entity_description.value_fn(status))
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable the BusT4 setting."""

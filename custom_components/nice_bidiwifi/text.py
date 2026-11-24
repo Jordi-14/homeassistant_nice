@@ -118,10 +118,10 @@ class NiceBidiText(NiceCoordinatorEntity, TextEntity):
         )
 
     @property
-    def native_value(self) -> str:
+    def native_value(self) -> str | None:
         """Return the current INFO interface name."""
         info = self.coordinator.device_info
-        return info.interface_name if info and info.interface_name else ""
+        return info.interface_name if info and info.interface_name else None
 
     async def async_set_value(self, value: str) -> None:
         """Set and verify the interface name."""

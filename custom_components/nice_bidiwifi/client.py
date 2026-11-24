@@ -1001,7 +1001,7 @@ class NiceBidiClient:
             if "@" in key:
                 continue
             setting = SETTINGS_BY_REGISTER.get((parsed.group, parsed.parameter))
-            if setting:
+            if setting and setting.legacy_status:
                 observation = self.parameters.observe(self.parameters.address(setting.group, setting.parameter), parsed.value)
                 values[setting.key] = (
                     bool(observation.raw_value) if setting.kind == "boolean" and observation.raw_value is not None
