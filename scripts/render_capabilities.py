@@ -231,7 +231,7 @@ def documents() -> dict[str, str]:
         "",
         "## Counter and maneuver-history uncertainty",
         "",
-        "DMP maintenance threshold, maintenance count and total counter are distinct controller registers. NHK ManoeuvreCount/ManoeuvreThLimit are a separate channel; their relation and reset epochs are not inferred, and an NHK event no longer overwrites both DMP counters.",
+        "DMP maintenance threshold, maintenance count and total counter are distinct controller registers. Diagnostic counter cards apply verified INFO scaling when available and retain the raw values alongside. NHK ManoeuvreCount/ManoeuvreThLimit are a separate channel; their relation and reset epochs are not inferred, and an NHK event no longer overwrites both DMP counters.",
         "",
         "04/DA is eight reported AutomationStatusDiagnostics slots. Slot order follows the vendor array, but newest-slot identity, initialization and freshness are not established universally. All-zero history retains vendor `ok` labels with `all_zero_unverified`; it does not become eight confirmed successes. The existing failure-count sensor is unknown for this ambiguous all-zero case, with explanatory attributes. An unchanged buffer cannot establish that every recent maneuver succeeded.",
         "",

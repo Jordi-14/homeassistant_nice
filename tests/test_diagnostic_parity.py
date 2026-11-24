@@ -584,3 +584,21 @@ def test_secret_redaction_precedes_evidence_length_limits():
         redact_evidence_tree({"message": secret + " tail"}, (secret,))["message"]
         == "<redacted> tail"
     )
+
+
+async def test_counter_card_honors_known_info_scale_and_preserves_raw_evidence(hass):
+    owner = await instance(hass)
+    owner.parameters.record_info(
+        owner.parameters.address(4, 0xB2),
+        DmpInfo(4, 0, 4, 0x11, minimum=0, maximum=10000, step=1, scale=10),
+    )
+    owner.async_set_updated_data(make_status(maintenance_count=120))
+    assert (
+        owner.diagnostic_runtime.view("counters")["values"]["maintenance_count"] == 12
+    )
+    owner.client.read_dmp_value = lambda *args, **kwargs: (120).to_bytes(4, "big")
+    await owner.diagnostic_runtime.async_read("counters")
+    view = owner.diagnostic_runtime.view("counters")
+    assert view["values"]["maintenance_count"] == 12
+    assert view["raw_values"]["maintenance_count"] == 120
+    await owner.async_shutdown()

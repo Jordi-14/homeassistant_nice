@@ -13,6 +13,7 @@ from .controller_catalog import ENUM_FUNCTIONS
 from .errors import NiceBidiError, NiceParameterError, NiceReadPreemptedError
 from .parameters import SupportState
 from .protocol.t4.bluebus import decode_bluebus_devices
+from .protocol.t4.info import scaled_value
 from .protocol.t4.io import decode_hardware_diagnostic, decode_io_diagnostic
 from .protocol.t4.maneuvers import maneuver_evidence
 
@@ -264,6 +265,7 @@ class DiagnosticRuntime:
         address = owner.parameters.address(*definition.register)
         if key == "counters":
             values = {}
+            raw_values = {}
             for field, parameter in (
                 ("maintenance_threshold", 0xB1),
                 ("maintenance_count", 0xB2),
@@ -290,7 +292,7 @@ class DiagnosticRuntime:
                     and scalar_info_valid(metadata)
                     and metadata.size == 4
                 )
-                values[field] = (
+                raw_values[field] = (
                     int.from_bytes(raw, metadata.byte_order if metadata else "big")
                     if scalar
                     and raw is not None
@@ -298,12 +300,19 @@ class DiagnosticRuntime:
                     and raw != b"\xff" * 4
                     else None
                 )
+                values[field] = (
+                    scaled_value(raw_values[field], metadata)
+                    if metadata
+                    else raw_values[field]
+                )
             self._attempts[key] = time.monotonic()
             self._samples[key] = {
                 "state": "available"
                 if any(v is not None for v in values.values())
                 else "unavailable",
                 "values": values,
+                "raw_values": raw_values,
+                "value_basis": "controller_INFO_scaling_when_available_otherwise_reviewed_u32",
                 "source": "dmp_get",
                 "counter_epoch_relationship": "unknown",
                 "observed_monotonic": time.monotonic(),
@@ -517,12 +526,31 @@ class DiagnosticRuntime:
                     "total_maneuver_count",
                 )
             }
+            raw_values = dict(values)
+            for field, parameter in (
+                ("maintenance_threshold", 0xB1),
+                ("maintenance_count", 0xB2),
+                ("total_maneuver_count", 0xB3),
+            ):
+                metadata = self._owner.parameters.info_for(
+                    self._owner.parameters.address(4, parameter)
+                )
+                if metadata is not None:
+                    values[field] = (
+                        scaled_value(raw_values[field], metadata)
+                        if not metadata.indexed
+                        and scalar_info_valid(metadata)
+                        and metadata.size == 4
+                        else None
+                    )
             return self._counter_channels(
                 {
                     "state": "available"
                     if any(value is not None for value in values.values())
                     else "unavailable",
                     "values": values,
+                    "raw_values": raw_values,
+                    "value_basis": "controller_INFO_scaling_when_available_otherwise_reviewed_u32",
                     "source": "cached_dmp_status",
                     "counter_epoch_relationship": "unknown",
                     "nhk_counter_channel": dict(self.event_counters),
