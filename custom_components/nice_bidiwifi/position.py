@@ -123,12 +123,20 @@ class NiceBidiPositionController(RuntimeController["NiceBidiDataUpdateCoordinato
         """Measured speeds before the 90% animation margin, by direction and band."""
         return self.estimator.profile.summary()
 
+    def _position_sample_is_current(self, status: NiceBidiStatus) -> bool:
+        """Do not pair an older position with a newer movement direction."""
+        if status.observed_fields is not None and "position" not in status.observed_fields:
+            return False
+        captured = (status.observation_times or {}).get("position")
+        state = self._coordinator.observations.observation("state")
+        return captured is None or state is None or state.monotonic <= captured
+
     def _learn_movement_speed(self, status: NiceBidiStatus) -> None:
         changed = False
         for action, setting in (("open", status.opening_speed), ("close", status.closing_speed)):
             changed |= self.estimator.profile.setting_changed(action, setting)
         action = self._motion_action_from_state(status.state)
-        fresh = status.observed_fields is None or "position" in status.observed_fields
+        fresh = self._position_sample_is_current(status)
         if action is not None and status.position is not None and fresh:
             changed |= self.estimator.profile.observe(action, status.position, (status.observation_times or {}).get("position", time.monotonic()))
         elif status.state in {STATE_STOPPED, STATE_PARTIALLY_OPEN, STATE_OPEN, STATE_CLOSED}:
@@ -515,7 +523,7 @@ class NiceBidiPositionController(RuntimeController["NiceBidiDataUpdateCoordinato
         self._observe_position_speed(status)
         if status.observed_fields is not None and not {"state", "position"} & status.observed_fields:
             return
-        if status.observed_fields is not None and "position" not in status.observed_fields:
+        if not self._position_sample_is_current(status):
             status = replace(status, position=None)
         if self._coordinator.calibration_controller.calibration_state == CALIBRATION_STATE_RUNNING:
             self._clear_position_simulation(notify=False)
@@ -565,7 +573,7 @@ class NiceBidiPositionController(RuntimeController["NiceBidiDataUpdateCoordinato
     def _observe_position_speed(self, status: NiceBidiStatus) -> None:
         """Learn movement speed from consecutive live position samples."""
         self._learn_movement_speed(status)
-        if status.observed_fields is not None and "position" not in status.observed_fields:
+        if not self._position_sample_is_current(status):
             return
         action = self._motion_action_from_state(status.state)
         position = status.position

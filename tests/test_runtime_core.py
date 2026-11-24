@@ -512,3 +512,23 @@ async def test_read_only_feature_uses_measurements_without_network(hass):
     assert instance.tasks.pending == 0
     instance.client = FakeClient()
     await instance.async_shutdown()
+
+
+async def test_old_poll_position_cannot_learn_the_new_live_direction(hass):
+    instance = _coordinator(hass)
+    instance.observations = ObservationStore(clock=lambda: 20)
+    instance.observations.apply_update({"state": "closing"}, {}, source="live")
+    status = replace(
+        make_status(position=80, state="closing"),
+        observed_fields=frozenset({"position"}),
+        observation_times={"position": 10},
+    )
+    assert not instance.position_controller._position_sample_is_current(status)
+    instance.position_controller._learn_movement_speed(status)
+    instance.position_controller._observe_position_speed(status)
+    assert instance.position_controller.estimator.observation is None
+    assert all(
+        band["samples"] == 0 for band in instance.movement_speed_profile["close"]
+    )
+    instance.client = FakeClient()
+    await instance.async_shutdown()
