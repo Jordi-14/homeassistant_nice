@@ -134,3 +134,15 @@ If no pre-beta Home Assistant backup exists:
 5. Check entity IDs and any automations that reference them.
 
 Do not edit Home Assistant's config-entry storage manually.
+
+## Shared-runtime beta (0.9.0b5)
+
+No recalibration or entity recreation is required. This beta refactors the shared runtime; later phases add the remaining app features.
+
+- Compare ordinary opening and closing, a normal Stop, and a reversal with b4. Animation retains the 90% factor and learned directional bands. State-only updates should not re-anchor the percentage or create learning samples.
+- Check that newer live position or state survives a slower status poll. Confirmed forward jumps are expected. Continuous movement should not rewind; a stop or reversal can reconcile the estimate.
+- Reload the integration and restart HA. Existing names, IDs, calibration and learned speeds should remain present, and the connection should resume without duplicate updates.
+- Download integration diagnostics. The feature report separates implementation, device support, permissions and runtime availability. Observations show source and age; runtime diagnostics show pending work and scheduler state.
+- Normal user controls take priority over background reads. Expired commands fail rather than being sent later. Unimplemented app features and CORE/ProView access paths remain blocked with explicit reasons.
+
+If reporting a problem, include the loaded version, time and time zone, controller/module firmware, connection mode and sanitized diagnostics. Do not change controller settings or run controller relearning solely to test this refactor.

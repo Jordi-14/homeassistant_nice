@@ -18,6 +18,7 @@ from .errors import (
 )
 from .models.config import ConnectionMode, NiceEntryConfig, NiceEndpoint
 from .parameters import ParameterRepository
+from .scheduler import OperationExpired, OperationPriority, SessionScheduler
 from .protocol.nhk.administration import LOG_EVENTS_PER_SCOPE, MAX_T4_LOG_ROWS
 from .transport.lan import LegacyLanTlsTransport
 from .transport.relay import RelayTlsTransport
@@ -45,13 +46,18 @@ class NiceConnectionRouter:
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         parameters: ParameterRepository | None = None,
+        command_timeout: float = 15.0,
+        deadline_clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._mode = config.connection.mode
         self._health = health
         self._monotonic = monotonic
         self._sleep = sleep
         self.parameters = parameters if parameters is not None else ParameterRepository(config.device_id)
-        self._lock = threading.RLock()
+        self._lock = SessionScheduler(clock=deadline_clock)
+        self._deadline_clock = deadline_clock
+        self._command_timeout = command_timeout
+        self._closed = False
         self._waiting_commands = 0
         self._waiting_commands_lock = threading.Lock()
         common = {
@@ -98,6 +104,10 @@ class NiceConnectionRouter:
         if endpoint is None:
             return None
         return client_factory(host=endpoint.host, port=endpoint.port, **kwargs)
+
+    @property
+    def scheduler_diagnostics(self) -> dict:
+        return self._lock.diagnostics()
 
     @property
     def active_route(self) -> NiceConnectionRoute:
@@ -232,6 +242,8 @@ class NiceConnectionRouter:
                                               request_type=err.request_type) from err
             raise
         except (NiceBidiConnectionError, OSError) as err:
+            if isinstance(err, OperationExpired):
+                raise
             if is_request_rejection(err):
                 # The route works; only this request is unsupported.
                 self._mark_success(route, active=active)
@@ -244,7 +256,11 @@ class NiceConnectionRouter:
         return result
 
     def _read(self, method: str, *args, **kwargs):
-        with self._lock:
+        priority = (OperationPriority.METADATA if method in {"read_info", "read_info_xml", "read_dmp_info", "read_dmp_indexed"}
+                    else OperationPriority.READBACK if method == "read_dmp_value"
+                    else OperationPriority.DIAGNOSTIC if method in {"read_logs", "read_t4_logs", "read_groups"}
+                    else OperationPriority.STATUS)
+        with self._lock.hold(priority):
             if self._mode is ConnectionMode.LOCAL_ONLY:
                 return self._call(NiceConnectionRoute.LOCAL, method, *args, **kwargs)
             if self._mode is ConnectionMode.CLOUD_ONLY:
@@ -330,22 +346,32 @@ class NiceConnectionRouter:
 
     def _command_waiting(self) -> bool:
         """Return whether a command is queued behind the current operation."""
-        return self._waiting_commands > 0
+        return self._waiting_commands > 0 or self._lock.should_yield()
 
-    def _acquire_for_command(self) -> None:
+    def _acquire_for_command(self, *, priority=OperationPriority.CONTROL, timeout=15.0) -> None:
         """Take the session lock, asking preemptible reads to yield meanwhile."""
         with self._waiting_commands_lock:
             self._waiting_commands += 1
         try:
-            self._lock.acquire()
+            if not self._lock.acquire(timeout=timeout, priority=priority):
+                raise OperationExpired()
         finally:
             with self._waiting_commands_lock:
                 self._waiting_commands -= 1
 
     def _write(self, method: str, *args, **kwargs):
         """Execute a command once; an ambiguous failure is never replayed."""
-        self._acquire_for_command()
+        deadline = self._deadline_clock() + self._command_timeout
+        priority = (OperationPriority.STOP if method in {"send_action", "send_dep_action", "send_t4_action"} and args in {("stop",), ("stop_remote",)} else OperationPriority.CONTROL)
+        self._acquire_for_command(priority=priority, timeout=self._command_timeout)
         try:
+            original_guard = kwargs.pop("before_dispatch", None)
+            def dispatch_guard():
+                if self._closed or self._deadline_clock() >= deadline:
+                    raise OperationExpired("Command expired or entry unloaded before dispatch")
+                if original_guard is not None:
+                    original_guard()
+            kwargs["before_dispatch"] = dispatch_guard
             route = self._selected
             try:
                 return self._call(route, method, *args, **kwargs)
@@ -486,7 +512,16 @@ class NiceConnectionRouter:
         return lambda: [remove() for remove in removers]
 
     def close(self) -> None:
-        with self._lock:
+        with self._lock.hold(OperationPriority.STOP, allow_closed=True):
             for client in (self._local, self._cloud):
                 if client is not None:
                     client.close()
+
+    def shutdown(self) -> None:
+        """Fence queued work before waiting for the current exchange to finish."""
+        self._closed = True
+        def finalize():
+            for client in (self._local, self._cloud):
+                if client is not None:
+                    client.close()
+        self._lock.cancel_pending(on_idle=finalize)

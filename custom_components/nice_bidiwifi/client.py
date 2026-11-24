@@ -112,7 +112,7 @@ from .protocol.t4.registers import (
     EXTENDED_CONTROLLER_PROFILE,
     OXI_INFO_PROFILE,
 )
-from .protocol.t4.status import status_from_dmp_registers
+from .protocol.t4.status import status_from_dmp_registers, STATUS_FIELD_REGISTERS, CORE_FIELD_REGISTERS
 from .transport.dispatcher import (
     RawEventCallback,
     ReaderFailureCallback,
@@ -314,13 +314,15 @@ class NiceBidiClient:
                 include_extended=include_extended,
                 preemptible=preemptible,
                 extra_registers=extra_registers,
-            )
+            ),
+            preemptible=preemptible,
         )
 
     def read_nhk_status(self, *, preemptible: bool = False) -> NiceBidiStatus:
         """Read state from NHK STATUS/CHANGE properties."""
         return self._run_with_reconnect(
-            lambda: self._read_nhk_status_locked(preemptible=preemptible)
+            lambda: self._read_nhk_status_locked(preemptible=preemptible),
+            preemptible=preemptible,
         )
 
     def read_info(self) -> NiceBidiDeviceInfo:
@@ -335,7 +337,8 @@ class NiceBidiClient:
         A preemptible read yields to a pending gate command before it is sent.
         """
         return self._run_with_reconnect(
-            lambda: self._read_dmp_info_locked(group, parameter, preemptible=preemptible)
+            lambda: self._read_dmp_info_locked(group, parameter, preemptible=preemptible),
+            preemptible=preemptible,
         )
 
     def read_dmp_indexed(
@@ -343,7 +346,8 @@ class NiceBidiClient:
     ) -> bytes | None:
         """Read one element of an indexed (array) controller register."""
         return self._run_with_reconnect(
-            lambda: self._read_dmp_indexed_locked(group, parameter, index, preemptible=preemptible)
+            lambda: self._read_dmp_indexed_locked(group, parameter, index, preemptible=preemptible),
+            preemptible=preemptible,
         )
 
     def read_info_xml(self) -> str:
@@ -354,7 +358,7 @@ class NiceBidiClient:
         """Read one parameter without a broad status scan."""
         return self._run_with_reconnect(lambda: self._read_dmp_value_locked(
             group, parameter, operation=0x19, preemptible=preemptible,
-        ))
+        ), preemptible=preemptible)
 
     def read_logs(
         self,
@@ -373,52 +377,53 @@ class NiceBidiClient:
     ) -> tuple[ControllerHistoryRow, ...]:
         """Read one page of the controller event history (read-only)."""
         return self._run_with_reconnect(
-            lambda: self._read_t4_logs_locked(max_rows, preemptible=preemptible)
+            lambda: self._read_t4_logs_locked(max_rows, preemptible=preemptible),
+            preemptible=preemptible,
         )
 
     def read_groups(self) -> NiceGroupSnapshot:
         """Read a bounded, redacted summary of local access groups."""
         return self._run_with_reconnect(self._read_groups_locked)
 
-    def update_interface_name(self, name: str) -> None:
+    def update_interface_name(self, name: str, *, before_dispatch=None) -> None:
         """Update the shared Wi-Fi interface name once."""
         validated = validate_interface_name(name)
         self._run_command_once(
             lambda: self._change_interface_locked(
                 build_update_name_body(validated)
-            )
+            ), before_dispatch=before_dispatch,
         )
 
-    def update_interface_clock(self, clock: NiceInterfaceClock) -> None:
+    def update_interface_clock(self, clock: NiceInterfaceClock, *, before_dispatch=None) -> None:
         """Update the shared Wi-Fi interface clock once."""
         body = build_update_clock_body(clock)
-        self._run_command_once(lambda: self._change_interface_locked(body))
+        self._run_command_once(lambda: self._change_interface_locked(body), before_dispatch=before_dispatch)
 
-    def reboot_interface(self) -> None:
+    def reboot_interface(self, *, before_dispatch=None) -> None:
         """Request one shared Wi-Fi interface reboot."""
         self._run_command_once(
-            lambda: self._change_interface_locked(build_reboot_body())
+            lambda: self._change_interface_locked(build_reboot_body()), before_dispatch=before_dispatch,
         )
 
-    def send_action(self, action: str) -> None:
+    def send_action(self, action: str, *, before_dispatch=None) -> None:
         """Send a high-level DoorAction command."""
         if action not in {"open", "stop", "close"}:
             raise ValueError("action must be open, stop, or close")
-        self._run_command_once(lambda: self._send_action_locked(action))
+        self._run_command_once(lambda: self._send_action_locked(action), before_dispatch=before_dispatch)
 
-    def send_dep_action(self, action: str) -> None:
+    def send_dep_action(self, action: str, *, before_dispatch=None) -> None:
         """Send a low-level DEP action command."""
         if action not in DEP_ACTION_COMMANDS:
             valid = ", ".join(sorted(DEP_ACTION_COMMANDS))
             raise ValueError(f"action must be one of: {valid}")
-        self._run_command_once(lambda: self._send_dep_action_locked(action))
+        self._run_command_once(lambda: self._send_dep_action_locked(action), before_dispatch=before_dispatch)
 
-    def send_t4_action(self, action: str) -> None:
+    def send_t4_action(self, action: str, *, before_dispatch=None) -> None:
         """Send a T4 action as the NHK `T4Action` service, the way MyNice Welcome drives IT4WIFI modules."""
         if action not in DEP_ACTION_COMMANDS:
             valid = ", ".join(sorted(DEP_ACTION_COMMANDS))
             raise ValueError(f"action must be one of: {valid}")
-        self._run_command_once(lambda: self._send_t4_action_locked(action))
+        self._run_command_once(lambda: self._send_t4_action_locked(action), before_dispatch=before_dispatch)
 
     def write_dmp_register(
         self,
@@ -488,16 +493,23 @@ class NiceBidiClient:
             before_dispatch=before_dispatch,
         )
 
-    def _run_with_reconnect(self, operation: Callable[[], Any]) -> Any:
+    def _run_with_reconnect(self, operation: Callable[[], Any], *, preemptible: bool = False) -> Any:
         last_error: Exception | None = None
         with self._lock:
             for attempt in range(2):
                 try:
+                    if preemptible and self._should_yield is not None and self._should_yield():
+                        raise NiceReadPreemptedError("Read yielded before connecting")
                     self._ensure_connected_locked()
+                    if preemptible and self._should_yield is not None and self._should_yield():
+                        raise NiceReadPreemptedError("Read yielded after connecting")
                     return operation()
                 except (OSError, ssl.SSLError, NiceBidiConnectionError) as exc:
                     if is_request_rejection(exc):
                         raise
+                    if preemptible and self._should_yield is not None and self._should_yield():
+                        self._close_locked()
+                        raise NiceReadPreemptedError("Read reconnect yielded to urgent work") from exc
                     last_error = exc
                     self._close_locked()
                     if attempt == 0:
@@ -514,6 +526,8 @@ class NiceBidiClient:
     def _run_command_once(self, operation: Callable[[], Any], *, before_dispatch: Callable[[], None] | None = None) -> Any:
         """Run a write once so an ambiguous response cannot duplicate movement."""
         with self._lock:
+            if before_dispatch is not None:
+                before_dispatch()
             try:
                 self._ensure_connected_locked()
             except (NiceBidiError, OSError) as exc:
@@ -993,7 +1007,16 @@ class NiceBidiClient:
                     bool(observation.raw_value) if setting.kind == "boolean" and observation.raw_value is not None
                     else observation.raw_value
                 )
-        return replace(status, **values) if values else status
+        times = {}
+        bindings = {**STATUS_FIELD_REGISTERS, **CORE_FIELD_REGISTERS, "position": "04/11"}
+        for name, key in bindings.items():
+            if key not in registers:
+                continue
+            group, parameter = (int(x, 16) for x in key.split("/"))
+            observation = self.parameters.observation_for(self.parameters.address(group, parameter))
+            if observation:
+                times[name] = observation.monotonic
+        return replace(status, observation_times=times, **values)
 
     def _read_nhk_status_locked(self, *, preemptible: bool = False) -> NiceBidiStatus:
         interrupt = self._should_yield if preemptible else None

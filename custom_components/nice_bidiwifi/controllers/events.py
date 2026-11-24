@@ -13,10 +13,11 @@ from homeassistant.util import dt as dt_util
 
 from ..errors import NiceProtocolError
 from ..models.events import NiceEvent, NiceEventCategory, NiceEventKind
+from ..observations import declared_fields
 from ..models.status import STATE_CLOSING, STATE_OPENING, NiceStatus
 from ..protocol.nhk.events import parse_nhk_event_frame
 from ..protocol.nhk.status import status_value
-from .base import OwnerBoundController
+from .base import RuntimeController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,18 +74,19 @@ def _unknown_status() -> NiceStatus:
     )
 
 
-class NiceEventController(OwnerBoundController):
+class NiceEventController(RuntimeController):
     """Bridge the protocol reader thread into the Home Assistant event loop."""
 
     def __init__(self, owner) -> None:
         super().__init__(owner)
+        self.abnormal_stop_count = 0
+        self.last_abnormal_stop = None
+        self._abnormal_scan_monotonic = None
         self.event_stream_state = EVENT_STREAM_IDLE
         self.event_stream_error: str | None = None
         self.event_history: deque[NiceEvent] = deque(maxlen=EVENT_HISTORY_LIMIT)
         self.latest_event: NiceEvent | None = None
         self.event_sequence = 0
-        self.live_state_sequence = 0
-        self.live_position_sequence = 0
         self.protocol_event_count = 0
         self.malformed_protocol_event_count = 0
         self.last_event_at: datetime | None = None
@@ -117,11 +119,15 @@ class NiceEventController(OwnerBoundController):
     def _reset_obstruction_observation(self) -> None:
         """Require a fresh observation after the event stream reconnects."""
         self._obstruction_state = None
+        self._coordinator.observations.apply_update(
+            {"obstacle": None}, {}, source="connection_reset",
+            removed_registers={"NHK/Obstruct", "NHK/T4Obstruct"},
+        )
         self._suppress_initial_obstruction = True
 
     def _sync_obstruction_connection(self) -> None:
         """Notice a client reconnect even when its retry succeeded internally."""
-        reconnect_count = getattr(self.client, "reconnect_count", None)
+        reconnect_count = getattr(self._coordinator.client, "reconnect_count", None)
         if self._obstruction_reconnect_count is None:
             self._obstruction_reconnect_count = reconnect_count
         elif reconnect_count != self._obstruction_reconnect_count:
@@ -131,43 +137,13 @@ class NiceEventController(OwnerBoundController):
     def reconcile_polled_obstacle(self, status: NiceStatus) -> NiceStatus:
         """Keep a live obstacle value when a poll has no current observation."""
         self._sync_obstruction_connection()
-        if status.obstacle is not None and "NHK/Obstruct" in status.registers:
+        if status.obstacle is not None and "NHK/Obstruct" in (status.fresh_registers if status.fresh_registers is not None else status.registers):
             self._obstruction_state = status.obstacle
             self._suppress_initial_obstruction = False
             return status
         if self._obstruction_state is not None:
-            return replace(status, obstacle=self._obstruction_state)
+            return replace(status, obstacle=self._obstruction_state, observed_fields=declared_fields(status) - {"obstacle"})
         return status
-
-    def preserve_newer_live_status(
-        self, status: NiceStatus, state_sequence: int, position_sequence: int
-    ) -> NiceStatus:
-        """Keep fields updated live while a status poll was in flight."""
-        latest = self.data
-        if latest is None:
-            return status
-        updates = {}
-        registers = dict(status.registers)
-
-        def copy_registers(keys: tuple[str, ...]) -> None:
-            for key in keys:
-                registers.pop(key, None)
-                if key in latest.registers:
-                    registers[key] = latest.registers[key]
-
-        if self.live_state_sequence != state_sequence:
-            updates["state"] = latest.state
-            copy_registers(("NHK/DoorStatus", "NHK/T4Status", "NHK/T4PayloadKind", "NHK/T4StatusIgnored"))
-            registers["NHK/PollStateIgnored"] = "newer_live_update"
-        if self.live_position_sequence != position_sequence:
-            updates["position"] = latest.position
-            updates["current_position"] = latest.current_position
-            copy_registers((
-                "NHK/T4InstantPosition", "NHK/T4InstantPositionRaw", "NHK/T4InstantPositionScale",
-                "NHK/T4CalibratedPosition", "NHK/T4EncoderPosition", "NHK/ConfirmedEndpointPosition",
-            ))
-            registers["NHK/PollPositionIgnored"] = "newer_live_update"
-        return replace(status, registers=registers, **updates) if updates else status
 
     # LOCAL-DIAGNOSTIC(pr55): speed check for implausible travel.
     @staticmethod
@@ -190,7 +166,7 @@ class NiceEventController(OwnerBoundController):
             return event
         now = time.monotonic()
         reason = None
-        start = self.data.current_position if self.data else None
+        start = self._coordinator.data.current_position if self._coordinator.data else None
         # arm once per move: 04/40 frames repeat DoorStatus every second
         # re-arm when no terminal state closed a move that is long over
         if nhk in {"opening", "closing"} and (
@@ -209,9 +185,9 @@ class NiceEventController(OwnerBoundController):
                 move is not None
                 and move[1] == ("closing" if end_name == "closed" else "opening")
                 and now - move[0] < COMMAND_MOVE_WINDOW_SECONDS
-                and self.data is not None
+                and self._coordinator.data is not None
                 and self._implausible_travel(
-                    move[2], getattr(self.data, f"{end_name}_position"), now - move[0]
+                    move[2], getattr(self._coordinator.data, f"{end_name}_position"), now - move[0]
                 )
             ):
                 # observational only: the endpoint state is still applied
@@ -249,10 +225,10 @@ class NiceEventController(OwnerBoundController):
             if (
                 direction == ("opening" if nhk == "open" else "closing")
                 and now - started < COMMAND_MOVE_WINDOW_SECONDS
-                and self.data is not None
+                and self._coordinator.data is not None
                 and self._implausible_travel(
                     start,
-                    self.data.open_position if nhk == "open" else self.data.closed_position,
+                    self._coordinator.data.open_position if nhk == "open" else self._coordinator.data.closed_position,
                     now - started,
                 )
             ):
@@ -279,21 +255,21 @@ class NiceEventController(OwnerBoundController):
             change_state == "stopped_for_command_arrival"
             and cause == "oview"
             and self._recent_command(now) in {"open", "close"}
-            and self.data is not None
-            and not self.data.is_moving
+            and self._coordinator.data is not None
+            and not self._coordinator.data.is_moving
         )
 
     # LOCAL-DIAGNOSTIC(pr55): recent-command age for abnormal-stop checks.
     def _command_age(self, now: float) -> float | None:
         """Return seconds since a recent command, or None when none is recent."""
-        started = self.last_command_monotonic
+        started = self._coordinator.command_executor.state.last_command_monotonic
         if started is None or now - started >= RECENT_COMMAND_SECONDS:
             return None
         return now - started
 
     def _recent_command(self, now: float) -> str | None:
         """Return the last HA command only while it is recent enough to explain an event."""
-        return self.last_command if self._command_age(now) is not None else None
+        return self._coordinator.command_executor.state.last_command if self._command_age(now) is not None else None
 
     # LOCAL-DIAGNOSTIC(pr55): abnormal-stop bus event data.
     def _fire_abnormal_stop(self, event: NiceEvent, reason: str, now: float) -> None:
@@ -304,8 +280,8 @@ class NiceEventController(OwnerBoundController):
             return
         self._last_abnormal_fire = (now, reason)
         since_command = (
-            now - self.last_command_monotonic
-            if self.last_command_monotonic is not None
+            now - self._coordinator.command_executor.state.last_command_monotonic
+            if self._coordinator.command_executor.state.last_command_monotonic is not None
             else None
         )
         move = self._t4_command_move or self._nhk_move
@@ -314,7 +290,7 @@ class NiceEventController(OwnerBoundController):
             at=event.received_at.isoformat(),
             change_state=event.t4_change_state,
             cause=event.t4_cause,
-            position=self.data.position if self.data else None,
+            position=self._coordinator.data.position if self._coordinator.data else None,
             seconds_since_command=(
                 round(since_command, 1) if since_command is not None else None
             ),
@@ -324,8 +300,8 @@ class NiceEventController(OwnerBoundController):
     # LOCAL-DIAGNOSTIC(pr55): abnormal-stop bus event, counter and scan request.
     def report_abnormal(self, reason: str, *, at: str | None = None, **fields) -> None:
         """Fire the abnormal-stop bus event and request a diagnostics scan."""
-        data = {"entry_id": self.config_entry.entry_id, "reason": reason, **fields}
-        self.hass.bus.async_fire(ABNORMAL_STOP_EVENT, data)
+        data = {"entry_id": self._coordinator.config_entry.entry_id, "reason": reason, **fields}
+        self._coordinator.hass.bus.async_fire(ABNORMAL_STOP_EVENT, data)
         self.abnormal_stop_count += 1
         self.last_abnormal_stop = {**data, "at": at or dt_util.utcnow().isoformat()}
         # at most one scan per 30 s
@@ -333,29 +309,27 @@ class NiceEventController(OwnerBoundController):
         last_scan = self._abnormal_scan_monotonic
         if last_scan is None or now - last_scan >= ABNORMAL_SCAN_INTERVAL_SECONDS:
             self._abnormal_scan_monotonic = now
-            self._extended_scan_requests += 1
-            self._extended_status_next_refresh_monotonic = 0.0
+            self._coordinator._extended_scan_requests += 1
+            self._coordinator._extended_status_next_refresh_monotonic = 0.0
             # while a command runs, the fast post-command polls run the scan
             if self._command_age(now) is None:
-                self.config_entry.async_create_background_task(
-                    self.hass, self.async_refresh(), "nice-abnormal-stop-scan"
-                )
+                self._coordinator.tasks.create(self._coordinator.async_refresh(), "nice-abnormal-stop-scan")
 
     def ensure_registered(self) -> None:
         """Install persistent callbacks on the current client exactly once."""
-        if self._event_client is self.client:
+        if self._event_client is self._coordinator.client:
             self._sync_obstruction_connection()
             return
         if self._event_client is not None:
             self._reset_obstruction_observation()
         self._remove_callbacks()
-        self._event_client = self.client
-        self._obstruction_reconnect_count = getattr(self.client, "reconnect_count", None)
+        self._event_client = self._coordinator.client
+        self._obstruction_reconnect_count = getattr(self._coordinator.client, "reconnect_count", None)
         self._accept_events = True
-        self._remove_event_callback = self.client.add_event_callback(
+        self._remove_event_callback = self._coordinator.client.add_event_callback(
             self._receive_raw_frame
         )
-        self._remove_failure_callback = self.client.add_event_failure_callback(
+        self._remove_failure_callback = self._coordinator.client.add_event_failure_callback(
             self._receive_reader_failure
         )
 
@@ -373,14 +347,14 @@ class NiceEventController(OwnerBoundController):
     def _receive_raw_frame(self, frame: bytes) -> None:
         """Transfer a reader-thread frame into the HA loop."""
         try:
-            self.hass.loop.call_soon_threadsafe(self._handle_raw_frame, frame)
+            self._coordinator.hass.loop.call_soon_threadsafe(self._handle_raw_frame, frame)
         except RuntimeError:
             _LOGGER.debug("Dropping Nice event while Home Assistant is stopping")
 
     def _receive_reader_failure(self, error: Exception) -> None:
         """Transfer a reader-thread failure into the HA loop."""
         try:
-            self.hass.loop.call_soon_threadsafe(
+            self._coordinator.hass.loop.call_soon_threadsafe(
                 self._handle_reader_failure,
                 error.__class__.__name__,
             )
@@ -395,15 +369,15 @@ class NiceEventController(OwnerBoundController):
             return
         self._sync_obstruction_connection()
         try:
-            events = parse_nhk_event_frame(frame, self.entry_config.device_id)
+            events = parse_nhk_event_frame(frame, self._coordinator.entry_config.device_id)
         except NiceProtocolError as err:
             self.malformed_protocol_event_count += 1
             _LOGGER.debug(
                 "Discarding malformed Nice protocol event: %s",
                 err.__class__.__name__,
             )
-            if self.data is not None:
-                self.async_set_updated_data(self.data)
+            if self._coordinator.data is not None:
+                self._coordinator.async_set_updated_data(self._coordinator.data)
             return
 
         self.event_stream_state = EVENT_STREAM_ACTIVE
@@ -413,11 +387,7 @@ class NiceEventController(OwnerBoundController):
 
     def _apply_event(self, event: NiceEvent) -> None:
         """Update normalized state and event diagnostics."""
-        event = self._normalize_live_position_event(event)
-        if event.state is not None:
-            self.live_state_sequence += 1
-        if event.position is not None:
-            self.live_position_sequence += 1
+        event = self._coordinator.position_controller._normalize_live_position_event(event)
         # LOCAL-DIAGNOSTIC(pr55): abnormal-stop detection; see controllers/events.py:_check_abnormal_stop.
         event = self._check_abnormal_stop(event)
         if event.obstruction is not None:
@@ -466,17 +436,21 @@ class NiceEventController(OwnerBoundController):
             self.event_battery_level = event.battery_level_code
             self.event_battery_device_type = event.battery_device_type
 
-        status = self.data or _unknown_status()
+        status = self._coordinator.data or _unknown_status()
         updates: dict[str, object] = {}
         registers = dict(status.registers)
         if event.state is not None:
             updates["state"] = event.state
+        elif event.raw_state is not None and event.raw_state.casefold() in {"unknown", "unknow"}:
+            updates["state"] = None
         if event.raw_state is not None:
             registers["NHK/DoorStatus"] = event.raw_state
         if event.position is not None:
             updates["position"] = event.position
             registers.pop("NHK/T4CalibratedPosition", None)
             registers.pop("NHK/T4EncoderPosition", None)
+            registers.pop("NHK/T4InstantPositionRaw", None)
+            registers.pop("NHK/T4InstantPositionScale", None)
             registers["NHK/T4InstantPosition"] = str(round(event.position))
         if event.t4_payload_kind is not None and (
             event.t4_state is not None or event.position is not None
@@ -504,23 +478,34 @@ class NiceEventController(OwnerBoundController):
         if registers != dict(status.registers):
             updates["registers"] = registers
         if updates:
-            status = replace(status, **updates)
-            status = self._normalize_status_for_display(
-                self._apply_recent_stop_status_hint(status)
+            changes = {k: v for k,v in registers.items() if status.registers.get(k) != v}
+            sources = {}
+            if "state" in updates:
+                sources["state"] = ("t4_04_02" if event.t4_payload_kind == "04/02" else
+                                    "t4_04_40_motion" if event.t4_payload_kind == "04/40" else "nhk_door_status")
+            if "position" in updates:
+                sources["position"] = "t4_04_40"
+            status = self._coordinator.observations.apply_update(
+                {k: v for k,v in updates.items() if k != "registers"}, changes,
+                source="live_event", sources=sources, baseline=status,
+                removed_registers=set(status.registers) - set(registers),
             )
-            self._store_successful_status(status)
+            status = self._coordinator.position_controller._normalize_status_for_display(
+                self._coordinator.position_controller._apply_recent_stop_status_hint(status)
+            )
+            self._coordinator._store_successful_status(status)
 
-        if self.capabilities is not None:
-            self.capabilities = replace(
-                self.capabilities,
+        if self._coordinator.capabilities is not None:
+            self._coordinator.capabilities = replace(
+                self._coordinator.capabilities,
                 local_events=True,
                 diagnostic_events=(
                     True
                     if event.kind is NiceEventKind.DIAGNOSTIC
-                    else self.capabilities.diagnostic_events
+                    else self._coordinator.capabilities.diagnostic_events
                 ),
             )
-        self.async_set_updated_data(status)
+        self._coordinator.async_set_updated_data(status)
 
     def _handle_reader_failure(self, error_name: str) -> None:
         """Expose event loss while leaving adaptive polling operational."""
@@ -529,12 +514,9 @@ class NiceEventController(OwnerBoundController):
         self.event_stream_state = EVENT_STREAM_FALLBACK_POLLING
         self.event_stream_error = error_name[:64]
         self._reset_obstruction_observation()
-        if self.data is not None:
-            self.async_set_updated_data(replace(self.data, obstacle=None))
-        self.hass.async_create_task(
-            self.async_request_refresh(),
-            "nice-event-stream-fallback-refresh",
-        )
+        if self._coordinator.data is not None:
+            self._coordinator.async_set_updated_data(replace(self._coordinator.data, obstacle=None))
+        self._coordinator.tasks.create(self._coordinator.async_request_refresh(), "nice-event-stream-fallback-refresh")
 
     def mark_reconnecting(self) -> None:
         """Expose that polling is carrying state during reconnection."""
@@ -544,7 +526,7 @@ class NiceEventController(OwnerBoundController):
 
     def mark_connected(self) -> None:
         """Expose a healthy reader after a successful polled exchange."""
-        if self.client.event_stream_active:
+        if self._coordinator.client.event_stream_active:
             self.event_stream_state = EVENT_STREAM_ACTIVE
             self.event_stream_error = None
 

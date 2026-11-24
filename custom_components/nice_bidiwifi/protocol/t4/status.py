@@ -115,6 +115,17 @@ STATUS_FIELD_REGISTERS = {
     "last_maneuvers": "04/DA",
 }
 
+CORE_FIELD_REGISTERS = {"state": "04/01", "current_position": "04/11", "open_position": "04/18", "closed_position": "04/19"}
+
+
+def fields_for_registers(registers) -> frozenset[str]:
+    observed = {name for name, key in {**STATUS_FIELD_REGISTERS, **CORE_FIELD_REGISTERS}.items() if key in registers}
+    if {"04/11", "04/18", "04/19"}.issubset(registers):
+        observed.add("position")
+    if any("@00.0A" in key for key in registers):
+        observed.update({"oxi_detected", "oxi_product", "oxi_hardware_version", "oxi_firmware_version", "oxi_description", "oxi_receiver_type", "oxi_coding_type"})
+    return frozenset(observed)
+
 # 04/D1 byte 10, bits 0-6 = MyNice Pro T4InputOutputDiagnostic ids 37-43 (1 = ERR, "Err positions" @0x114b0).
 CONTROLLER_ERROR_BITS = (
     "positions",
@@ -208,6 +219,8 @@ def status_from_dmp_registers(
         }
     )
     return NiceStatus(
+        observed_fields=fields_for_registers(registers),
+        fresh_registers=frozenset(registers),
         **values,
         state=state,
         position=round(position, 1) if position is not None else None,

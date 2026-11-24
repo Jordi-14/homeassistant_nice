@@ -56,7 +56,9 @@ def _status_device(root: ET.Element, device_id: int) -> ET.Element | None:
     if root.tag == "Device" and root.get("id") in {None, str(device_id)}:
         return root
     device = root.find(f".//Device[@id='{device_id}']")
-    return device if device is not None else root.find(".//Device")
+    if device is not None:
+        return device
+    return next((node for node in root.iter("Device") if node.get("id") is None), None)
 
 
 def _child_text(node: ET.Element | None, path: str) -> str | None:
@@ -92,9 +94,9 @@ def parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceStatus | No
     device = _status_device(root, device_id)
     raw_state = _child_text(device, "./Properties/DoorStatus")
     raw_obstruct = _child_text(device, "./Properties/Obstruct")
-    if raw_state is None:
+    if raw_state is None and not list(root.iter("Device")):
         raw_state = _child_text(root, ".//DoorStatus")
-    if raw_obstruct is None:
+    if raw_obstruct is None and not list(root.iter("Device")):
         raw_obstruct = _child_text(root, ".//Obstruct")
 
     state = status_value(raw_state)
@@ -106,6 +108,8 @@ def parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceStatus | No
         if raw_obstruct is not None:
             registers["NHK/Obstruct"] = raw_obstruct
         return NiceStatus(
+            observed_fields=frozenset({"state"} | ({"obstacle"} if raw_obstruct is not None else set())),
+            fresh_registers=frozenset(registers),
             state=None,
             position=None,
             current_position=None,
@@ -122,6 +126,8 @@ def parse_nhk_status_xml(status_xml: str, device_id: int = 1) -> NiceStatus | No
     if raw_obstruct is not None:
         registers["NHK/Obstruct"] = raw_obstruct
     return NiceStatus(
+        observed_fields=frozenset({"state"} | ({"obstacle"} if raw_obstruct is not None else set())),
+        fresh_registers=frozenset(registers),
         state=state,
         position=None,
         current_position=None,
@@ -168,7 +174,13 @@ def merge_cuwifi_live_status(
         and live_status.state != status.state
     ):
         registers["NHK/T4StatusIgnored"] = "04/40_position_only"
-    return replace(status, state=state, position=position, registers=registers)
+    observed = set(status.observed_fields or ())
+    if applied_live_state is not None:
+        observed.add("state")
+    if live_status.position is not None:
+        observed.add("position")
+    return replace(status, state=state, position=position, registers=registers,
+                   observed_fields=frozenset(observed), fresh_registers=frozenset(registers))
 
 
 def parse_nhk_status_frames(frames: list[bytes], device_id: int = 1) -> NiceStatus:

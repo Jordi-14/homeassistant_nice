@@ -26,9 +26,10 @@ from .client import (
 )
 from .connection import CONNECTION_STATE_AUTH_FAILED, CONNECTION_STATE_FAILED
 from .const import DOMAIN, ERROR_UPDATE_INTERVAL, IDLE_UPDATE_INTERVAL, MOVING_UPDATE_INTERVAL
-from .controllers.base import OwnerBoundController
+from .controllers.base import RuntimeController
 from .models.events import NiceEvent
 from .models.position import NicePosition, resolve_position
+from .models.runtime_state import AnimationState, EstimatorState, PositionControlState
 from .movement_profile import MovementProfile, advance, speed_at
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,83 +58,98 @@ def movement_profile_store(hass, entry_id: str) -> Store:
     return Store(hass, 1, f"{DOMAIN}.movement_profile.{entry_id}")
 
 
-class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordinator"]):
+class NiceBidiPositionController(RuntimeController["NiceBidiDataUpdateCoordinator"]):
     """Position display, simulation, and target-position behavior."""
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator)
+        self.animation = AnimationState()
+        self.estimator = EstimatorState()
+        self.control = PositionControlState()
 
     def _init_position_state(self, hass, entry) -> None:
         """Initialize position-related runtime state."""
-        self._recent_stop_command_monotonic: float | None = None
-        self._recent_stop_started_from_motion = False
-        self._post_command_fast_poll_until_monotonic: float | None = None
-        self._last_known_position: float | None = None
-        self._position_reporting_observed = False
-        self._position_target_task: asyncio.Task[None] | None = None
-        self._post_command_refresh_delay_task: asyncio.Task[None] | None = None
-        self._position_simulation_task: asyncio.Task[None] | None = None
-        self._position_simulation_action: str | None = None
-        self._position_simulation_anchor_position: float | None = None
-        self._position_simulation_anchor_monotonic: float | None = None
-        self._position_simulation_started_monotonic: float | None = None
-        self._position_simulation_deadline_monotonic: float | None = None
-        self._position_simulation_confirmed_moving = False
-        self._position_simulation_target_position: float | None = None
-        self._position_simulation_speed_percent_per_second: float | None = None
-        self._position_observation: tuple[str, float, float] | None = None
-        self._observed_position_speed_percent_per_second: dict[str, float] = {}
-        self._movement_profile = MovementProfile()
-        self._movement_profile_store = movement_profile_store(hass, entry.entry_id)
-        self._movement_profile_dirty = False
-        self._position_simulation_speed_curve: tuple[float, ...] | None = None
+        self.control.recent_stop: float | None = None
+        self.control.stop_started_moving = False
+        self.control.fast_poll_until: float | None = None
+        self.estimator.last_known_position: float | None = None
+        self.estimator.reporting_observed = False
+        self.control.target_task: asyncio.Task[None] | None = None
+        self.control.refresh_task: asyncio.Task[None] | None = None
+        self.animation.task: asyncio.Task[None] | None = None
+        self.animation.action: str | None = None
+        self.animation.anchor_position: float | None = None
+        self.animation.anchor_monotonic: float | None = None
+        self.animation.started_monotonic: float | None = None
+        self.animation.deadline_monotonic: float | None = None
+        self.animation.confirmed_moving = False
+        self.animation.target_position: float | None = None
+        self.animation.speed_percent_per_second: float | None = None
+        self.estimator.observation: tuple[str, float, float] | None = None
+        self.estimator.observed_speeds: dict[str, float] = {}
+        self.estimator.profile = MovementProfile()
+        self.estimator.store = movement_profile_store(hass, entry.entry_id)
+        self.estimator.dirty = False
+        self.animation.speed_curve: tuple[float, ...] | None = None
 
     async def async_load_movement_profile(self) -> None:
         """Restore passive learning, or seed it from a saved calibration."""
         try:
-            data = await self._movement_profile_store.async_load()
+            data = await self.estimator.store.async_load()
         except Exception:  # optional learning must not prevent setup
             _LOGGER.warning("Could not load Nice movement speed profile", exc_info=True)
             data = None
-        if data is None and self.calibration_profile:
-            data = self.calibration_profile.get("movement_speed_profile")
-        self._movement_profile.load(data)
+        if data is None and self._coordinator.calibration_controller.calibration_profile:
+            data = self._coordinator.calibration_controller.calibration_profile.get("movement_speed_profile")
+        self.estimator.profile.load(data)
 
     def _schedule_movement_profile_save(self) -> None:
-        self._movement_profile_dirty = True
-        snapshot = self._movement_profile.export()
-        self._movement_profile_store.async_delay_save(lambda: snapshot, 30)
+        self.estimator.dirty = True
+        snapshot = self.estimator.profile.export()
+        self.estimator.store.async_delay_save(lambda: snapshot, 30)
 
     async def async_save_movement_profile(self) -> None:
         """Flush completed/partial band measurements when unloading."""
-        self._movement_profile_dirty |= self._movement_profile.finish()
-        if self._movement_profile_dirty:
+        self.estimator.dirty |= self.estimator.profile.finish()
+        if self.estimator.dirty:
             try:
-                await self._movement_profile_store.async_save(self._movement_profile.export())
-                self._movement_profile_dirty = False
+                await self.estimator.store.async_save(self.estimator.profile.export())
+                self.estimator.dirty = False
             except Exception:
                 _LOGGER.warning("Could not save Nice movement speed profile", exc_info=True)
 
     @property
     def movement_speed_profile(self) -> dict:
         """Measured speeds before the 90% animation margin, by direction and band."""
-        return self._movement_profile.summary()
+        return self.estimator.profile.summary()
+
+    def _position_sample_is_current(self, status: NiceBidiStatus) -> bool:
+        """Do not pair an older position with a newer movement direction."""
+        if status.observed_fields is not None and "position" not in status.observed_fields:
+            return False
+        captured = (status.observation_times or {}).get("position")
+        state = self._coordinator.observations.observation("state")
+        return captured is None or state is None or state.monotonic <= captured
 
     def _learn_movement_speed(self, status: NiceBidiStatus) -> None:
         changed = False
         for action, setting in (("open", status.opening_speed), ("close", status.closing_speed)):
-            changed |= self._movement_profile.setting_changed(action, setting)
+            changed |= self.estimator.profile.setting_changed(action, setting)
         action = self._motion_action_from_state(status.state)
-        if action is not None and status.position is not None:
-            changed |= self._movement_profile.observe(action, status.position, time.monotonic())
+        fresh = self._position_sample_is_current(status)
+        if action is not None and status.position is not None and fresh:
+            changed |= self.estimator.profile.observe(action, status.position, (status.observation_times or {}).get("position", time.monotonic()))
         elif status.state in {STATE_STOPPED, STATE_PARTIALLY_OPEN, STATE_OPEN, STATE_CLOSED}:
-            changed |= self._movement_profile.finish()
+            changed |= self.estimator.profile.finish()
         if changed:
             self._schedule_movement_profile_save()
 
     async def _async_cancel_position_target(self) -> None:
         """Cancel a pending target-position watcher."""
-        task = self._position_target_task
+        task = self.control.target_task
         if task is None:
             return
-        self._position_target_task = None
+        self.control.target_task = None
         if task.done() or task is asyncio.current_task():
             return
         task.cancel()
@@ -142,10 +158,10 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
 
     async def _async_cancel_post_command_refresh(self) -> None:
         """Cancel only the delay before a post-command refresh starts."""
-        task = self._post_command_refresh_delay_task
+        task = self.control.refresh_task
         if task is None:
             return
-        self._post_command_refresh_delay_task = None
+        self.control.refresh_task = None
         if task.done() or task is asyncio.current_task():
             return
         task.cancel()
@@ -154,7 +170,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
 
     async def _async_cancel_position_simulation(self) -> None:
         """Cancel the optimistic position animation."""
-        task = self._position_simulation_task
+        task = self.animation.task
         self._clear_position_simulation(notify=False)
         if task is None or task.done() or task is asyncio.current_task():
             return
@@ -163,16 +179,16 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
 
     def _extend_post_command_fast_poll_window(self) -> None:
         """Poll quickly for a short window after any command."""
-        self._post_command_fast_poll_until_monotonic = time.monotonic() + POST_COMMAND_FAST_POLL_SECONDS
+        self.control.fast_poll_until = time.monotonic() + POST_COMMAND_FAST_POLL_SECONDS
 
     def _post_command_fast_poll_active(self) -> bool:
         """Return true while the post-command fast polling window is active."""
-        until = self._post_command_fast_poll_until_monotonic
+        until = self.control.fast_poll_until
         if until is None:
             return False
         if time.monotonic() <= until:
             return True
-        self._post_command_fast_poll_until_monotonic = None
+        self.control.fast_poll_until = None
         return False
 
     def _update_interval_for_status(self, status: NiceBidiStatus) -> timedelta:
@@ -184,41 +200,35 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
 
     def _schedule_post_command_refresh(self) -> None:
         """Schedule a delayed refresh so motor state is not missed after commands."""
-        task = self._post_command_refresh_delay_task
+        task = self.control.refresh_task
         if task is not None and not task.done():
             task.cancel()
-        self._post_command_refresh_delay_task = self.hass.async_create_task(
-            self._async_start_post_command_refresh_after_delay(),
-            name=f"{DOMAIN} post-command refresh delay",
-        )
+        self.control.refresh_task = self._coordinator.tasks.create(self._async_start_post_command_refresh_after_delay(), name=f"{DOMAIN} post-command refresh delay")
 
     async def _async_start_post_command_refresh_after_delay(self) -> None:
         """Start an independently owned refresh after the command delay."""
         task = asyncio.current_task()
         try:
             await asyncio.sleep(POST_COMMAND_REFRESH_DELAY_SECONDS)
-            if self._post_command_refresh_delay_task is task:
-                self._post_command_refresh_delay_task = None
-            self.hass.async_create_task(
-                self.async_request_refresh(),
-                name=f"{DOMAIN} post-command refresh",
-            )
+            if self.control.refresh_task is task:
+                self.control.refresh_task = None
+            self._coordinator.tasks.create(self._coordinator.async_request_refresh(), name=f"{DOMAIN} post-command refresh")
         except asyncio.CancelledError:
             raise
         finally:
-            if self._post_command_refresh_delay_task is task:
-                self._post_command_refresh_delay_task = None
+            if self.control.refresh_task is task:
+                self.control.refresh_task = None
 
     def _apply_recent_stop_status_hint(self, status: NiceBidiStatus) -> NiceBidiStatus:
         """Mask short-lived stale CU_WIFI states after a local stop command."""
-        stopped_at = self._recent_stop_command_monotonic
+        stopped_at = self.control.recent_stop
         if stopped_at is None:
             return status
         if time.monotonic() - stopped_at > RECENT_STOP_STATUS_OVERRIDE_SECONDS:
-            self._recent_stop_command_monotonic = None
-            self._recent_stop_started_from_motion = False
+            self.control.recent_stop = None
+            self.control.stop_started_moving = False
             return status
-        if not self._recent_stop_started_from_motion or status.state == STATE_STOPPED:
+        if not self.control.stop_started_moving or status.state == STATE_STOPPED:
             return status
         if status.state not in {STATE_OPEN, STATE_CLOSED, STATE_OPENING, STATE_CLOSING}:
             return status
@@ -232,12 +242,12 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         status = self._normalize_live_scalar_status(status)
         if (
             status.position is None
-            and self._position_simulation_action is None
-            and self.data is not None
-            and self.data.state in {STATE_OPEN, STATE_CLOSED}
+            and self.animation.action is None
+            and self._coordinator.data is not None
+            and self._coordinator.data.state in {STATE_OPEN, STATE_CLOSED}
             and status.state in {STATE_STOPPED, STATE_PARTIALLY_OPEN}
         ):
-            self._last_known_position = None
+            self.estimator.last_known_position = None
             registers = dict(status.registers)
             registers["NHK/LastKnownPositionInvalidated"] = "unobserved_external_movement"
             status = replace(status, registers=registers)
@@ -256,10 +266,10 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         if (
             status.state in {STATE_STOPPED, STATE_PARTIALLY_OPEN}
             and status.position is None
-            and self._last_known_position is not None
+            and self.estimator.last_known_position is not None
         ):
             registers = dict(status.registers)
-            registers["NHK/LastKnownPositionFallback"] = str(round(self._last_known_position, 1))
+            registers["NHK/LastKnownPositionFallback"] = str(round(self.estimator.last_known_position, 1))
             return replace(status, registers=registers)
         return status
 
@@ -297,7 +307,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             or not event.t4_position_scale.startswith("raw")
         ):
             return event
-        normalized = self._normalize_live_scalar_value(event.t4_raw_position, self.data)
+        normalized = self._normalize_live_scalar_value(event.t4_raw_position, self._coordinator.data)
         return replace(event, position=normalized[0]) if normalized is not None else event
 
     def _normalize_live_scalar_value(
@@ -305,7 +315,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
     ) -> tuple[float, str] | None:
         """Prefer explicit scalar calibration, then usable 16-bit encoder bounds."""
         candidates = []
-        profile = self.calibration_profile
+        profile = self._coordinator.calibration_controller.calibration_profile
         if isinstance(profile, dict) and profile.get("mode") == "live_scalar":
             bounds = profile.get("bounds")
             if isinstance(bounds, dict):
@@ -330,9 +340,9 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
     def position_snapshot(self) -> NicePosition | None:
         """Return the normalized position with provenance and confidence."""
         return resolve_position(
-            self.data,
+            self._coordinator.data,
             simulated=self._current_simulated_position(),
-            last_known=self._last_known_position,
+            last_known=self.estimator.last_known_position,
         )
 
     @property
@@ -344,8 +354,8 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
     @property
     def position_reporting_observed(self) -> bool:
         """Return true only after the controller has supplied a numeric position."""
-        status = self.data
-        return self._position_reporting_observed or (
+        status = self._coordinator.data
+        return self.estimator.reporting_observed or (
             status is not None and status.position is not None
         )
 
@@ -358,15 +368,15 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
     @property
     def position_simulation_action(self) -> str | None:
         """Return the active simulated direction."""
-        return self._position_simulation_action if self.display_position_estimated else None
+        return self.animation.action if self.display_position_estimated else None
 
     @property
     def position_simulation_speed_percent_per_second(self) -> float | None:
         """Return the active simulated display speed."""
         if not self.display_position_estimated:
             return None
-        speed = self._position_simulation_speed_percent_per_second
-        curve = self._position_simulation_speed_curve
+        speed = self.animation.speed_percent_per_second
+        curve = self.animation.speed_curve
         if curve is not None:
             position = self._current_simulated_position()
             if position is not None:
@@ -378,18 +388,21 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         """Return movement speeds learned from live position updates."""
         return {
             action: round(speed, 2)
-            for action, speed in self._observed_position_speed_percent_per_second.items()
+            for action, speed in self.estimator.observed_speeds.items()
         }
 
     @property
     def state_source(self) -> str | None:
         """Return the source currently responsible for the displayed state."""
-        status = self.data
+        status = self._coordinator.data
         if status is None:
             return None
         registers = status.registers
         if "NHK/RecentStopOverride" in registers:
             return "local_stop_hold"
+        observation = self._coordinator.observations.observation("state")
+        if observation is not None and observation.source != "baseline":
+            return observation.source
         payload_kind = registers.get("NHK/T4PayloadKind")
         t4_state = registers.get("NHK/T4Status")
         if payload_kind == "04/02" and t4_state == status.state:
@@ -419,8 +432,8 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         if not self.position_reporting_observed:
             return
         anchor = None
-        if action != self._position_simulation_action and self.data is not None:
-            anchor = self.data.position
+        if action != self.animation.action and self._coordinator.data is not None:
+            anchor = self._coordinator.data.position
         if anchor is None:
             anchor = self._current_simulated_position()
         if anchor is None:
@@ -429,7 +442,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             return
 
         now = time.monotonic()
-        curve = self._position_speed_curve(action)
+        curve = self._coordinator.calibration_controller._position_speed_curve(action)
         speed = speed_at(anchor, curve)
         target = None if target_position is None else max(0.0, min(100.0, float(target_position)))
         limit = 100.0 if action == "open" and target is None else 0.0 if target is None else target
@@ -440,68 +453,65 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             expected_seconds + POSITION_SIMULATION_TIMEOUT_PADDING_SECONDS,
         )
 
-        self._position_simulation_action = action
-        self._position_simulation_anchor_position = anchor
-        self._position_simulation_anchor_monotonic = now
-        self._position_simulation_started_monotonic = now
-        self._position_simulation_deadline_monotonic = deadline
-        self._position_simulation_confirmed_moving = False
-        self._position_simulation_target_position = target
-        self._position_simulation_speed_percent_per_second = speed
-        self._position_simulation_speed_curve = curve
+        self.animation.action = action
+        self.animation.anchor_position = anchor
+        self.animation.anchor_monotonic = now
+        self.animation.started_monotonic = now
+        self.animation.deadline_monotonic = deadline
+        self.animation.confirmed_moving = False
+        self.animation.target_position = target
+        self.animation.speed_percent_per_second = speed
+        self.animation.speed_curve = curve
         self._ensure_position_simulation_task()
-        self.async_update_listeners()
+        self._coordinator.async_update_listeners()
 
     def _ensure_position_simulation_task(self) -> None:
         """Ensure the simulation tick task is running."""
-        task = self._position_simulation_task
+        task = self.animation.task
         if task is not None and not task.done():
             return
-        self._position_simulation_task = self.hass.async_create_task(
-            self._async_run_position_simulation(),
-            name=f"{DOMAIN} position simulation",
-        )
+        self.animation.task = self._coordinator.tasks.create(self._async_run_position_simulation(), name=f"{DOMAIN} position simulation")
 
     async def _async_run_position_simulation(self) -> None:
         """Tick the optimistic display position until real status stops it."""
         task = asyncio.current_task()
         try:
-            while self._position_simulation_action is not None:
+            while self.animation.action is not None:
                 await asyncio.sleep(POSITION_SIMULATION_TICK_SECONDS)
-                deadline = self._position_simulation_deadline_monotonic
+                deadline = self.animation.deadline_monotonic
                 if deadline is not None and time.monotonic() > deadline:
                     self._clear_position_simulation()
                     return
-                self.async_update_listeners()
+                self._coordinator.async_update_listeners()
         except asyncio.CancelledError:
             raise
         finally:
-            if self._position_simulation_task is task:
-                self._position_simulation_task = None
+            if self.animation.task is task:
+                self.animation.task = None
 
     def _current_simulated_position(self) -> float | None:
         """Return the current synthetic display position."""
-        action = self._position_simulation_action
-        anchor = self._position_simulation_anchor_position
-        anchor_time = self._position_simulation_anchor_monotonic
-        speed = self._position_simulation_speed_percent_per_second
+        action = self.animation.action
+        anchor = self.animation.anchor_position
+        anchor_time = self.animation.anchor_monotonic
+        speed = self.animation.speed_percent_per_second
         if action is None or anchor is None or anchor_time is None or speed is None:
             return None
-        if not self._position_simulation_confirmed_moving:
+        if not self.animation.confirmed_moving:
             return anchor
 
         elapsed = max(0.0, time.monotonic() - anchor_time)
-        curve = self._position_simulation_speed_curve
+        curve = self.animation.speed_curve
         calculated = advance(anchor, elapsed, action, curve) if curve is not None else anchor + (1 if action == "open" else -1) * speed * elapsed
         if action == "open":
-            target = self._position_simulation_target_position
+            target = self.animation.target_position
             if target is None:
                 cap = 100.0 if anchor >= 100.0 else max(99.0, anchor)
             else:
                 cap = target if anchor < target else anchor
             return max(0.0, min(calculated, cap))
 
-        target = self._position_simulation_target_position
+        target = self.animation.target_position
         if target is None:
             floor = 0.0 if anchor <= 0.0 else min(1.0, anchor)
         else:
@@ -511,26 +521,30 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
     def _sync_position_simulation_from_status(self, status: NiceBidiStatus) -> None:
         """Rebase or stop simulated display movement from a real status update."""
         self._observe_position_speed(status)
-        if self.calibration_state == CALIBRATION_STATE_RUNNING:
+        if status.observed_fields is not None and not {"state", "position"} & status.observed_fields:
+            return
+        if not self._position_sample_is_current(status):
+            status = replace(status, position=None)
+        if self._coordinator.calibration_controller.calibration_state == CALIBRATION_STATE_RUNNING:
             self._clear_position_simulation(notify=False)
             return
         real_action = self._motion_action_from_state(status.state)
         if (
-            self._position_simulation_action == "open"
+            self.animation.action == "open"
             and status.state == STATE_OPEN
-            or self._position_simulation_action == "close"
+            or self.animation.action == "close"
             and status.state == STATE_CLOSED
         ):
             self._clear_position_simulation(notify=False)
             return
         if status.position is None:
             if real_action is not None:
-                if self._position_simulation_action is None:
+                if self.animation.action is None:
                     self._start_position_simulation(real_action)
-                if self._position_simulation_action == real_action:
-                    if not self._position_simulation_confirmed_moving:
-                        self._position_simulation_anchor_monotonic = time.monotonic()
-                    self._position_simulation_confirmed_moving = True
+                if self.animation.action == real_action:
+                    if not self.animation.confirmed_moving:
+                        self.animation.anchor_monotonic = time.monotonic()
+                    self.animation.confirmed_moving = True
                 return
             if status.state in {STATE_STOPPED, STATE_PARTIALLY_OPEN}:
                 self._hold_position_simulation()
@@ -541,14 +555,14 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
                 real_action,
                 status.position,
                 confirmed_moving=True,
-                keep_target=real_action == self._position_simulation_action,
+                keep_target=real_action == self.animation.action,
             )
             return
 
-        if self._position_simulation_action is None:
+        if self.animation.action is None:
             return
-        if not self._position_simulation_confirmed_moving:
-            started = self._position_simulation_started_monotonic
+        if not self.animation.confirmed_moving:
+            started = self.animation.started_monotonic
             if (
                 started is not None
                 and time.monotonic() - started < POSITION_SIMULATION_START_GRACE_SECONDS
@@ -559,16 +573,18 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
     def _observe_position_speed(self, status: NiceBidiStatus) -> None:
         """Learn movement speed from consecutive live position samples."""
         self._learn_movement_speed(status)
+        if not self._position_sample_is_current(status):
+            return
         action = self._motion_action_from_state(status.state)
         position = status.position
         if action is None or position is None:
-            self._position_observation = None
+            self.estimator.observation = None
             return
 
-        now = time.monotonic()
-        previous = self._position_observation
+        now = (status.observation_times or {}).get("position", time.monotonic())
+        previous = self.estimator.observation
         if previous is None or previous[0] != action:
-            self._position_observation = (action, position, now)
+            self.estimator.observation = (action, position, now)
             return
 
         _, previous_position, previous_time = previous
@@ -576,7 +592,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         if elapsed < POSITION_OBSERVED_SPEED_MIN_INTERVAL_SECONDS:
             return
         if elapsed > POSITION_OBSERVED_SPEED_MAX_INTERVAL_SECONDS:
-            self._position_observation = (action, position, now)
+            self.estimator.observation = (action, position, now)
             return
 
         distance = (
@@ -585,7 +601,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             else previous_position - position
         )
         if distance < 0:
-            self._position_observation = (action, position, now)
+            self.estimator.observation = (action, position, now)
             return
         if distance == 0:
             return
@@ -593,20 +609,20 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             return
 
         speed = distance / elapsed
-        self._position_observation = (action, position, now)
+        self.estimator.observation = (action, position, now)
         if not 0 < speed <= POSITION_OBSERVED_SPEED_MAX_PERCENT_PER_SECOND:
             return
-        previous_speed = self._observed_position_speed_percent_per_second.get(action)
+        previous_speed = self.estimator.observed_speeds.get(action)
         if previous_speed is not None:
             smoothing = POSITION_OBSERVED_SPEED_SMOOTHING_FACTOR
             speed = (previous_speed * (1 - smoothing)) + (speed * smoothing)
-        self._observed_position_speed_percent_per_second[action] = speed
+        self.estimator.observed_speeds[action] = speed
 
     def _hold_position_simulation(self) -> None:
         """Freeze an estimated position when movement ends without real position."""
         simulated = self._current_simulated_position()
         if simulated is not None:
-            self._last_known_position = round(simulated, 1)
+            self.estimator.last_known_position = round(simulated, 1)
         self._clear_position_simulation(notify=False)
 
     def _rebase_position_simulation(
@@ -619,48 +635,48 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
     ) -> None:
         """Follow readings without rewinding the display during continuous motion."""
         now = time.monotonic()
-        if action == self._position_simulation_action:
+        if action == self.animation.action:
             displayed = self._current_simulated_position()
             if displayed is not None:
                 position = max(position, displayed) if action == "open" else min(position, displayed)
-        curve = self._position_speed_curve(action)
+        curve = self._coordinator.calibration_controller._position_speed_curve(action)
         speed = speed_at(position, curve)
-        target = self._position_simulation_target_position if keep_target else None
+        target = self.animation.target_position if keep_target else None
         limit = 100.0 if action == "open" and target is None else 0.0 if target is None else target
         distance = abs(limit - position)
         expected_seconds = distance / min(curve)
-        self._position_simulation_action = action
-        self._position_simulation_anchor_position = max(0.0, min(100.0, position))
-        self._position_simulation_anchor_monotonic = now
-        if self._position_simulation_started_monotonic is None:
-            self._position_simulation_started_monotonic = now
-        self._position_simulation_deadline_monotonic = now + max(
+        self.animation.action = action
+        self.animation.anchor_position = max(0.0, min(100.0, position))
+        self.animation.anchor_monotonic = now
+        if self.animation.started_monotonic is None:
+            self.animation.started_monotonic = now
+        self.animation.deadline_monotonic = now + max(
             POSITION_SIMULATION_START_GRACE_SECONDS,
             expected_seconds + POSITION_SIMULATION_TIMEOUT_PADDING_SECONDS,
         )
-        self._position_simulation_confirmed_moving = confirmed_moving
-        self._position_simulation_target_position = target
-        self._position_simulation_speed_percent_per_second = speed
-        self._position_simulation_speed_curve = curve
+        self.animation.confirmed_moving = confirmed_moving
+        self.animation.target_position = target
+        self.animation.speed_percent_per_second = speed
+        self.animation.speed_curve = curve
         self._ensure_position_simulation_task()
 
     def _clear_position_simulation(self, *, notify: bool = True) -> None:
         """Clear optimistic position animation state."""
-        task = self._position_simulation_task
-        self._position_simulation_task = None
-        self._position_simulation_action = None
-        self._position_simulation_anchor_position = None
-        self._position_simulation_anchor_monotonic = None
-        self._position_simulation_started_monotonic = None
-        self._position_simulation_deadline_monotonic = None
-        self._position_simulation_confirmed_moving = False
-        self._position_simulation_target_position = None
-        self._position_simulation_speed_percent_per_second = None
-        self._position_simulation_speed_curve = None
+        task = self.animation.task
+        self.animation.task = None
+        self.animation.action = None
+        self.animation.anchor_position = None
+        self.animation.anchor_monotonic = None
+        self.animation.started_monotonic = None
+        self.animation.deadline_monotonic = None
+        self.animation.confirmed_moving = False
+        self.animation.target_position = None
+        self.animation.speed_percent_per_second = None
+        self.animation.speed_curve = None
         if task is not None and not task.done() and task is not asyncio.current_task():
             task.cancel()
         if notify:
-            self.async_update_listeners()
+            self._coordinator.async_update_listeners()
 
     @staticmethod
     def _motion_action_from_state(state: str) -> str | None:
@@ -719,7 +735,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         stop_position: float,
     ) -> float | None:
         """Return remaining calibrated time from a live position update."""
-        speed = self._calibrated_travel_speed_percent_per_second(action)
+        speed = self._coordinator.calibration_controller._calibrated_travel_speed_percent_per_second(action)
         if speed is None or speed <= 0:
             return None
         if action == "open":
@@ -730,49 +746,46 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
 
     async def async_set_position(self, target_position: int) -> None:
         """Move toward a target percentage and stop after the target is reached."""
-        await self._async_cancel_calibration(reason="set_position")
+        await self._coordinator.calibration_controller._async_cancel_calibration(reason="set_position")
         await self._async_cancel_post_command_refresh()
         target = max(0, min(100, target_position))
-        status = self.data
+        status = self._coordinator.data
         current = status.position if status is not None and status.position is not None else self.display_position
         if status is None or current is None:
-            await self.async_request_refresh()
-            status = self.data
+            await self._coordinator.async_request_refresh()
+            status = self._coordinator.data
             current = status.position if status is not None and status.position is not None else self.display_position
         if status is None or current is None:
             raise HomeAssistantError("Nice position is not available")
 
         if target <= 0:
-            await self.async_send_action("close")
+            await self._coordinator.async_send_action("close")
             return
         if target >= 100:
-            await self.async_send_action("open")
+            await self._coordinator.async_send_action("open")
             return
         if abs(current - target) <= POSITION_TARGET_TOLERANCE:
             if status.is_moving:
-                await self.async_send_action("stop")
+                await self._coordinator.async_send_action("stop")
             return
 
         action = "open" if target > current else "close"
-        calibrated_stop_percent = self._calibrated_stop_percent(float(target), action)
+        calibrated_stop_percent = self._coordinator.calibration_controller._calibrated_stop_percent(float(target), action)
         stop_position = float(target) if calibrated_stop_percent is None else calibrated_stop_percent
         stop_raw = None
-        if calibrated_stop_percent is not None and self._has_encoder_calibration_data(status):
+        if calibrated_stop_percent is not None and self._coordinator.calibration_controller._has_encoder_calibration_data(status):
             stop_raw = self._raw_for_percent(status, stop_position)
-        stop_delay_seconds = self._calibrated_stop_delay_seconds(current, stop_position, action)
+        stop_delay_seconds = self._coordinator.calibration_controller._calibrated_stop_delay_seconds(current, stop_position, action)
         await self._async_cancel_position_target()
-        await self._async_send_action(action, refresh=False, simulation_target_position=target)
-        self._position_target_task = self.hass.async_create_task(
-            self._async_stop_at_position(
+        await self._coordinator._async_send_action(action, refresh=False, simulation_target_position=target)
+        self.control.target_task = self._coordinator.tasks.create(self._async_stop_at_position(
                 target,
                 action,
                 stop_raw,
                 stop_delay_seconds=stop_delay_seconds,
                 start_position=current,
                 stop_position=stop_position,
-            ),
-            name=f"{DOMAIN} stop at {target}%",
-        )
+            ), name=f"{DOMAIN} stop at {target}%")
 
     async def _async_stop_at_position(
         self,
@@ -802,7 +815,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
             while True:
                 await asyncio.sleep(POSITION_TARGET_POLL_SECONDS)
                 now = time.monotonic()
-                status = await self._async_read_motion_status()
+                status = await self._coordinator.calibration_controller._async_read_motion_status()
 
                 if status.state == moving_state:
                     started_moving = True
@@ -811,12 +824,12 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
                 if position is not None:
                     if stop_raw is not None and status.current_position is not None:
                         if self._raw_reached(action, status, status.current_position, stop_raw):
-                            await self._async_send_action("stop")
+                            await self._coordinator._async_send_action("stop")
                             return
 
                     if stop_delay_seconds is None:
                         if self._position_reached(action, position, target_stop_position):
-                            await self._async_send_action("stop")
+                            await self._coordinator._async_send_action("stop")
                             return
                     elif status.state == moving_state and self._live_position_can_adjust_stop(
                         action,
@@ -827,7 +840,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
                         stop_position=target_stop_position,
                     ):
                         if self._position_reached(action, position, target_stop_position):
-                            await self._async_send_action("stop")
+                            await self._coordinator._async_send_action("stop")
                             return
                         if (
                             live_adjustment_position is None
@@ -848,7 +861,7 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
                                 live_adjustment_position = position
 
                 if stop_deadline_monotonic is not None and now >= stop_deadline_monotonic:
-                    await self._async_send_action("stop")
+                    await self._coordinator._async_send_action("stop")
                     return
                 if status.state == moving_state:
                     continue
@@ -863,19 +876,19 @@ class NiceBidiPositionController(OwnerBoundController["NiceBidiDataUpdateCoordin
         except asyncio.CancelledError:
             raise
         except NiceBidiAuthError as err:
-            await self.hass.async_add_executor_job(self.client.close)
-            self.connection_state = CONNECTION_STATE_AUTH_FAILED
-            self.last_error = str(err)
+            await self._coordinator.hass.async_add_executor_job(self._coordinator.client.close)
+            self._coordinator.connection_runtime.state = CONNECTION_STATE_AUTH_FAILED
+            self._coordinator.connection_runtime.last_error = str(err)
             _LOGGER.warning("Nice target-position authentication failed: %s", err)
         except (NiceBidiConnectionError, OSError) as err:
-            await self.hass.async_add_executor_job(self.client.close)
-            self.connection_state = CONNECTION_STATE_FAILED
-            self.last_error = str(err)
-            self.update_interval = ERROR_UPDATE_INTERVAL
+            await self._coordinator.hass.async_add_executor_job(self._coordinator.client.close)
+            self._coordinator.connection_runtime.state = CONNECTION_STATE_FAILED
+            self._coordinator.connection_runtime.last_error = str(err)
+            self._coordinator.update_interval = ERROR_UPDATE_INTERVAL
             _LOGGER.warning("Nice target-position tracking failed: %s", err)
         finally:
-            if self._position_target_task is task:
-                self._position_target_task = None
+            if self.control.target_task is task:
+                self.control.target_task = None
 
     @staticmethod
     def _validate_position_bounds(status: NiceBidiStatus) -> None:

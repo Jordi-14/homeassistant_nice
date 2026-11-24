@@ -33,6 +33,8 @@ class NiceDeviceProfile:
     families: frozenset[ProductFamily]
     dmp_status: bool | None
     high_level_actions: bool | None
+    access_contract: str = "shared_wifi"
+    blocked_gap: str | None = None
 
 
 SHARED_WIFI_PROFILE = NiceDeviceProfile(
@@ -55,6 +57,9 @@ CONSERVATIVE_PROFILE = NiceDeviceProfile(
     high_level_actions=None,
 )
 
+CORE_PROFILE = NiceDeviceProfile("core", frozenset({ProductFamily.CORE}), None, None, "core", "transport.core")
+PROVIEW_PROFILE = NiceDeviceProfile("proview", frozenset({ProductFamily.PROVIEW}), None, None, "proview", "transport.proview")
+
 DMP_WRITE_RESTRICTIONS = (
     DmpWriteRestriction(
         key="aria200s_clbox_speed_encoding",
@@ -73,8 +78,9 @@ DMP_WRITE_RESTRICTIONS = (
 
 def profile_for_family(family: ProductFamily) -> NiceDeviceProfile:
     """Return the validated profile for a normalized product family."""
-    if family in SHARED_WIFI_PROFILE.families:
-        return SHARED_WIFI_PROFILE
+    for profile in (SHARED_WIFI_PROFILE, CORE_PROFILE, PROVIEW_PROFILE):
+        if family in profile.families:
+            return profile
     return CONSERVATIVE_PROFILE
 
 

@@ -13,6 +13,7 @@ from .models.commands import (
     NiceCommand,
     NiceCommandResult,
 )
+from .models.runtime_state import CommandRuntimeState
 
 
 class CommandExecutor:
@@ -23,7 +24,15 @@ class CommandExecutor:
     ) -> None:
         self._run = run
         self._clock = clock
-        self.last_result: NiceCommandResult | None = None
+        self.state = CommandRuntimeState()
+
+    @property
+    def last_result(self) -> NiceCommandResult | None:
+        return self.state.last_result
+
+    @last_result.setter
+    def last_result(self, value: NiceCommandResult | None) -> None:
+        self.state.last_result = value
 
     def failed_result(
         self, command: NiceCommand, started: float, error: Exception
@@ -31,6 +40,7 @@ class CommandExecutor:
         explicit = (
             isinstance(error, (NiceResponseError, NiceBidiAuthError, ValueError))
             or nice_error_code(error) is not None
+            or getattr(error, "delivery", None) == "not_sent"
         )
         uncertain = (
             getattr(error, "delivery_unknown", False) or nice_error_code(error) == "14"

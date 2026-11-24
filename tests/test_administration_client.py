@@ -32,11 +32,13 @@ class AdministrationClient(NiceBidiClient):
         self.responses: dict[str, bytes] = {}
         self.command_runner_calls = 0
 
-    def _run_with_reconnect(self, operation: Callable):
+    def _run_with_reconnect(self, operation: Callable, *, preemptible=False):
         return operation()
 
-    def _run_command_once(self, operation: Callable):
+    def _run_command_once(self, operation: Callable, *, before_dispatch=None):
         self.command_runner_calls += 1
+        if before_dispatch is not None:
+            before_dispatch()
         return operation()
 
     def _signed_exchange_locked(self, request_type: str, body: str = "") -> bytes:
@@ -145,8 +147,8 @@ class RealPathClient(AdministrationClient):
         self.reply = reply
         self.closes = 0
 
-    def _run_with_reconnect(self, operation: Callable):
-        return NiceBidiClient._run_with_reconnect(self, operation)
+    def _run_with_reconnect(self, operation: Callable, *, preemptible=False):
+        return NiceBidiClient._run_with_reconnect(self, operation, preemptible=preemptible)
 
     def _ensure_connected_locked(self) -> None:
         return None
