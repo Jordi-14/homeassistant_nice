@@ -8,7 +8,7 @@ import re
 from ..errors import NiceAuthError
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, repr=False)
 class NiceCredentials:
     """Credentials needed for NHK authentication."""
 

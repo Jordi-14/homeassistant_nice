@@ -177,6 +177,12 @@ class FeatureRuntime:
                 ]
                 if permissions:
                     permission = any("w" in value for value in permissions)
+        if binding is not None and binding.handler in {"setting", "name", "clock", "reboot"} and hasattr(owner,"access"):
+            role=str(owner.access.role)
+            if permission is not False:
+                permission = True if role == "admin" else None if role == "unknown" else False
+            if role!="admin":
+                reasons.append("Administrator permission has not been verified" if role=="unknown" else "Module role does not allow administration")
         if support is False:
             reasons.append("Device does not advertise this operation")
         if permission is False:

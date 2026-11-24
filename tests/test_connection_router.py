@@ -44,6 +44,8 @@ class RouteClient:
         self.close_count = 0
         self.event_stream_active = False
         self.event_stream_error = None
+        from custom_components.nice_bidiwifi.session_state import SessionState
+        self.session_state = SessionState()
 
     def read_status(self, *, include_extended: bool = False, preemptible: bool = False):
         result = self.read_results.popleft()

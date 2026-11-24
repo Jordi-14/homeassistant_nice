@@ -10,7 +10,7 @@
         },
         "data_description": {
           "connection_mode": "How Home Assistant should reach this Nice device. Only modes supported by this version are shown.",
-          "credential_source": "Enter NHK credentials manually or import them during a one-time MyNice session."
+          "credential_source": "Enter existing NHK credentials, import from MyNice, pair directly or inspect a provisioning interface."
         }
       },
       "cloud_auth": {
@@ -184,6 +184,43 @@
           "t4_timeout_ms": "Timeout sent inside local T4 requests, in milliseconds.",
           "legacy_local_tls": "Enable only for an older local interface that cannot complete the normal TLS handshake. This does not affect cloud connections."
         }
+      },
+      "pairing": {
+        "title": "Pair directly with the module",
+        "description": "Choose first user only for an unpaired module and enter its printed setup code. For an existing installation, request access and ask its administrator to approve it in MyNice. This explicitly creates a module user; it never resets the device. Direct pairing needs a reachable local TLS address. Administrator access is required for configuration; ordinary users can operate the gate.",
+        "data": {
+          "name": "Name",
+          "host": "Module IP address or hostname",
+          "port": "TLS port",
+          "target_mac": "Module MAC address",
+          "enrollment_kind": "Installation state",
+          "setup_code": "Printed setup code (first user only)",
+          "legacy_local_tls": "Legacy local TLS compatibility",
+          "confirm_enrollment": "Create or resume this Home Assistant access request"
+        }
+      },
+      "pairing_wait": {
+        "title": "Check module approval",
+        "description": "The same access identity has been saved. Approve this Home Assistant request in MyNice using an existing administrator account, then select Submit to check with VERIFY. This does not resend PAIR. If delivery was interrupted, keep this identity and check before trying another enrollment method. A returned device password and an active role are required to finish."
+      },
+      "pairing_finish": {
+        "title": "Validate approved access",
+        "description": "The module returned an active role and a device password. Select Submit to retry the connection test. The pairing request will not be sent again."
+      },
+      "network_probe": {
+        "title": "Inspect a provisioning interface",
+        "description": "Read-only WNC INFO and SCAN on a module access point reachable from Home Assistant. Enter its TLS port from the module documentation or discovery. This does not join a Wi-Fi network or save passwords. Wi-Fi configuration is unavailable until AP state, identity and recovery are verified. Existing configured modules are excluded.",
+        "data": {
+          "host": "Access-point IP address or hostname",
+          "port": "Access-point TLS port",
+          "target_mac": "Module MAC address",
+          "legacy_local_tls": "Legacy local TLS compatibility",
+          "confirm_probe": "Read provisioning information and scan available networks"
+        }
+      },
+      "network_results": {
+        "title": "Provisioning inspection",
+        "description": "Reported model: {model}. Networks found: {networks}. No network credentials were collected or configuration changed. Wi-Fi setup is blocked pending verified AP-state and recovery bindings. Continue to choose another setup method."
       }
     },
     "error": {
@@ -203,7 +240,20 @@
       "invalid_protocol": "The device returned a malformed or unsupported local protocol response.",
       "unsupported_device": "The device authenticated but does not expose a compatible local control protocol.",
       "unknown": "Unexpected error",
-      "wrong_device": "The MAC address does not match this configured Nice interface."
+      "wrong_device": "The MAC address does not match this configured Nice interface.",
+      "enrollment_confirmation_required": "Confirm the access request before sending it.",
+      "invalid_enrollment_kind": "Choose first-user pairing or an access request.",
+      "setup_code_required": "Enter the printed setup code for first-user pairing.",
+      "enrollment_rejected": "The module rejected this enrollment. Check its installation state and approval requirements.",
+      "pairing_not_approved": "The module has not returned an active approved role and a complete device password.",
+      "pairing_verification_failed": "Approval could not be verified. Keep the saved identity and try checking again.",
+      "first_user_admin_not_confirmed": "First-user pairing did not confirm administrator access. Check the module installation state.",
+      "pairing_connection_not_ready": "The returned credentials could not yet establish a connection. Check the address and app sessions, then retry validation.",
+      "pairing_identity_rejected": "The module rejected this pairing identity (Code 1). Credentials, approval or firmware/session behavior may be involved; the exact cause is unresolved. No automatic pairing or reset is attempted.",
+      "network_probe_confirmation_required": "Confirm the read-only provisioning inspection.",
+      "network_probe_failed": "The provisioning interface could not be inspected. Check its address, TLS port and reachability.",
+      "enrollment_storage_unavailable": "The enrollment identity could not be safely stored. Check Home Assistant storage before retrying.",
+      "invalid_setup_code": "The printed setup code has an invalid format."
     },
     "abort": {
       "all_accessories_configured": "Every Nice interface returned by this account is already configured",
@@ -215,14 +265,18 @@
       "reauth_successful": "Reauthentication successful",
       "reconfigure_successful": "Reconfiguration successful",
       "unsupported_device": "This Nice product family does not yet have a compatible transport",
-      "unsupported_service": "This Nice network service is not supported"
+      "unsupported_service": "This Nice network service is not supported",
+      "pairing_requires_local": "Direct pairing needs a local connection. Cloud-only entries can use manual credentials or MyNice import.",
+      "pairing_identity_unavailable": "No saved enrollment identity is available. Start the setup flow again to recover the same identity."
     }
   },
   "selector": {
     "credential_source": {
       "options": {
         "manual": "Enter NHK credentials manually",
-        "mynice": "One-time MyNice import"
+        "mynice": "One-time MyNice import",
+        "direct_pair": "Direct module pairing",
+        "network_setup": "Read-only Wi-Fi provisioning inspection"
       }
     },
     "connection_mode": {
@@ -230,6 +284,20 @@
         "local_with_cloud_fallback": "Local + cloud fallback (recommended)",
         "local_only": "Fully local",
         "cloud_only": "Fully cloud"
+      }
+    },
+    "enrollment_kind": {
+      "options": {
+        "first_user": "First user on an unpaired module",
+        "request_access": "Request access from an existing administrator"
+      }
+    },
+    "module_role": {
+      "options": {
+        "admin": "Administrator",
+        "user": "Ordinary user",
+        "disable": "Disabled",
+        "wait": "Waiting for approval"
       }
     }
   },
@@ -357,7 +425,75 @@
           "all_zero_unverified": "All-zero history, validity unknown",
           "reported_slots": "Reported history slots"
         }
+      },
+      "module_access_role": {
+        "name": "Module permission",
+        "state": {
+          "admin": "Administrator",
+          "user": "Ordinary user",
+          "disable": "Disabled",
+          "wait": "Waiting for approval",
+          "unverified": "Unverified"
+        }
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nice module access",
+        "menu_options": {
+          "inspect_users": "Inspect users and permissions",
+          "approve_user": "Approve a pending user",
+          "edit_user": "Change another user permission",
+          "identify": "Identify the interface",
+          "network_setup": "Wi-Fi setup availability",
+          "ownership": "Ownership and removal availability"
+        }
+      },
+      "inspect_users": {
+        "title": "Module access",
+        "description": "This integration role: {role}. Approved records: {users}. Pending requests: {pending}. Administrators: {admins}. Roles refer to the module, not cloud ownership. User identifiers are kept out of diagnostics. Continue to return to the menu.\n\n{records}"
+      },
+      "approve_user": {
+        "title": "Approve a pending request",
+        "description": "Choose an existing pending module request to approve as an ordinary user. Review the person and device before continuing.",
+        "data": {
+          "target": "Pending request"
+        }
+      },
+      "edit_user": {
+        "title": "Change module permission",
+        "description": "Choose another approved record. Disabled users remain paired; this does not delete a record or transfer cloud ownership. Current Home Assistant access cannot be changed here.",
+        "data": {
+          "target": "Module user",
+          "role": "New permission"
+        }
+      },
+      "confirm_access": {
+        "title": "Confirm permission change",
+        "description": "Change {target} to module permission {role}? The complete list and your administrator role will be checked again immediately before sending. The integration will read back the result and will not replay an uncertain write.",
+        "data": {
+          "confirm": "Apply this permission change"
+        }
+      },
+      "identify": {
+        "title": "Identify the module",
+        "description": "Submit sends one IDENTIFY request while the gate is confirmed stationary. Its visible effect depends on the module. This does not command gate movement."
+      }
+    },
+    "error": {
+      "access_inspection_failed": "Could not verify current administrator access and the user list. Check connectivity and the account role in MyNice.",
+      "invalid_access_target": "Select a valid user and permission.",
+      "access_confirmation_required": "Confirm this permission change.",
+      "access_operation_failed": "The permission change was not confirmed. Inspect the current users before retrying; an uncertain change is never replayed automatically.",
+      "identify_failed": "The identify request could not be confirmed. Check connectivity and that the gate is stationary."
+    },
+    "abort": {
+      "not_loaded": "Load the integration before managing module access.",
+      "no_access_targets": "No eligible records were found. Current Home Assistant access is excluded.",
+      "network_workflow_unverified": "Wi-Fi changes are unavailable: AP-state, identity and operational rediscovery/recovery are not verified. Use the manufacturer app. No network password has been collected.",
+      "ownership_workflow_unverified": "Physical user deletion and cloud ownership transfer are unavailable until their complete transactions and recovery are verified. Another module user can be promoted to administrator separately."
     }
   }
 }

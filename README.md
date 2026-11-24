@@ -209,6 +209,15 @@ custom_components/nice_bidiwifi
 
 Then restart Home Assistant.
 
+## Direct pairing and module permissions
+
+New entries can pair directly with a local module, either as its first user or as
+an access request approved by an existing administrator. Existing manual setup and
+MyNice import remain available. The Configure menu adds user inspection, approval,
+permission changes and Identify. Administrator verification is required for
+configuration writes. See [Onboarding and module access](docs/onboarding_access.md)
+for prerequisites, interrupted setup recovery and explicit Wi-Fi/ownership gaps.
+
 ## Quick Setup
 
 1. Configure the BiDi-WiFi with the normal **MyNice** app.

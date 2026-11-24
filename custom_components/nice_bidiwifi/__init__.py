@@ -23,6 +23,7 @@ from .const import (
 from .models.config import ConnectionMode
 from .models.discovery import normalize_device_id
 from .position import movement_profile_store
+from .pairing_intents import PairingIntents
 from .runtime import NiceRuntimeData, get_coordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -160,6 +161,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         finally:
             entry.runtime_data = None
         raise
+    try:
+        await PairingIntents(hass).complete_if_bound(coordinator.entry_config.credentials)
+    except Exception:
+        _LOGGER.warning("Could not finish pairing identity cleanup; saved credentials are retained")
     coordinator.async_start_background_refresh()
     return True
 

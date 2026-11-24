@@ -36,6 +36,11 @@ from custom_components.nice_bidiwifi.models.administration import (
 )
 from custom_components.nice_bidiwifi.observations import ObservationStore
 from custom_components.nice_bidiwifi.parameters import ParameterRepository
+from custom_components.nice_bidiwifi.protocol.nhk.access import (
+    PairedUser,
+    PairingsSnapshot,
+    UserRole,
+)
 from custom_components.nice_bidiwifi.protocol.t4.settings import DmpSetting
 from custom_components.nice_bidiwifi.write_policy import dmp_write_block_reason
 
@@ -330,6 +335,13 @@ class FakeClient:
         if self.read_nhk_status_error is not None:
             raise self.read_nhk_status_error
         return self.read_nhk_status_result
+
+    @property
+    def access_session_scope(self):
+        return ("local", self.reconnect_count)
+
+    def read_pairings(self):
+        return PairingsSnapshot((PairedUser("1","user","source",UserRole.ADMIN),))
 
     def read_dmp_info(self, group: int, parameter: int, *, preemptible: bool = False):
         """Return no INFO unless a test sets one; yield once per queued preemption."""

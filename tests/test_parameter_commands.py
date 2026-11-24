@@ -185,6 +185,7 @@ async def test_setting_write_reads_only_the_changed_parameter(
 
 async def test_readback_failure_never_resends_the_write(hass) -> None:
     coordinator = _coordinator(hass)
+    coordinator.data = make_status(state="closed")
     client = coordinator.client = FakeClient()
     client.read_dmp_value_error = NiceReadPreemptedError("stop is waiting")
     await coordinator._async_write_dmp_register(4, 0x81, 30)
@@ -209,6 +210,7 @@ async def test_missing_or_indexed_force_info_is_blocked_in_backend(
 
 async def test_backend_uses_info_width_byte_order_and_constraints(hass) -> None:
     coordinator = _coordinator(hass)
+    coordinator.data = make_status(state="closed")
     client = coordinator.client = FakeClient()
     coordinator.setting_info["opening_force"] = decode_dmp_info(
         bytes.fromhex("82000a01000064000200")
@@ -267,8 +269,19 @@ async def test_metadata_is_rechecked_after_acquiring_the_session(
     hass, monkeypatch
 ) -> None:
     coordinator = _coordinator(hass)
+    coordinator.data = make_status(state="closed")
     client = coordinator.client = _client()
     client.parameters = coordinator.parameters
+    from custom_components.nice_bidiwifi.protocol.nhk.access import (
+        PairedUser,
+        PairingsSnapshot,
+        UserRole,
+    )
+    client.access_session_scope = ("test", 0)
+    credentials = coordinator.entry_config.credentials
+    coordinator.access.snapshot = PairingsSnapshot((PairedUser("1", credentials.username, credentials.source, UserRole.ADMIN),))
+    coordinator.access.scope = client.access_session_scope
+    coordinator.access._verified_at = time.monotonic()
     coordinator.setting_info["opening_force"] = DmpInfo(1, 0, 10, 1, 0, 100, 1)
     sent = []
 
@@ -360,6 +373,7 @@ async def test_verification_connection_loss_keeps_write_outcome_but_marks_connec
     hass,
 ) -> None:
     coordinator = _coordinator(hass)
+    coordinator.data = make_status(state="closed")
     client = coordinator.client = FakeClient()
     client.read_dmp_value_error = NiceBidiConnectionError("offline during readback")
     await coordinator._async_write_dmp_register(4, 0x81, 30)

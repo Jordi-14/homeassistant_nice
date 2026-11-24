@@ -10,6 +10,9 @@ SENSITIVE_CONFIG_KEYS = frozenset(
     {
         "host",
         "password",
+        "setup_code",
+        "wifi_password",
+        "wifi_key",
         "source_id",
         "target_mac",
         "username",

@@ -38,6 +38,25 @@ class EvidenceGap:
 
 GAPS = (
     EvidenceGap(
+        "setup.wnc_recovery",
+        "Wi-Fi configuration needs verified AP state and recovery",
+        "WNC INFO/SCAN and CONFIG fields are recovered, but AP-state and target identity validation plus operational rediscovery/rollback are not verified against complete responses.",
+        "Complete the provisioning adapter state machine with sanitized INFO/SCAN/CONFIG replies, target binding, success detection and a recoverable interrupted-write path. CONFIG must stay blocked until all prerequisites pass.",
+    ),
+    EvidenceGap(
+        "setup.ownership_removal",
+        "User deletion and cloud ownership transfer are not verified",
+        "USER_NEW approval and USER_EDIT permissions are recovered; disabling a paired record is not physical deletion, and module administrator is not cloud ownership.",
+        "Recover dedicated removal/ownership transactions, consent, sole-administrator and completion/recovery rules before enabling these options. Existing access is preserved.",
+    ),
+    EvidenceGap(
+        "setup.cloud_registration",
+        "Explicit cloud binding registration is unresolved",
+        "REGISTER appears in the app, but its ownership, authorization and resulting cloud binding are not established for this integration.",
+        "Recover and validate the complete registration workflow and readback. Do not call REGISTER during pairing, import or upgrade.",
+    ),
+
+    EvidenceGap(
         "diagnostics.receiver_layouts",
         "Receiver event layouts and redaction are incomplete",
         "Native receiver payloads can contain remote identifiers, rolling codes or keys; their full scoped decoder is not established.",
@@ -321,6 +340,8 @@ def _features() -> tuple[FeatureDefinition, ...]:
                     "controller.binding_map",
                 )
                 if key == "controller.configuration"
+                else ("setup.wnc_recovery", "setup.ownership_removal", "setup.cloud_registration", "runtime.connection.code1")
+                if key == "setup.access"
                 else (),
             )
         )

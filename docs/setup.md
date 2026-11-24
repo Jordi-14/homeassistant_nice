@@ -315,3 +315,11 @@ logger:
 Debug logs include connection stage, request type, response type/id, response
 size, and T4 payload count. They do not include extracted usernames, source IDs,
 target MAC addresses, or passwords.
+
+## Direct enrollment and access management
+
+The setup selector also offers direct local pairing and read-only provisioning
+inspection. First-user pairing and an existing administrator's approval workflow
+are separate. See [Onboarding and module access](onboarding_access.md) for the
+step-by-step prerequisites, saved identity lifecycle, role checks and remaining
+Wi-Fi and ownership gaps. Existing entries require no re-pairing after upgrading.

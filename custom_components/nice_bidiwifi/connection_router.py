@@ -429,6 +429,24 @@ class NiceConnectionRouter:
         return self._read("read_dmp_value", group, parameter,
                           operation_priority=OperationPriority.DIAGNOSTIC if background else None, **kwargs)
 
+    @property
+    def access_session_scope(self):
+        client = self._active_client
+        return (str(self.active_route),client.session_state.generation) if client is not None else None
+
+    @property
+    def session_diagnostics(self):
+        return {name:client.session_state.diagnostics() for name,client in (("local",self._local),("cloud",self._cloud)) if client is not None}
+
+    def read_pairings(self):
+        return self._read("read_pairings",operation_priority=OperationPriority.METADATA)
+
+    def change_user(self,target,operation,role,*,before_dispatch=None):
+        return self._write("change_user",target,operation,role,before_dispatch=before_dispatch)
+
+    def identify_interface(self,*,before_dispatch=None):
+        return self._write("identify_interface",before_dispatch=before_dispatch)
+
     def read_logs(self, event_count: int = LOG_EVENTS_PER_SCOPE):
         return self._read("read_logs", event_count)
 
@@ -473,14 +491,14 @@ class NiceConnectionRouter:
             **({"before_dispatch": before_dispatch} if before_dispatch is not None else {}),
         )
 
-    def update_interface_name(self, name: str) -> None:
-        self._write("update_interface_name", name)
+    def update_interface_name(self, name: str, *, before_dispatch=None) -> None:
+        self._write("update_interface_name", name, before_dispatch=before_dispatch)
 
-    def update_interface_clock(self, clock) -> None:
-        self._write("update_interface_clock", clock)
+    def update_interface_clock(self, clock, *, before_dispatch=None) -> None:
+        self._write("update_interface_clock", clock, before_dispatch=before_dispatch)
 
-    def reboot_interface(self) -> None:
-        self._write("reboot_interface")
+    def reboot_interface(self, *, before_dispatch=None) -> None:
+        self._write("reboot_interface", before_dispatch=before_dispatch)
 
     def add_event_callback(self, callback) -> Callable[[], None]:
         removers: list[Callable[[], None]] = []

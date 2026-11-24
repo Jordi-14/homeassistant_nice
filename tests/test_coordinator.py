@@ -1300,6 +1300,7 @@ async def test_t4_action_route_needs_a_writable_t4action_service(
 async def test_write_dmp_register_records_command_metadata(hass: HomeAssistant) -> None:
     """Test DMP register write success handling."""
     instance = _coordinator(hass)
+    instance.data = make_status(state="closed")
     client = FakeClient()
     instance.client = client
     instance._extended_status_next_refresh_monotonic = 999999.0
@@ -1366,6 +1367,7 @@ async def test_write_dmp_register_blocks_aria_clbox_speed_at_backend(
 async def test_write_dmp_register_wraps_connection_errors(hass: HomeAssistant) -> None:
     """Test DMP register write connection error handling."""
     instance = _coordinator(hass)
+    instance.data = make_status(state="closed")
     client = FakeClient()
     client.write_dmp_register_error = NiceBidiConnectionError("offline")
     instance.client = client

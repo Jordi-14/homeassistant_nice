@@ -43,6 +43,8 @@ def documents() -> dict[str, str]:
         "",
         f"The supplied JADX exports contain {len(entries)} indexed primary source items. Alternate decompiler passes are deduplicated by relative Java path, preferring fewer unrecovered methods. Synthetic classes, generated bindings/navigation helpers and build resources are excluded. Supporting classes retain their methods so event paths and repository helpers are not silently omitted.",
         "",
+        "Phase 5 setup and module-access behavior, recovery and blocked workflows are documented in [Onboarding and module access](onboarding_access.md).",
+        "",
         "The complete machine-readable index is [app_inventory.json](../custom_components/nice_bidiwifi/app_inventory.json). Every entry has a stable ID, app version, relative source path, SHA-256, public/native/unrecovered methods, delivery destination, phase and known gap dependencies. Destination assignment is an initial routing by source name; phase implementation must follow the actual call path and refine it. One source item can serve several user features. App IDs and enum constructors are not wire codes.",
         "",
         "## Source coverage",

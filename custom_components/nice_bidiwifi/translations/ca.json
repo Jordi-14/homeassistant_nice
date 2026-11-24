@@ -10,7 +10,7 @@
         },
         "data_description": {
           "connection_mode": "Com ha d'accedir Home Assistant a aquest dispositiu Nice. Només es mostren els modes compatibles amb aquesta versió.",
-          "credential_source": "Introdueix les credencials NHK manualment o importa-les durant una sessió única de MyNice."
+          "credential_source": "Introdueix credencials NHK existents, importa-les de MyNice, vincula el mòdul directament o inspecciona una interfície de configuració."
         }
       },
       "cloud_auth": {
@@ -184,6 +184,43 @@
           "t4_timeout_ms": "Temps d'espera enviat dins de les sol·licituds T4 locals, en mil·lisegons.",
           "legacy_local_tls": "Activa-ho només per a una interfície local antiga que no pugui completar la connexió TLS normal. No afecta les connexions al núvol."
         }
+      },
+      "pairing": {
+        "title": "Vincula el mòdul directament",
+        "description": "Tria primer usuari només si el mòdul encara no està vinculat i introdueix el codi imprès. Si ja està configurat, sol·licita accés i demana a un administrador que l’aprovi a MyNice. Aquesta acció crea explícitament un usuari al mòdul i mai el restableix. Cal una adreça TLS local accessible. La configuració requereix permisos d’administrador; els usuaris normals poden accionar la porta.",
+        "data": {
+          "name": "Nom",
+          "host": "Adreça IP o nom del mòdul",
+          "port": "Port TLS",
+          "target_mac": "Adreça MAC del mòdul",
+          "enrollment_kind": "Estat de la instal·lació",
+          "setup_code": "Codi imprès (només primer usuari)",
+          "legacy_local_tls": "Compatibilitat TLS local antiga",
+          "confirm_enrollment": "Crea o reprèn aquesta sol·licitud d’accés de Home Assistant"
+        }
+      },
+      "pairing_wait": {
+        "title": "Comprova l’aprovació del mòdul",
+        "description": "S’ha desat la mateixa identitat d’accés. Aprova la sol·licitud de Home Assistant a MyNice amb un compte administrador existent i prem Envia per comprovar-la amb VERIFY. No es torna a enviar PAIR. Si la transmissió es va interrompre, conserva aquesta identitat i comprova-la abans d’utilitzar un altre mètode. Cal un permís actiu i una contrasenya de dispositiu completa per acabar."
+      },
+      "pairing_finish": {
+        "title": "Valida l’accés aprovat",
+        "description": "El mòdul ha retornat un permís actiu i una contrasenya de dispositiu. Prem Envia per repetir la prova de connexió. No es tornarà a enviar la sol·licitud de vinculació."
+      },
+      "network_probe": {
+        "title": "Inspecciona una interfície de configuració",
+        "description": "Llegeix WNC INFO i SCAN en un punt d’accés del mòdul accessible des de Home Assistant. Introdueix el port TLS indicat a la documentació o descobert a la xarxa. No connecta el mòdul a cap xarxa ni desa contrasenyes. La configuració Wi-Fi està bloquejada fins que es verifiquin l’estat del punt d’accés, la identitat i la recuperació. S’exclouen els mòduls ja configurats.",
+        "data": {
+          "host": "Adreça IP o nom del punt d’accés",
+          "port": "Port TLS del punt d’accés",
+          "target_mac": "Adreça MAC del mòdul",
+          "legacy_local_tls": "Compatibilitat TLS local antiga",
+          "confirm_probe": "Llegeix la informació de configuració i cerca xarxes disponibles"
+        }
+      },
+      "network_results": {
+        "title": "Resultat de la inspecció",
+        "description": "Model indicat: {model}. Xarxes trobades: {networks}. No s’han recollit credencials ni s’ha canviat la xarxa. La configuració Wi-Fi està bloquejada fins a verificar l’estat del punt d’accés i la recuperació. Continua per triar un altre mètode."
       }
     },
     "error": {
@@ -203,7 +240,20 @@
       "invalid_protocol": "El dispositiu ha retornat una resposta de protocol local malformada o no compatible.",
       "unsupported_device": "El dispositiu s'ha autenticat però no exposa un protocol de control local compatible.",
       "unknown": "Error inesperat",
-      "wrong_device": "L'adreça MAC no coincideix amb aquesta interfície Nice configurada."
+      "wrong_device": "L'adreça MAC no coincideix amb aquesta interfície Nice configurada.",
+      "enrollment_confirmation_required": "Confirma la sol·licitud d’accés abans d’enviar-la.",
+      "invalid_enrollment_kind": "Tria la vinculació del primer usuari o una sol·licitud d’accés.",
+      "setup_code_required": "Introdueix el codi imprès per vincular el primer usuari.",
+      "enrollment_rejected": "El mòdul ha rebutjat la vinculació. Comprova l’estat i els requisits d’aprovació.",
+      "pairing_not_approved": "El mòdul encara no ha retornat un permís actiu i una contrasenya completa.",
+      "pairing_verification_failed": "No s’ha pogut verificar l’aprovació. Conserva la identitat desada i torna-ho a comprovar.",
+      "first_user_admin_not_confirmed": "La vinculació del primer usuari no ha confirmat permisos d’administrador. Comprova l’estat del mòdul.",
+      "pairing_connection_not_ready": "Les credencials encara no permeten connectar. Comprova l’adreça i les sessions de les apps i repeteix la validació.",
+      "pairing_identity_rejected": "El mòdul ha rebutjat la identitat (codi 1). Pot estar relacionat amb credencials, aprovació, microprogramari o sessions; la causa exacta és desconeguda. No es vincula ni es restableix automàticament.",
+      "network_probe_confirmation_required": "Confirma la inspecció de només lectura.",
+      "network_probe_failed": "No s’ha pogut inspeccionar la interfície. Comprova l’adreça, el port TLS i la connexió.",
+      "enrollment_storage_unavailable": "No s’ha pogut conservar la identitat de vinculació. Comprova l’emmagatzematge de Home Assistant abans de tornar-ho a provar.",
+      "invalid_setup_code": "El format del codi imprès no és vàlid."
     },
     "abort": {
       "all_accessories_configured": "Totes les interfícies Nice retornades per aquest compte ja estan configurades",
@@ -215,14 +265,18 @@
       "reauth_successful": "Reautenticació correcta",
       "reconfigure_successful": "Reconfiguració correcta",
       "unsupported_device": "Aquesta família de productes Nice encara no té un transport compatible",
-      "unsupported_service": "Aquest servei de xarxa Nice no és compatible"
+      "unsupported_service": "Aquest servei de xarxa Nice no és compatible",
+      "pairing_requires_local": "La vinculació directa requereix connexió local. Per al mode només núvol utilitza credencials manuals o la importació de MyNice.",
+      "pairing_identity_unavailable": "No hi ha una identitat de vinculació disponible. Torna a iniciar la configuració per recuperar la mateixa identitat."
     }
   },
   "selector": {
     "credential_source": {
       "options": {
         "manual": "Introdueix les credencials NHK manualment",
-        "mynice": "Importació única de MyNice"
+        "mynice": "Importació única de MyNice",
+        "direct_pair": "Vinculació directa del mòdul",
+        "network_setup": "Inspecció de la configuració Wi-Fi de només lectura"
       }
     },
     "connection_mode": {
@@ -230,6 +284,20 @@
         "local_with_cloud_fallback": "Local amb alternativa al núvol (recomanat)",
         "local_only": "Completament local",
         "cloud_only": "Completament al núvol"
+      }
+    },
+    "enrollment_kind": {
+      "options": {
+        "first_user": "Primer usuari d’un mòdul sense vincular",
+        "request_access": "Sol·licitar accés a un administrador existent"
+      }
+    },
+    "module_role": {
+      "options": {
+        "admin": "Administrador",
+        "user": "Usuari",
+        "disable": "Desactivat",
+        "wait": "Pendent d’aprovació"
       }
     }
   },
@@ -357,7 +425,75 @@
           "all_zero_unverified": "Historial de zeros, validesa desconeguda",
           "reported_slots": "Entrades d’historial reportades"
         }
+      },
+      "module_access_role": {
+        "name": "Permís del mòdul",
+        "state": {
+          "admin": "Administrador",
+          "user": "Usuari",
+          "disable": "Desactivat",
+          "wait": "Pendent d’aprovació",
+          "unverified": "Sense verificar"
+        }
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Accés al mòdul Nice",
+        "menu_options": {
+          "inspect_users": "Inspecciona usuaris i permisos",
+          "approve_user": "Aprova un usuari pendent",
+          "edit_user": "Canvia el permís d’un altre usuari",
+          "identify": "Identifica la interfície",
+          "network_setup": "Disponibilitat de configuració Wi-Fi",
+          "ownership": "Disponibilitat de propietat i eliminació"
+        }
+      },
+      "inspect_users": {
+        "title": "Accés al mòdul",
+        "description": "Permís de la integració: {role}. Registres aprovats: {users}. Sol·licituds pendents: {pending}. Administradors: {admins}. Els permisos són del mòdul, no de propietat al núvol. Els identificadors no s’exporten als diagnòstics. Continua per tornar al menú.\n\n{records}"
+      },
+      "approve_user": {
+        "title": "Aprova una sol·licitud pendent",
+        "description": "Tria una sol·licitud existent per aprovar-la com a usuari normal. Comprova la persona i el dispositiu abans de continuar.",
+        "data": {
+          "target": "Sol·licitud pendent"
+        }
+      },
+      "edit_user": {
+        "title": "Canvia un permís del mòdul",
+        "description": "Tria un altre registre aprovat. Desactivar un usuari no elimina el registre ni transfereix la propietat al núvol. No es pot canviar l’accés actual de Home Assistant.",
+        "data": {
+          "target": "Usuari del mòdul",
+          "role": "Permís nou"
+        }
+      },
+      "confirm_access": {
+        "title": "Confirma el canvi de permís",
+        "description": "Vols canviar {target} al permís {role}? Es tornaran a verificar la llista completa i el teu permís d’administrador just abans d’enviar-lo. Es llegirà el resultat i no es repetirà automàticament un canvi incert.",
+        "data": {
+          "confirm": "Aplica aquest canvi de permís"
+        }
+      },
+      "identify": {
+        "title": "Identifica el mòdul",
+        "description": "Prem Envia per enviar una petició IDENTIFY amb la porta confirmada com a aturada. L’efecte visible depèn del mòdul. No s’ordena cap moviment de la porta."
+      }
+    },
+    "error": {
+      "access_inspection_failed": "No s’han pogut verificar el permís actual i la llista d’usuaris. Comprova la connexió i el compte a MyNice.",
+      "invalid_access_target": "Tria un usuari i un permís vàlids.",
+      "access_confirmation_required": "Confirma el canvi de permís.",
+      "access_operation_failed": "No s’ha confirmat el canvi. Inspecciona els usuaris abans de repetir-lo; els canvis incerts no es repeteixen automàticament.",
+      "identify_failed": "No s’ha pogut confirmar la identificació. Comprova la connexió i que la porta estigui aturada."
+    },
+    "abort": {
+      "not_loaded": "Carrega la integració abans de gestionar l’accés.",
+      "no_access_targets": "No s’han trobat registres elegibles. S’exclou l’accés actual de Home Assistant.",
+      "network_workflow_unverified": "Els canvis Wi-Fi estan bloquejats fins a verificar l’estat, la identitat i la recuperació. Utilitza l’app del fabricant. No s’ha recollit cap contrasenya de xarxa.",
+      "ownership_workflow_unverified": "L’eliminació física d’usuaris i la transferència de propietat al núvol estan bloquejades fins a verificar les transaccions i la recuperació. Pots promoure un altre usuari del mòdul a administrador per separat."
     }
   }
 }

@@ -115,6 +115,7 @@ class NiceBidiText(NiceCoordinatorEntity, TextEntity):
                 "interface_name_write"
             )
             and not (status is not None and status.is_moving)
+            and (not hasattr(self.coordinator,"access") or str(self.coordinator.access.role)=="admin")
         )
 
     @property

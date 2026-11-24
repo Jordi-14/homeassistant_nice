@@ -361,6 +361,8 @@ class ControllerConfiguration:
                 "Indexed writes require verified element identities and layout",
                 "controller.index_identity",
             )
+        if reason is None and hasattr(owner,"access") and str(owner.access.role)!="admin":
+            reason="Verified administrator permission is required"
         if owner.reported_moving:
             reason = "Configuration writes are blocked while moving"
         elif owner.calibration_controller.calibration_state == "running":

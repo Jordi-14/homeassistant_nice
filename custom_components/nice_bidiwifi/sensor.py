@@ -45,6 +45,7 @@ from .protocol.t4.enums import (
     BLUEBUS_FAULT_STATUSES,
 )
 from .runtime import get_coordinator
+from .entities.access import access_entities
 from .entities.diagnostics import diagnostic_entities
 from .entities.configuration import setup_configuration_sensors
 
@@ -1422,6 +1423,7 @@ async def async_setup_entry(
     """Set up sensors from a config entry."""
     coordinator = get_coordinator(entry)
     async_add_entities(diagnostic_entities(coordinator, entry))
+    async_add_entities(access_entities(coordinator, entry))
     setup_configuration_sensors(coordinator, entry, async_add_entities)
     async_add_entities(
         build_described_entities(

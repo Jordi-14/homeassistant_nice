@@ -381,6 +381,12 @@ class NiceBidiButton(NiceCoordinatorEntity, ButtonEntity):
         if self.entity_description.available_when_offline:
             return True
         supported_fn = self.entity_description.supported_fn
+        if (
+            self.entity_description.key in {"sync_interface_time", "reboot_interface"}
+            and hasattr(self.coordinator, "access")
+            and str(self.coordinator.access.role) != "admin"
+        ):
+            return False
         moving = bool(
             self.coordinator.data is not None
             and self.coordinator.data.is_moving
