@@ -272,6 +272,92 @@
       "controller_parameter_value": {
         "name": "{parameter} (engineering units)"
       }
+    },
+    "sensor": {
+      "diagnostic_counters": {
+        "name": "Controller counters and maintenance",
+        "state": {
+          "available": "Available",
+          "not_read": "Not read or no value",
+          "unsupported": "Unsupported operation",
+          "blocked": "Unverified format",
+          "stale": "Stale history",
+          "all_zero_unverified": "All-zero history, validity unknown",
+          "reported_slots": "Reported history slots"
+        }
+      },
+      "diagnostic_bluebus": {
+        "name": "BlueBus diagnostics",
+        "state": {
+          "available": "Available",
+          "not_read": "Not read or no value",
+          "unsupported": "Unsupported operation",
+          "blocked": "Unverified format",
+          "stale": "Stale history",
+          "all_zero_unverified": "All-zero history, validity unknown",
+          "reported_slots": "Reported history slots"
+        }
+      },
+      "diagnostic_io": {
+        "name": "Controller inputs and outputs",
+        "state": {
+          "available": "Available",
+          "not_read": "Not read or no value",
+          "unsupported": "Unsupported operation",
+          "blocked": "Unverified format",
+          "stale": "Stale history",
+          "all_zero_unverified": "All-zero history, validity unknown",
+          "reported_slots": "Reported history slots"
+        }
+      },
+      "diagnostic_hardware": {
+        "name": "Motor and power diagnostics",
+        "state": {
+          "available": "Available",
+          "not_read": "Not read or no value",
+          "unsupported": "Unsupported operation",
+          "blocked": "Unverified format",
+          "stale": "Stale history",
+          "all_zero_unverified": "All-zero history, validity unknown",
+          "reported_slots": "Reported history slots"
+        }
+      },
+      "diagnostic_maneuvers": {
+        "name": "Maneuver history evidence",
+        "state": {
+          "available": "Available",
+          "not_read": "Not read or no value",
+          "unsupported": "Unsupported operation",
+          "blocked": "Unverified format",
+          "stale": "Stale history",
+          "all_zero_unverified": "All-zero history, validity unknown",
+          "reported_slots": "Reported history slots"
+        }
+      },
+      "diagnostic_inverter": {
+        "name": "Inverter diagnostics",
+        "state": {
+          "available": "Available",
+          "not_read": "Not read or no value",
+          "unsupported": "Unsupported operation",
+          "blocked": "Unverified format",
+          "stale": "Stale history",
+          "all_zero_unverified": "All-zero history, validity unknown",
+          "reported_slots": "Reported history slots"
+        }
+      },
+      "diagnostic_advanced_history": {
+        "name": "Advanced history",
+        "state": {
+          "available": "Available",
+          "not_read": "Not read or no value",
+          "unsupported": "Unsupported operation",
+          "blocked": "Unverified format",
+          "stale": "Stale history",
+          "all_zero_unverified": "All-zero history, validity unknown",
+          "reported_slots": "Reported history slots"
+        }
+      }
     }
   }
 }

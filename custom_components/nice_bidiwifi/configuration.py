@@ -137,6 +137,9 @@ class ControllerConfiguration:
                 if time.monotonic() - self._last_attempt.get(key, float("-inf"))
                 >= CONFIGURATION_REFRESH_SECONDS
             ]
+            # Unread first, then least recently attempted. Insertion order can
+            # starve later entities when a full sweep exceeds the refresh period.
+            due.sort(key=lambda key: self._last_attempt.get(key, float("-inf")))
             for key in due[:3]:
                 if self._coordinator.reported_moving:
                     break

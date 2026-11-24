@@ -11,6 +11,7 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
 from .feature_catalog import GAPS
+from .diagnostic_profiles import diagnostic_profile
 from .const import (
     CONF_CONNECTION_MODE,
     CONF_LEGACY_LOCAL_TLS,
@@ -33,6 +34,7 @@ from .redaction import (
     allowed_config_diagnostics,
     bounded_protocol_observations,
     configured_secrets,
+    redact_evidence_tree,
     redact_text,
 )
 from .runtime import get_coordinator
@@ -378,6 +380,9 @@ async def async_get_config_entry_diagnostics(
             if capabilities is not None
             else None
         ),
+        "diagnostic_profile": diagnostic_profile(device_info),
+        "diagnostic_screens": coordinator.diagnostic_runtime.report() if hasattr(coordinator, "diagnostic_runtime") else {},
+        "incident_timeline": coordinator.incidents.export() if hasattr(coordinator, "incidents") else {},
         "controller_configuration": coordinator.configuration.report() if hasattr(coordinator, "configuration") else {},
         "feature_report": getattr(coordinator, "capability_report", {}),
         "evidence_gaps": [asdict(gap) for gap in GAPS],
@@ -470,4 +475,4 @@ async def async_get_config_entry_diagnostics(
             ],
         },
     }
-    return async_redact_data(diagnostics, TO_REDACT)
+    return async_redact_data(redact_evidence_tree(diagnostics, secrets), TO_REDACT)

@@ -22,10 +22,34 @@ def test_fixture_reply_decodes_four_rows_newest_first_and_skips_malformed() -> N
         (r.id, r.time, r.protocol, r.dep, r.data_hex, r.change_state, r.cause)
         for r in rows
     ] == [
-        (1028, "2026-11-12T19:53:58", "DEP", "04/02", "05 19 00 00", "stopped_in_closed", "oview"),
+        (
+            1028,
+            "2026-11-12T19:53:58",
+            "DEP",
+            "04/02",
+            "05 19 00 00",
+            "stopped_in_closed",
+            "oview",
+        ),
         (1027, "2026-11-12T19:53:56", "DEP", "04/40", "03 00 5a 00", None, None),
-        (1013, "2026-11-12T19:49:14", "DEP", "04/02", "04 00 00 00", "stopped_in_opened", "none"),
-        (655, "2026-11-12T14:02:23", "DEP", "04/02", "88 00 00 00", "stopped_for_command_arrival", "none"),
+        (
+            1013,
+            "2026-11-12T19:49:14",
+            "DEP",
+            "04/02",
+            "04 00 00 00",
+            "stopped_in_opened",
+            "none",
+        ),
+        (
+            655,
+            "2026-11-12T14:02:23",
+            "DEP",
+            "04/02",
+            "88 00 00 00",
+            "stopped_for_command_arrival",
+            "none",
+        ),
     ]
 
 
@@ -39,6 +63,17 @@ def test_rows_serialize_without_key_or_raw_text() -> None:
         "change_state": "stopped_in_closed",
         "cause": "oview",
         "data_hex": "05 19 00 00",
+        "protocol": "DEP",
+        "event_class": "state_changed",
+        "basic_diagnostic": None,
+        "advanced_diagnostic": None,
+        "command": None,
+        "obstruction": None,
+        "confidence": "reported",
+        "physical_cause": "unknown",
+        "actor": "unknown",
+        "details": {},
+        "event_description": None,
     }
 
 

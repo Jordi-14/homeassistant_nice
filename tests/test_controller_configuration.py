@@ -363,3 +363,29 @@ async def test_alias_names_use_ha_translations_instead_of_becoming_nameless(hass
     }
     assert number._name_internal(None, translations) == "Pause time (engineering units)"
     await instance.async_shutdown()
+
+
+async def test_unread_parameters_are_not_starved_when_earlier_reads_become_due(
+    hass, monkeypatch
+):
+    from custom_components.nice_bidiwifi import configuration as module
+
+    instance = await _instance(hass)
+    keys = [row.key for row in PARAMETERS if row.safe_read][:6]
+    model = instance.configuration
+    model._watched.update(keys)
+    model._last_attempt.update({key: 0 for key in keys[:3]})
+    monkeypatch.setattr(module.time, "monotonic", lambda: 1000)
+    attempts = []
+
+    async def read(key):
+        attempts.append(key)
+        model._last_attempt[key] = 1000
+
+    model.async_refresh_parameter = read
+    await model._refresh_watched()
+    assert attempts == keys[3:]
+    attempts.clear()
+    await model._refresh_watched()
+    assert attempts == keys[:3]
+    await instance.async_shutdown()

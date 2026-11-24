@@ -272,6 +272,92 @@
       "controller_parameter_value": {
         "name": "{parameter} (unitats físiques)"
       }
+    },
+    "sensor": {
+      "diagnostic_counters": {
+        "name": "Comptadors i manteniment de la central",
+        "state": {
+          "available": "Disponible",
+          "not_read": "Sense lectura o valor",
+          "unsupported": "Operació no compatible",
+          "blocked": "Format no verificat",
+          "stale": "Historial antic",
+          "all_zero_unverified": "Historial de zeros, validesa desconeguda",
+          "reported_slots": "Entrades d’historial reportades"
+        }
+      },
+      "diagnostic_bluebus": {
+        "name": "Diagnòstic BlueBus",
+        "state": {
+          "available": "Disponible",
+          "not_read": "Sense lectura o valor",
+          "unsupported": "Operació no compatible",
+          "blocked": "Format no verificat",
+          "stale": "Historial antic",
+          "all_zero_unverified": "Historial de zeros, validesa desconeguda",
+          "reported_slots": "Entrades d’historial reportades"
+        }
+      },
+      "diagnostic_io": {
+        "name": "Entrades i sortides de la central",
+        "state": {
+          "available": "Disponible",
+          "not_read": "Sense lectura o valor",
+          "unsupported": "Operació no compatible",
+          "blocked": "Format no verificat",
+          "stale": "Historial antic",
+          "all_zero_unverified": "Historial de zeros, validesa desconeguda",
+          "reported_slots": "Entrades d’historial reportades"
+        }
+      },
+      "diagnostic_hardware": {
+        "name": "Diagnòstic del motor i alimentació",
+        "state": {
+          "available": "Disponible",
+          "not_read": "Sense lectura o valor",
+          "unsupported": "Operació no compatible",
+          "blocked": "Format no verificat",
+          "stale": "Historial antic",
+          "all_zero_unverified": "Historial de zeros, validesa desconeguda",
+          "reported_slots": "Entrades d’historial reportades"
+        }
+      },
+      "diagnostic_maneuvers": {
+        "name": "Evidència de l’historial de maniobres",
+        "state": {
+          "available": "Disponible",
+          "not_read": "Sense lectura o valor",
+          "unsupported": "Operació no compatible",
+          "blocked": "Format no verificat",
+          "stale": "Historial antic",
+          "all_zero_unverified": "Historial de zeros, validesa desconeguda",
+          "reported_slots": "Entrades d’historial reportades"
+        }
+      },
+      "diagnostic_inverter": {
+        "name": "Diagnòstic de l’inversor",
+        "state": {
+          "available": "Disponible",
+          "not_read": "Sense lectura o valor",
+          "unsupported": "Operació no compatible",
+          "blocked": "Format no verificat",
+          "stale": "Historial antic",
+          "all_zero_unverified": "Historial de zeros, validesa desconeguda",
+          "reported_slots": "Entrades d’historial reportades"
+        }
+      },
+      "diagnostic_advanced_history": {
+        "name": "Historial avançat",
+        "state": {
+          "available": "Disponible",
+          "not_read": "Sense lectura o valor",
+          "unsupported": "Operació no compatible",
+          "blocked": "Format no verificat",
+          "stale": "Historial antic",
+          "all_zero_unverified": "Historial de zeros, validesa desconeguda",
+          "reported_slots": "Entrades d’historial reportades"
+        }
+      }
     }
   }
 }

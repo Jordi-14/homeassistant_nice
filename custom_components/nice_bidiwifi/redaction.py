@@ -88,9 +88,29 @@ def bounded_protocol_observations(
             continue
         value = str(values[key])
         observations[str(key)] = "".join(
-            character
-            if character.isprintable()
-            else "\N{REPLACEMENT CHARACTER}"
+            character if character.isprintable() else "\N{REPLACEMENT CHARACTER}"
             for character in value[:value_limit]
         )
     return observations
+
+
+def redact_evidence_tree(value, secrets, *, depth=0):
+    """Defense in depth for free-text evidence, including future nested fields."""
+    import math
+
+    if depth > 16:
+        return "<omitted>"
+    if isinstance(value, Mapping):
+        return {
+            str(key): redact_evidence_tree(item, secrets, depth=depth + 1)
+            for key, item in list(value.items())[:1024]
+        }
+    if isinstance(value, (list, tuple)):
+        return [
+            redact_evidence_tree(item, secrets, depth=depth + 1) for item in value[:512]
+        ]
+    if isinstance(value, str):
+        return redact_text(value, secrets)[:1024]
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value

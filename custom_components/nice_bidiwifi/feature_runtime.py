@@ -117,6 +117,13 @@ class FeatureRuntime:
         except FeatureBlocked as err:
             reasons.append(str(err))
             binding = None
+        if binding is not None and binding.handler == "diagnostic":
+            observed = owner.diagnostic_runtime.view(binding.operation)
+            if observed["state"] == "unsupported":
+                support = False
+                basis = "observed_diagnostic_rejection"
+            elif observed["state"] == "blocked":
+                reasons.append(observed.get("reason", "Diagnostic format is not verified"))
         if binding is not None and binding.handler == "t4":
             support = owner.t4_action_supported(binding.operation)
             basis = "advertised_or_existing_compatibility_action"
@@ -236,9 +243,12 @@ class FeatureRuntime:
         if required is not None and required not in payload:
             raise FeatureBlocked(f"Missing feature argument: {required}")
         owner = self._coordinator
+        if binding.handler == "diagnostic":
+            return await owner.diagnostic_runtime.async_read(binding.operation)
         if binding.handler == "snapshot":
             return {
                 "status": lambda: owner.observations.snapshot(),
+                "incident_timeline": lambda: owner.incidents.export(),
                 "position": lambda: owner.position_controller.position_snapshot,
                 "events": lambda: tuple(owner.event_controller.event_history),
                 "movement_profile": lambda: (

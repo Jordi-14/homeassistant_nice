@@ -104,6 +104,7 @@ class MotionTraceController:
         self._moved = self._moved or (status.is_moving and status.state != self._command_state)
         sample = self._sample(status, now - self._trace_start)
         self._trace["samples"].append(sample)
+        self._coordinator.incidents.add("load", "motion_trace", sample)
         _LOGGER.debug("Nice motion trace %s", sample)
 
     def _sample(self, status: NiceStatus, elapsed: float) -> dict[str, Any]:
@@ -115,7 +116,7 @@ class MotionTraceController:
             "t": round(elapsed, 2),
             "state": status.state,
             "encoder": status.current_position,
-            **{key: hardware[key] for key in ("torque_m1", "speed_m1", "work_time_left") if key in hardware},
+            **{key: hardware[key] for key in ("torque_m1", "torque_m2", "speed_m1", "speed_m2", "voltage_m1", "voltage_m2", "work_time_left") if key in hardware},
             "force_limiter_state": io.get("force_limiter_state"),
             "d2": registers.get("04/D2"),
         }
