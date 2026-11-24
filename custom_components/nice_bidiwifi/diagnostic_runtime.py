@@ -13,7 +13,7 @@ from .controller_catalog import ENUM_FUNCTIONS
 from .errors import NiceBidiError, NiceParameterError, NiceReadPreemptedError
 from .parameters import SupportState
 from .protocol.t4.bluebus import decode_bluebus_devices
-from .protocol.t4.info import scaled_value
+from .protocol.t4.counters import decode_counter
 from .protocol.t4.io import decode_hardware_diagnostic, decode_io_diagnostic
 from .protocol.t4.maneuvers import maneuver_evidence
 
@@ -287,24 +287,8 @@ class DiagnosticRuntime:
                 metadata = owner.parameters.info_for(
                     owner.parameters.address(4, parameter)
                 )
-                scalar = metadata is None or (
-                    not metadata.indexed
-                    and scalar_info_valid(metadata)
-                    and metadata.size == 4
-                )
-                raw_values[field] = (
-                    int.from_bytes(raw, metadata.byte_order if metadata else "big")
-                    if scalar
-                    and raw is not None
-                    and len(raw) == 4
-                    and raw != b"\xff" * 4
-                    else None
-                )
-                values[field] = (
-                    scaled_value(raw_values[field], metadata)
-                    if metadata
-                    else raw_values[field]
-                )
+                raw_values[field], values[field] = decode_counter(raw, metadata)
+
             self._attempts[key] = time.monotonic()
             self._samples[key] = {
                 "state": "available"
@@ -527,22 +511,25 @@ class DiagnosticRuntime:
                 )
             }
             raw_values = dict(values)
+            field_ages = {}
             for field, parameter in (
                 ("maintenance_threshold", 0xB1),
                 ("maintenance_count", 0xB2),
                 ("total_maneuver_count", 0xB3),
             ):
-                metadata = self._owner.parameters.info_for(
-                    self._owner.parameters.address(4, parameter)
+                address = self._owner.parameters.address(4, parameter)
+                metadata = self._owner.parameters.info_for(address)
+                observation = self._owner.parameters.observation_for(address)
+                raw_values[field], values[field] = decode_counter(
+                    observation.raw if observation is not None else None,
+                    metadata,
+                    fallback=values[field] if observation is None else None,
                 )
-                if metadata is not None:
-                    values[field] = (
-                        scaled_value(raw_values[field], metadata)
-                        if not metadata.indexed
-                        and scalar_info_valid(metadata)
-                        and metadata.size == 4
-                        else None
+                if observation is not None:
+                    field_ages[field] = max(
+                        0, round(time.monotonic() - observation.monotonic, 3)
                     )
+
             return self._counter_channels(
                 {
                     "state": "available"
@@ -551,7 +538,8 @@ class DiagnosticRuntime:
                     "values": values,
                     "raw_values": raw_values,
                     "value_basis": "controller_INFO_scaling_when_available_otherwise_reviewed_u32",
-                    "source": "cached_dmp_status",
+                    "source": "cached_controller_observations",
+                    "field_age_seconds": field_ages,
                     "counter_epoch_relationship": "unknown",
                     "nhk_counter_channel": dict(self.event_counters),
                     "nhk_to_dmp_mapping": "not_established",

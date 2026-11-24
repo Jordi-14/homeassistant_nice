@@ -602,3 +602,24 @@ async def test_counter_card_honors_known_info_scale_and_preserves_raw_evidence(h
     assert view["values"]["maintenance_count"] == 12
     assert view["raw_values"]["maintenance_count"] == 120
     await owner.async_shutdown()
+
+
+async def test_cached_counter_uses_the_scoped_wire_observation_for_byte_order_and_age(
+    hass,
+):
+    owner = _coordinator(hass)
+    owner.client = FakeClient()
+    owner.async_set_updated_data(
+        make_status(state="closed", maintenance_count=2013265920)
+    )
+    address = owner.parameters.address(4, 0xB2)
+    owner.parameters.record_info(
+        address,
+        DmpInfo(4, 0, 4, 1, minimum=0, maximum=0xFFFFFFFF, step=1, byte_order="little"),
+    )
+    owner.parameters.observe(address, b"\x78\x00\x00\x00")
+    view = owner.diagnostic_runtime.view("counters")
+    assert view["values"]["maintenance_count"] == 120
+    assert view["raw_values"]["maintenance_count"] == 120
+    assert view["field_age_seconds"]["maintenance_count"] >= 0
+    await owner.async_shutdown()
