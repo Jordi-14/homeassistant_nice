@@ -248,5 +248,30 @@
         }
       }
     }
+  },
+  "entity": {
+    "select": {
+      "photo_close_mode": {
+        "name": "Mode de tancament després de foto",
+        "state": {
+          "code_16": "Obrir completament",
+          "code_17": "Obrir fins a l’alliberament",
+          "code_18": "Aturar",
+          "code_19": "Obrir completament 2"
+        }
+      },
+      "always_close_mode": {
+        "name": "Mode de tancament permanent",
+        "state": {
+          "code_32": "Tancar sempre",
+          "code_33": "Conservar tancament"
+        }
+      }
+    },
+    "number": {
+      "controller_parameter_value": {
+        "name": "{parameter} (unitats físiques)"
+      }
+    }
   }
 }

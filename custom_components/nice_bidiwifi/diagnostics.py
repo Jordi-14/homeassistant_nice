@@ -119,6 +119,12 @@ async def async_get_config_entry_diagnostics(
     entry: ConfigEntry,
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
+    if getattr(entry, "runtime_data", None) is None:
+        return {
+            "entry": async_redact_data(allowed_config_diagnostics(entry.data), TO_REDACT),
+            "setup": {"runtime_available": False, "state": str(entry.state)},
+            "evidence_gaps": [asdict(gap) for gap in GAPS],
+        }
     coordinator = get_coordinator(entry)
     status = coordinator.data
     device_info = coordinator.device_info
@@ -372,6 +378,7 @@ async def async_get_config_entry_diagnostics(
             if capabilities is not None
             else None
         ),
+        "controller_configuration": coordinator.configuration.report() if hasattr(coordinator, "configuration") else {},
         "feature_report": getattr(coordinator, "capability_report", {}),
         "evidence_gaps": [asdict(gap) for gap in GAPS],
         "observations": coordinator.observations.diagnostics(),

@@ -146,3 +146,15 @@ No recalibration or entity recreation is required. This beta refactors the share
 - Normal user controls take priority over background reads. Expired commands fail rather than being sent later. Unimplemented app features and CORE/ProView access paths remain blocked with explicit reasons.
 
 If reporting a problem, include the loaded version, time and time zone, controller/module firmware, connection mode and sanitized diagnostics. Do not change controller settings or run controller relearning solely to test this refactor.
+
+## Controller configuration beta (0.9.0b6)
+
+- Restart HA and check the integration loads on the first attempt. Core state should become available before the broad diagnostics scan finishes. Check a normal reload too.
+- Confirm the six existing on/off setting switches are available while stationary. No toggle is required to establish this. Existing numeric controls, IDs, settings and calibration should remain intact.
+- Under disabled entities, optionally enable a parameter sensor and compare its reading, units and timestamp with the app. A setting without verified metadata should explain why it is unavailable. Extra sensors should not add polling until enabled.
+- Optionally enable the photo-close/always-close selects or engineering-unit number aliases. Compare their current values without changing controller parameters. The old raw-number entities should remain present.
+- If a device reports an indexed value, its elements should remain separate and unnamed as motors until their identities are verified. There should be no fabricated aggregate percentage.
+- Confirm ordinary open, Stop, close and partial-open behavior. Position animation retains its directional learned bands and 90% factor. A correction at Stop is permitted.
+- Download diagnostics, including when setup has failed. Check the configuration ledger and gap reasons. An unnamed module should no longer produce a text-entity error.
+
+No new calibration, force/safety parameter change, installer procedure or deliberate obstruction test is needed. Additional setters needing the unresolved native menu decoder remain read-only.

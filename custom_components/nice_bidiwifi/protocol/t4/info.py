@@ -35,6 +35,15 @@ class DmpInfo:
     raw: bytes | None = field(default=None, compare=False, repr=False)
 
     @property
+    def scalar_options(self) -> tuple[int, ...] | None:
+        """The captured boolean list is scalar; diagnostic descriptor lists are not."""
+        if self.options is not None:
+            return self.options
+        if self.size == 1 and self.data_format == 0 and self.function == 1 and self.values == (0, 1):
+            return self.values
+        return None
+
+    @property
     def indexed(self) -> bool:
         return bool(self.flags & 0x80)
 

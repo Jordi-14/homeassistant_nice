@@ -37,6 +37,21 @@ class EvidenceGap:
 
 
 GAPS = (
+    EvidenceGap("controller.menu_wire", "Controller menu permissions need a verified wire decoder",
+                "The Java T4MenuEntry permission fields are recovered, but the binary STD_MENU decoder is native. Installer and ordinary-user rights cannot be inferred from INFO ranges.",
+                "Recover menu framing/continuation, native record decoding and account-role selection; test explicit denial before enabling additional writes."),
+    EvidenceGap("controller.parameter_format", "Controller value format or operation is not verified",
+                "A symbol/register alone does not establish its type, scale, unit or procedure semantics.",
+                "Verify dynamic INFO and matching value fixtures, then add a scoped decoder and reviewed binding."),
+    EvidenceGap("controller.binding_map", "App parameter has no cross-checked wire binding",
+                "The exported app ID cannot be used as a DMP register. The research dump contains unresolved and contradictory pairs.",
+                "Cross-check the actual native map or an app trace against the Java symbol before enabling access."),
+    EvidenceGap("controller.index_identity", "Indexed element identities and writes remain unverified",
+                "An index is kept separate but is not assumed to be motor 1 or motor 2; model-specific layouts and write permissions are missing.",
+                "Recover the model-specific index-to-motor/leaf mapping, units and SET contract with sanitized fixtures."),
+    EvidenceGap("controller.action_binding", "Additional Pro action binding is not verified",
+                "The Welcome action codes are implemented; extra Pro enum IDs and a partially inconsistent native extraction do not establish executable codes.",
+                "Recover exact command encodings and device authorization; retain explicit unsupported and denied outcomes."),
     EvidenceGap(
         "native.t4_library.pro_2_18",
         "Pro native encoder/decoder unavailable",
@@ -190,8 +205,8 @@ def _features() -> tuple[FeatureDefinition, ...]:
         FeatureDefinition(
             f"setting.{setting.key}",
             setting.key.replace("_", " ").title(),
-            implemented,
-            1,
+            Implementation.PARTIAL if setting.requires_menu_permission else implemented,
+            3 if setting.requires_menu_permission else 1,
             FeatureBinding(
                 "setting",
                 setting.key,
@@ -199,6 +214,7 @@ def _features() -> tuple[FeatureDefinition, ...]:
                 ("group", "parameter"),
             ),
             evidence=("protocol/t4/settings.py; controller INFO and parameter engine",),
+            gaps=("controller.menu_wire",) if setting.requires_menu_permission else (),
         )
         for setting in SETTINGS_BY_REGISTER.values()
     ]
@@ -236,6 +252,7 @@ def _features() -> tuple[FeatureDefinition, ...]:
                 if phase in (3, 4, 5, 7)
                 else Implementation.PLANNED,
                 phase,
+                gaps=("controller.menu_wire", "controller.index_identity", "controller.binding_map") if key == "controller.configuration" else (),
             )
         )
     for key, title, phase, gap in (

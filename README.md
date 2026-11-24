@@ -25,6 +25,7 @@ Latest stable release: `v0.8.0`
 | --- | --- |
 | Install, provision, extract credentials, and add the integration | [Setup and Credential Extraction](docs/setup.md) |
 | Run capability or CU_WIFI diagnostic probes | [Diagnostic Probes](docs/probes.md) |
+| Compare controller parameters and optional named/scaled controls | [Controller configuration](docs/controller_configuration.md) |
 | Follow app parity, runtime contracts and unresolved protocol evidence | [App parity](docs/app_parity.md), [runtime contracts](docs/runtime_core.md), [gaps](docs/protocol_gaps.md) |
 | Understand position, state, calibration, and the cover slider | [Position, State, and Calibration](docs/position_calibration.md) |
 | Choose which entities to show or enable | [Entity Reference](entity_reference.md) |

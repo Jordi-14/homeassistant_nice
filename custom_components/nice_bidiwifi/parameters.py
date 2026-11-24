@@ -17,6 +17,7 @@ import time
 from .errors import NiceParameterError
 from .models.device import NiceDeviceInfo
 from .models.profiles import normalized_device_identity
+from .protocol.t4.menu import MenuPermission
 from .protocol.t4.info import DmpInfo, scaled_value
 from .protocol.t4.settings import SETTINGS_BY_REGISTER, DmpSetting
 from .write_policy import dmp_write_block_reason
@@ -95,6 +96,8 @@ class ParameterRepository:
     def __init__(self, device_id: int = 1) -> None:
         self.device_id = device_id
         self._records: dict[ParameterAddress, ParameterRecord] = {}
+        self._menu_permissions: dict[ParameterAddress, MenuPermission] = {}
+        self._menu_generation = 0
         self._lock = RLock()
         # Stable compatibility views while the HA adapters are migrated.
         self.setting_info: dict[str, DmpInfo] = {}
@@ -255,12 +258,33 @@ class ParameterRepository:
                 data = data[info.index_size :]
             if (
                 info.data_format not in {0x00, 0x25}
-                or info.values is not None
+                or info.values is not None and info.scalar_options is None
                 or len(data) != info.size
             ):
                 return None, None
         value = int.from_bytes(data, info.byte_order if info else "big")
         return value, scaled_value(value, info) if info else value
+
+    def record_menu_permission(self, address: ParameterAddress, permission: MenuPermission) -> None:
+        """Only a future verified session/menu adapter may supply this evidence."""
+        self._check_scope(address)
+        if ((address.address, address.endpoint, address.index) != (0, 3, None)
+                or permission.device_id != address.device_id
+                or permission.binding != (address.group, address.parameter)
+                or permission.entry.binding != permission.binding
+                or permission.session_generation != self._menu_generation):
+            raise NiceParameterError("Menu permission has a different scope or session")
+        from .controller_catalog import PARAMETERS_BY_REGISTER
+        definition = PARAMETERS_BY_REGISTER.get((address.group, address.parameter))
+        if definition is None or definition.app_id != permission.entry.app_id:
+            raise NiceParameterError("Menu command identity does not match the reviewed binding")
+        with self._lock:
+            self._menu_permissions[address] = permission
+
+    def invalidate_menu_permissions(self) -> None:
+        with self._lock:
+            self._menu_generation += 1
+            self._menu_permissions.clear()
 
     def block_reason(
         self, setting: DmpSetting, device: NiceDeviceInfo | None = None
@@ -268,6 +292,14 @@ class ParameterRepository:
         if reason := dmp_write_block_reason(device, setting.group, setting.parameter):
             return reason
         info = self.metadata(setting)
+        if setting.requires_menu_permission:
+            permission = self._menu_permissions.get(self.address(setting.group, setting.parameter))
+            if permission is None or permission.can_set() is None:
+                return "controller menu permissions are not verified"
+            if not permission.can_set():
+                return "controller menu denies this write for the current role"
+            if info is None:
+                return "controller INFO is required for this setting"
         if info is not None:
             if info.indexed:
                 return "indexed setting: scalar writes are not supported"
@@ -275,10 +307,11 @@ class ParameterRepository:
                 not 1 <= info.size <= 8
                 or info.data_format not in {0x00, 0x25}
                 or info.byte_order not in {"big", "little"}
+                or not info.flags & 0x40 and info.flags & 0x30 == 0x30
                 or info.flags & 0x40
-                and not info.flags & 0x20
+                and not info.flags & 0x20 and info.scalar_options is None
                 or info.flags & 0x60 == 0x60
-                and not info.options
+                and not info.scalar_options
             ):
                 return "unverified scalar value format"
             if not info.flags & 0x40 and any(
@@ -317,7 +350,7 @@ class ParameterRepository:
             high = min(high, dynamic_max)
         info = self.metadata(setting)
         if info:
-            values = info.options or ()
+            values = info.scalar_options or ()
             if values:
                 low, high = max(low, min(values)), min(high, max(values))
             else:
@@ -349,10 +382,10 @@ class ParameterRepository:
         if not low <= value <= high:
             raise NiceParameterError(f"{setting.key} must be between {low} and {high}")
         info = self.metadata(setting)
-        if info and info.options:
-            if value not in info.options:
+        if info and info.scalar_options:
+            if value not in info.scalar_options:
                 raise NiceParameterError(
-                    f"{setting.key} must be one of {list(info.options)}"
+                    f"{setting.key} must be one of {list(info.scalar_options)}"
                 )
         elif info and info.step:
             anchor = info.minimum if info.minimum is not None else setting.minimum

@@ -45,6 +45,7 @@ from .protocol.t4.enums import (
     BLUEBUS_FAULT_STATUSES,
 )
 from .runtime import get_coordinator
+from .entities.configuration import setup_configuration_sensors
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1414,6 +1415,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors from a config entry."""
     coordinator = get_coordinator(entry)
+    setup_configuration_sensors(coordinator, entry, async_add_entities)
     async_add_entities(
         build_described_entities(
             coordinator,

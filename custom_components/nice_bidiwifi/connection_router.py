@@ -58,6 +58,7 @@ class NiceConnectionRouter:
         self._deadline_clock = deadline_clock
         self._command_timeout = command_timeout
         self._closed = False
+        self._shutdown_complete = threading.Event()
         self._waiting_commands = 0
         self._waiting_commands_lock = threading.Lock()
         common = {
@@ -255,11 +256,13 @@ class NiceConnectionRouter:
         self._authenticated_once = True
         return result
 
-    def _read(self, method: str, *args, **kwargs):
+    def _read(self, method: str, *args, operation_priority=None, **kwargs):
         priority = (OperationPriority.METADATA if method in {"read_info", "read_info_xml", "read_dmp_info", "read_dmp_indexed"}
                     else OperationPriority.READBACK if method == "read_dmp_value"
                     else OperationPriority.DIAGNOSTIC if method in {"read_logs", "read_t4_logs", "read_groups"}
                     else OperationPriority.STATUS)
+        if operation_priority is not None:
+            priority = operation_priority
         with self._lock.hold(priority):
             if self._mode is ConnectionMode.LOCAL_ONLY:
                 return self._call(NiceConnectionRoute.LOCAL, method, *args, **kwargs)
@@ -414,13 +417,17 @@ class NiceConnectionRouter:
         return self._read("read_info_xml")
 
     def read_dmp_indexed(self, group: int, parameter: int, index: int, **kwargs):
-        return self._read("read_dmp_indexed", group, parameter, index, **kwargs)
+        background = kwargs.pop("background", False)
+        return self._read("read_dmp_indexed", group, parameter, index,
+                          operation_priority=OperationPriority.DIAGNOSTIC if background else None, **kwargs)
 
     def read_dmp_info(self, group: int, parameter: int, **kwargs):
         return self._read("read_dmp_info", group, parameter, **kwargs)
 
     def read_dmp_value(self, group: int, parameter: int, **kwargs):
-        return self._read("read_dmp_value", group, parameter, **kwargs)
+        background = kwargs.pop("background", False)
+        return self._read("read_dmp_value", group, parameter,
+                          operation_priority=OperationPriority.DIAGNOSTIC if background else None, **kwargs)
 
     def read_logs(self, event_count: int = LOG_EVENTS_PER_SCOPE):
         return self._read("read_logs", event_count)
@@ -521,7 +528,14 @@ class NiceConnectionRouter:
         """Fence queued work before waiting for the current exchange to finish."""
         self._closed = True
         def finalize():
-            for client in (self._local, self._cloud):
-                if client is not None:
-                    client.close()
+            try:
+                for client in (self._local, self._cloud):
+                    if client is not None:
+                        client.close()
+            finally:
+                self._shutdown_complete.set()
         self._lock.cancel_pending(on_idle=finalize)
+
+    def wait_closed(self, timeout: float = 15.0) -> bool:
+        """Bounded drain after fencing: prevent a reload overtaking session close."""
+        return self._shutdown_complete.wait(timeout)

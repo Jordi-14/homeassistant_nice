@@ -66,6 +66,7 @@ from .command_executor import CommandExecutor
 from .models.status import STATE_OPENING, STATE_CLOSING
 from .observations import ObservationStore
 from .feature_runtime import FeatureRuntime
+from .configuration import ControllerConfiguration
 from .runtime_tasks import RuntimeTasks
 from .scheduler import OperationExpired
 from .parameters import ParameterRepository, SupportState
@@ -219,6 +220,7 @@ class NiceBidiDataUpdateCoordinator(
         self.device_info: NiceBidiDeviceInfo | None = None
         self.capabilities: NiceCapabilities | None = None
         self.status_polling_supported = True
+        self.startup_refresh = False
         self._use_nhk_status = False
         self._rejected_t4_actions: set[str] = set()
         self.command_executor.state.last_command: str | None = None
@@ -273,6 +275,7 @@ class NiceBidiDataUpdateCoordinator(
         )
         self.tasks = RuntimeTasks(hass)
         self.features = FeatureRuntime(self)
+        self.configuration = ControllerConfiguration(self)
         self.event_controller = NiceEventController(self)
         self.administration_controller = NiceAdministrationController(self)
         self.motion_trace = MotionTraceController(self)
@@ -350,6 +353,7 @@ class NiceBidiDataUpdateCoordinator(
         status = self.position_controller._normalize_status_for_display(self.position_controller._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
         self.event_controller.mark_connected()
+        self.configuration.schedule_refresh()
         if self._setting_info_task is None:
             self._setting_info_task = self.tasks.create(self._async_load_setting_info(), "nice-setting-info")
         return status
@@ -640,6 +644,8 @@ class NiceBidiDataUpdateCoordinator(
 
     def _should_read_extended_status(self) -> bool:
         """Return true when the slower BusT4 diagnostic scan is due."""
+        if self.startup_refresh:
+            return False
         status = self.data
         if status is not None and status.is_moving:
             return False
@@ -861,11 +867,13 @@ class NiceBidiDataUpdateCoordinator(
         setting: DmpSetting,
     ) -> str | None:
         """Return a device-specific block reason for a reviewed setting."""
+        self.configuration.sync_session()
         self.parameters.setting_info = self.setting_info
         return self.parameters.block_reason(setting, self.device_info)
 
     def _prepare_parameter_write(self, setting: DmpSetting, value: int):
         """Validate before side effects and again after asynchronous boundaries."""
+        self.configuration.sync_session()
         if self.reported_moving:
             raise NiceParameterError("configuration write blocked: gate started moving")
         if self.calibration_controller.calibration_state == CALIBRATION_STATE_RUNNING:
@@ -966,6 +974,10 @@ class NiceBidiDataUpdateCoordinator(
             self.position_controller._schedule_post_command_refresh()
             self._request_refresh_in_background()
 
+    def async_start_background_refresh(self) -> None:
+        """Continue optional diagnostics after the entry and controls are loaded."""
+        self._request_refresh_in_background()
+
     def _request_refresh_in_background(self) -> None:
         """Refresh after an acknowledged command without delaying the caller."""
         self.tasks.create(self.async_request_refresh(), "nice-post-command-refresh")
@@ -1054,7 +1066,7 @@ class NiceBidiDataUpdateCoordinator(
         if self.command_executor.state.last_result is result:
             self.command_executor.state.last_result = verified_result
         key = f"{group:02X}/{parameter:02X}"
-        self.observations.apply_update({setting.key: observed.raw_value}, {key: raw.hex(" ") if raw else ""},
+        self.observations.apply_update({setting.key: observed.raw_value} if setting.legacy_status else {}, {key: raw.hex(" ") if raw else ""},
                                        source="readback", baseline=self.data)
         for attribute in ("data", "_extended_status_cache"):
             snapshot = getattr(self, attribute)
@@ -1066,7 +1078,7 @@ class NiceBidiDataUpdateCoordinator(
             else:
                 registers.pop(key, None)
             status_value = bool(observed.raw_value) if setting.kind == "boolean" and observed.raw_value is not None else observed.raw_value
-            updated = replace(snapshot, registers=registers, **{setting.key: status_value})
+            updated = replace(snapshot, registers=registers, **({setting.key: status_value} if setting.legacy_status else {}))
             if attribute == "data":
                 self.async_set_updated_data(updated)
             else:
@@ -1107,6 +1119,7 @@ class NiceBidiDataUpdateCoordinator(
         if self.observations.closed:
             return
         self.observations.invalidate()
+        self.configuration.invalidate()
         await self._async_cancel_background_tasks(calibration_reason="reconnect")
         self.event_controller.mark_reconnecting()
         self._set_connection_state(CONNECTION_STATE_RECONNECTING)
@@ -1118,6 +1131,7 @@ class NiceBidiDataUpdateCoordinator(
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
         self.observations.invalidate(close=True)
+        self.configuration.invalidate()
         # a still-valid issue is recreated by the first poll after setup
         ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)
         await self._async_cancel_background_tasks(calibration_reason="shutdown")
@@ -1127,4 +1141,7 @@ class NiceBidiDataUpdateCoordinator(
             self._setting_info_task.cancel()
         self.event_controller.shutdown()
         await self.hass.async_add_executor_job(self.client.shutdown)
+        if wait_closed := getattr(self.client, "wait_closed", None):
+            if not await self.hass.async_add_executor_job(wait_closed):
+                _LOGGER.warning("Nice session did not finish closing within the shutdown deadline")
         await self.tasks.cancel(close=True)

@@ -34,6 +34,7 @@ PLATFORMS: list[Platform] = [
     Platform.BUTTON,
     Platform.SWITCH,
     Platform.NUMBER,
+    Platform.SELECT,
     Platform.EVENT,
     Platform.TEXT,
 ]
@@ -137,16 +138,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _async_remove_retired_entities(hass, entry)
 
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
-    await coordinator.async_load_calibration()
-    await coordinator.async_load_movement_profile()
-    await coordinator.async_load_limits_baseline()
-    await coordinator.async_config_entry_first_refresh()
-
-    entry.runtime_data = NiceRuntimeData(
-        coordinator=coordinator,
-        config=coordinator.entry_config,
-    )
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.runtime_data = NiceRuntimeData(coordinator=coordinator, config=coordinator.entry_config)
+    try:
+        await coordinator.async_load_calibration()
+        await coordinator.async_load_movement_profile()
+        await coordinator.async_load_limits_baseline()
+        # Establish the core connection before optional multi-register scans.
+        coordinator.startup_refresh = True
+        try:
+            await coordinator.async_config_entry_first_refresh()
+        finally:
+            coordinator.startup_refresh = False
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except BaseException:
+        # Cancellation does not stop an executor thread. Fence queued work and
+        # close its session before a subsequent setup can create another owner.
+        try:
+            await coordinator.async_shutdown()
+        except Exception:
+            _LOGGER.exception("Could not finish Nice setup cleanup")
+        finally:
+            entry.runtime_data = None
+        raise
+    coordinator.async_start_background_refresh()
     return True
 
 

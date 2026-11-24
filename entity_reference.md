@@ -337,3 +337,9 @@ current device profile.
 | Sensor | Event battery level code | `event_battery_level` | Latest accessory battery code. | Hidden | Disabled | Includes accessory type but never its MAC address. |
 | Binary sensor | Maintenance due | `maintenance_due` | On when the event-updated manoeuvre count reaches the maintenance threshold. | Hidden | Enabled | Uses the same existing maintenance values shown by the count and threshold sensors. |
 | Binary sensor | BlueBUS fault | `bluebus_fault` | On when the latest BlueBUS status is not a known no-fault value. | Hidden | Disabled | Conservative raw-code interpretation for diagnostics. |
+
+## Optional controller configuration entities
+
+Phase 3 adds disabled-by-default parameter sensors, named select aliases for photo-close/always-close modes, and engineering-unit number aliases. Existing `bus_t4_*` numbers and switches retain their unique IDs and raw integer API. New entity suffixes use `parameter_GG_PP`, with `_element_N` for separate indexed observations. New suggested entity IDs include the register to avoid claiming an existing entity's name.
+
+See [controller configuration](docs/controller_configuration.md) for the complete definition ledger, selective read behavior, scaling, unavailable reasons, menu-permission gaps and indexed-value restrictions. Additional model-specific writes remain blocked until their permissions and layouts are verified.
