@@ -11,6 +11,7 @@ from ..entity import NiceCoordinatorEntity
 
 
 class DiagnosticScreenSensor(NiceCoordinatorEntity, SensorEntity):
+    _unrecorded_attributes = frozenset({"age_seconds", "last_attempt_age_seconds", "received_at"})
     _attr_entity_registry_enabled_default = False
     _attr_entity_registry_visible_default = False
     _attr_entity_category = EntityCategory.DIAGNOSTIC

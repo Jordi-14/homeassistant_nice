@@ -88,7 +88,7 @@ def test_decoded_menu_role_bits_and_wire_decoder_are_distinct():
     assert entry.allows(MenuRole.USER, "set") is False
     assert entry.allows(MenuRole.INSTALLER, "set") is True
     assert entry.allows(MenuRole.UNKNOWN, "set") is None
-    with pytest.raises(NiceParameterError, match="unresolved"):
+    with pytest.raises(NiceParameterError, match="Truncated"):
         MenuWireDecoder().decode(b"not a decoded native record")
 
 
@@ -289,10 +289,10 @@ async def test_first_class_new_setter_validates_menu_and_reads_back_without_unkn
     with pytest.raises(HomeAssistantError, match="permissions"):
         await instance.configuration.async_write(definition.key, 2.5)
     assert not sent
-    entry = MenuEntry(False, True, True, True, False, 0, definition.app_id, 0x5A04)
-    instance.parameters.record_menu_permission(
-        address, MenuPermission(1, (4, 0x5A), MenuRole.INSTALLER, entry, 0)
-    )
+    from tests.native_menu_fixtures import install_menu_fixture
+    install_menu_fixture(instance)
+    instance.client.dmp_info = {(4, 0x5A): info}
+    await instance.controller_menu.async_refresh()
     await instance.configuration.async_write(definition.key, 2.5)
     assert sent == [b"\x19"]
     assert instance.configuration.view(definition.key).value == 2.5

@@ -22,15 +22,18 @@ OPERATIONS = {0x09: "info", 0x19: "get", 0x29: "set"}
 
 
 def checked_dmp_reply(
-    plain: bytes, *, target: tuple[int, int], group: int, parameter: int, operation: int
+    plain: bytes, *, target: tuple[int, int], group: int, parameter: int, operation: int,
+    allow_continuation: bool = False,
 ) -> DmpResponse | None:
     """Match a reply before consuming data; unrelated/late replies are ignored."""
     if len(plain) < 16 or plain[0] != 0x55:
         return None
     if tuple(plain[4:6]) != target or plain[6] != 0x08:
         return None
-    if plain[9:12] != bytes((group, parameter, operation)):
+    if plain[9:11] != bytes((group, parameter)) or plain[11] & 0xFE != operation & 0xFE:
         return None
+    if not plain[11] & 1 and not allow_continuation:
+        raise NiceProtocolError("Non-final reply requires a bounded continuation reader")
     body = plain[2:-1]
     if (
         plain[1] != len(body)
@@ -56,6 +59,7 @@ def checked_dmp_reply(
     if status != 0:
         raise NiceProtocolError(f"Unrecognized DMP reply status {status:02X}")
     value = plain[14:-2]
-    if plain[12] != len(value):
-        raise NiceProtocolError("DMP reply value length does not match its payload")
-    return DmpResponse(plain.hex(" "), group, parameter, operation, status, value)
+    # Native DMPGet identifies byte 12 as the continuation sequence, not a
+    # value length. DNP length and both checksums validate the complete payload.
+    return DmpResponse(plain.hex(" "), group, parameter, operation, status, value,
+                       sequence=plain[12], finished=bool(plain[11] & 1))

@@ -113,6 +113,10 @@ class ControllerConfiguration:
 
         return remove
 
+    @property
+    def menu_watched(self):
+        return any(self.definition(key).setting is not None and self.definition(key).setting.requires_menu_permission for key in self._watched)
+
     def schedule_refresh(self):
         owner = self._coordinator
         if (

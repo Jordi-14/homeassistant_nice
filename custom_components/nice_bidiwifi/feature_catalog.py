@@ -40,6 +40,11 @@ class EvidenceGap:
 
 GAPS = (
     EvidenceGap(
+        "controller.role_binding", "Controller user/installer authentication is unresolved",
+        "Complete paged menu records expose both role columns, but the Pro path selecting installer flags does not prove an authenticated controller role for HA. NHK module admin is separate.",
+        "Supply a verified controller-role protocol adapter with exact session, target/model and freshness evidence; keep privileged settings blocked until then.",
+    ),
+    EvidenceGap(
         "ecosystem.core_execution", "Cloud records do not verify CORE execution",
         "Scene/rule/timer REST records can be cloud copies of CORE tables. Current device tables, runtime activation and schedule timezone are not established by those records.",
         "Complete a read-only CORE table/runtime adapter with verified identity, table versions and schedule semantics. Never execute or mirror a cloud copy to infer its state.",
@@ -133,7 +138,7 @@ GAPS = (
         "controller.menu_wire",
         "Controller menu permissions need a verified wire decoder",
         "Native two-byte menu records are decoded for offline audit, but live framing/continuation and authenticated controller-role selection remain unverified. Record flags alone grant no writes.",
-        "Recover menu framing/continuation, native record decoding and account-role selection; test explicit denial before enabling additional writes.",
+        "Validate menu replies on hardware and supply controller.role_binding. Preserve complete-page, target, session, denial and dispatch freshness checks.",
     ),
     EvidenceGap(
         "controller.parameter_format",

@@ -471,9 +471,23 @@
           "not_read": "Not read or no value",
           "unsupported": "Unsupported operation",
           "blocked": "Unverified format",
-          "stale": "Stale history",
+          "stale": "Older or conflicting snapshot",
           "all_zero_unverified": "All-zero history, validity unknown",
           "reported_slots": "Reported history slots"
+        }
+      },
+      "diagnostic_controller_menu": {
+        "name": "Controller menu permissions",
+        "state": {
+          "available": "Available",
+          "not_read": "Not read or no value",
+          "unsupported": "Unsupported operation",
+          "blocked": "Unverified format",
+          "stale": "Older menu snapshot",
+          "all_zero_unverified": "All-zero history, validity unknown",
+          "reported_slots": "Reported history slots",
+          "role_unverified": "Controller role unverified",
+          "verified": "Verified role"
         }
       }
     }

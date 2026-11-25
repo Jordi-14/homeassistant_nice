@@ -266,7 +266,7 @@ class ParameterRepository:
         return value, scaled_value(value, info) if info else value
 
     def record_menu_permission(self, address: ParameterAddress, permission: MenuPermission) -> None:
-        """Only a future verified session/menu adapter may supply this evidence."""
+        """Record a verified session/menu adapter observation for the exact target."""
         self._check_scope(address)
         if ((address.address, address.endpoint, address.index) != (0, 3, None)
                 or permission.device_id != address.device_id
@@ -281,6 +281,10 @@ class ParameterRepository:
         with self._lock:
             self._menu_permissions[address] = permission
 
+    @property
+    def menu_generation(self) -> int:
+        return self._menu_generation
+
     def invalidate_menu_permissions(self) -> None:
         with self._lock:
             self._menu_generation += 1
@@ -294,7 +298,7 @@ class ParameterRepository:
         info = self.metadata(setting)
         if setting.requires_menu_permission:
             permission = self._menu_permissions.get(self.address(setting.group, setting.parameter))
-            if permission is None or permission.can_set() is None:
+            if permission is None or permission.session_generation != self._menu_generation or not 0 <= time.monotonic() - permission.verified_monotonic <= 30 or permission.can_set() is None:
                 return "controller menu permissions are not verified"
             if not permission.can_set():
                 return "controller menu denies this write for the current role"

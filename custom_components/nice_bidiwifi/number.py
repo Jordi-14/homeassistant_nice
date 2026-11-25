@@ -23,7 +23,7 @@ from .entities.factory import (
     build_described_entities,
 )
 from .entity import NiceCoordinatorEntity
-from .entities.configuration import configuration_controls
+from .entities.configuration import setup_configuration_controls
 from .protocol.t4.info import DmpInfo
 from .runtime import get_coordinator
 from .protocol.t4.settings import (
@@ -244,7 +244,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up numbers from a config entry."""
     coordinator = get_coordinator(entry)
-    async_add_entities(configuration_controls(coordinator, entry, 'number'))
+    setup_configuration_controls(coordinator, entry, 'number', async_add_entities)
     async_add_entities(
         build_described_entities(
             coordinator,

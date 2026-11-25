@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 import time
+
+from homeassistant.core import callback
+from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.exceptions import HomeAssistantError
 
 from .models.capabilities import ProductFamily
 from .configuration import scalar_info_valid
@@ -20,6 +24,8 @@ from .protocol.t4.maneuvers import maneuver_evidence
 
 MAX_DIAGNOSTIC_ELEMENTS = 16
 MAX_DIAGNOSTIC_BYTES = 256
+AUTOMATION_REFRESH_SECONDS = 5
+AUTOMATION_STALE_SECONDS = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +38,7 @@ class DiagnosticDefinition:
 
 
 DIAGNOSTICS = (
+    DiagnosticDefinition("controller_menu", "Controller menu permissions", (0, 0x10), "menu", "controller.role_binding"),
     DiagnosticDefinition(
         "counters", "Controller counters and maintenance", (4, 0xB3), "counters"
     ),
@@ -116,6 +123,7 @@ class DiagnosticRuntime:
         self._owner = owner
         self._watched = {}
         self._task = None
+        self._remove_tick = None
         self._attempts = {}
         self._samples = {}
         self._generation = 0
@@ -127,6 +135,8 @@ class DiagnosticRuntime:
         registers = []
         if set(self._watched) & {"hardware", "io"}:
             registers.extend(((4, 0xD1), (4, 0xD2)))
+        if "automation_state" in self._watched:
+            registers.append((4, 0x01))
         if "inverter" in self._watched:
             info = self._owner.parameters.info_for(
                 self._owner.parameters.address(4, 0xD4)
@@ -204,14 +214,36 @@ class DiagnosticRuntime:
     def watch(self, key):
         self.require_read(key)
         self._watched[key] = self._watched.get(key, 0) + 1
+        if key in {"automation_state", "controller_menu"} and self._remove_tick is None:
+            self._remove_tick = async_track_time_interval(self._owner.hass, self._tick, timedelta(seconds=AUTOMATION_REFRESH_SECONDS))
         self.schedule()
 
         def remove():
             self._watched[key] -= 1
             if self._watched[key] <= 0:
                 del self._watched[key]
+            if not set(self._watched) & {"automation_state", "controller_menu"}:
+                self.close()
 
         return remove
+
+    def close(self):
+        if self._remove_tick is not None:
+            self._remove_tick()
+            self._remove_tick = None
+
+    @callback
+    def _tick(self, now):
+        if self._owner.observations.closed:
+            self.close()
+            return
+        self._owner.async_update_listeners()
+        self.schedule()
+
+    def _refresh_interval(self, key):
+        if key == "automation_state" and self._samples.get(key, {}).get("last_read_error"):
+            return 30
+        return AUTOMATION_REFRESH_SECONDS if key == "automation_state" else 30 if key == "controller_menu" else 300
 
     def invalidate(self):
         self._generation += 1
@@ -237,16 +269,16 @@ class DiagnosticRuntime:
                 (
                     key
                     for key in self._watched
-                    if time.monotonic() - self._attempts.get(key, float("-inf")) >= 300
+                    if time.monotonic() - self._attempts.get(key, float("-inf")) >= self._refresh_interval(key)
                 ),
-                key=lambda key: self._attempts.get(key, float("-inf")),
+                key=lambda key: (key != "automation_state", self._attempts.get(key, float("-inf"))),
             )
             for key in due[:2]:
                 try:
                     await self.async_read(key)
                 except NiceReadPreemptedError:
                     break
-                except (NiceBidiError, OSError) as error:
+                except (NiceBidiError, OSError, HomeAssistantError) as error:
                     self._attempts[key] = time.monotonic()
                     self._samples.setdefault(key, {}).update(
                         state="unavailable", last_read_error=type(error).__name__
@@ -263,6 +295,11 @@ class DiagnosticRuntime:
             or owner.calibration_controller.calibration_state == "running"
         ):
             raise NiceReadPreemptedError("Diagnostic read waits until stationary")
+        if key == "controller_menu":
+            await owner.controller_menu.async_refresh()
+            self._samples.pop(key, None)
+            self._attempts[key] = time.monotonic()
+            return
         generation = self._generation
         address = owner.parameters.address(*definition.register)
         if key == "counters":
@@ -305,6 +342,10 @@ class DiagnosticRuntime:
                 "received_at": datetime.now(UTC).isoformat(),
             }
             owner.async_update_listeners()
+            return
+        if owner.parameters.support_for(address, "get") is SupportState.UNSUPPORTED:
+            self._attempts[key] = time.monotonic()
+            self._samples[key] = {"state": "unsupported", "reason": "Controller rejected this diagnostic GET"}
             return
         info = owner.parameters.info_for(address)
         if key not in {"bluebus", "maneuvers", "automation_state"}:
@@ -514,6 +555,11 @@ class DiagnosticRuntime:
                 "gap": definition.gap,
                 "reason": "Diagnostic binding is unresolved",
             }
+        if key == "controller_menu":
+            view = self._owner.controller_menu.report()
+            if error := self._samples.get(key, {}).get("last_read_error"):
+                view["last_read_error"] = error
+            return view
         if key == "counters" and key not in self._samples:
             data = self._owner.data
             values = {
@@ -583,6 +629,19 @@ class DiagnosticRuntime:
                 ),
             }
 
+            if key == "automation_state":
+                from .protocol.t4.dmp import STATUS_BY_BYTE
+                gate = self._owner.data
+                gate_state = gate.state if gate is not None else None
+                reported = STATUS_BY_BYTE.get(result.get("values", {}).get("status_code"))
+                stationary = {"open", "closed", "stopped", "partially_open"}
+                generic_stop = "stopped" in {reported, gate_state} and reported in stationary and gate_state in stationary
+                mismatch = reported is not None and gate_state is not None and reported != gate_state and not generic_stop
+                stale = captured is None or time.monotonic() - captured > AUTOMATION_STALE_SECONDS or mismatch
+                result.update(current_gate_state=gate_state, snapshot_stale=stale, refresh_interval_seconds=AUTOMATION_REFRESH_SECONDS)
+                if result["state"] == "available" and stale:
+                    result["state"] = "stale"
+                    result["reason"] = "snapshot_differs_from_current_gate_state" if mismatch else "snapshot_expired"
             return self._counter_channels(result) if key == "counters" else result
 
         owner = self._owner

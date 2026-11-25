@@ -471,9 +471,23 @@
           "not_read": "Sense lectura o valor",
           "unsupported": "Operació no compatible",
           "blocked": "Format no verificat",
-          "stale": "Historial antic",
+          "stale": "Lectura antiga o en conflicte",
           "all_zero_unverified": "Historial de zeros, validesa desconeguda",
           "reported_slots": "Entrades d’historial reportades"
+        }
+      },
+      "diagnostic_controller_menu": {
+        "name": "Permisos del menú del controlador",
+        "state": {
+          "available": "Disponible",
+          "not_read": "Sense lectura o valor",
+          "unsupported": "Operació no compatible",
+          "blocked": "Format no verificat",
+          "stale": "Lectura del menú antiga",
+          "all_zero_unverified": "Historial de zeros, validesa desconeguda",
+          "reported_slots": "Entrades d’historial reportades",
+          "role_unverified": "Rol del controlador no verificat",
+          "verified": "Rol verificat"
         }
       }
     }

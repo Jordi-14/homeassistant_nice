@@ -253,7 +253,7 @@ def test_dmp_decoder_returns_typed_immutable_result() -> None:
     """DMP decoding carries numeric identity and raw value without dictionaries."""
     decoded = decode_dmp_response(
         bytes.fromhex(
-            "55 0D 00 03 50 91 08 08 00 04 11 19 02 02 01 A4 0D"
+            "55 0F 50 91 00 03 08 08 C2 04 11 19 2A 00 01 A4 83 0F"
         )
     )
 

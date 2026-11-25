@@ -159,6 +159,7 @@ Implementation, device support, permissions and current availability are separat
 | `transport.core` | blocked | 5 | None | transport.core |
 | `transport.proview` | blocked | 5 | None | transport.proview |
 | `diagnostics.incident_timeline` | implemented | 4 | snapshot | none |
+| `diagnostics.screen.controller_menu` | implemented | 4 | diagnostic | controller.role_binding |
 | `diagnostics.screen.counters` | implemented | 4 | diagnostic | none |
 | `diagnostics.screen.bluebus` | implemented | 4 | diagnostic | none |
 | `diagnostics.screen.io` | implemented | 4 | diagnostic | none |

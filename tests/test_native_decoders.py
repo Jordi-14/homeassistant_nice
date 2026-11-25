@@ -93,9 +93,11 @@ def test_menu_bounds_and_role_boundary():
     for raw, group in [(b"\x80", 4), (bytes(1026), 4), (b"", -1), (b"", 256), (b"", True)]:
         with pytest.raises(NiceParameterError):
             decode_menu_records(raw, group=group)
-    # Raw records are not sufficient for a session-scoped permission observation.
-    with pytest.raises(NiceParameterError, match="unresolved"):
-        MenuWireDecoder().decode(bytes.fromhex("f0 45"))
+    # The phase-2 decoder is usable, but raw records cannot grant a role.
+    record, = MenuWireDecoder().decode(bytes.fromhex("f0 45"))
+    assert record.binding == (4, 0x45)
+    assert not hasattr(record, "role")
+    assert not hasattr(record, "can_set")
 
 
 def test_native_history_order_does_not_establish_freshness():

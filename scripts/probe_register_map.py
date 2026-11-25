@@ -26,11 +26,12 @@ from scripts.dump_bidi_capabilities import (  # noqa: E402
 
 _dmp = sys.modules["custom_components.nice_bidiwifi.client"]
 build_dmp_read_frame = _dmp.build_dmp_read_frame
-decode_dmp_response = _dmp.decode_dmp_response
+checked_dmp_reply = _dmp.checked_dmp_reply
+NiceProtocolError = _dmp.NiceProtocolError
+NiceResponseError = _dmp.NiceResponseError
 
 INFO, GET = 0x89, 0x99
 CONTROLLER, OXI = (0x00, 0x03), (0x00, 0x0A)
-STATUS_NAMES = {0x00: "OK", 0xF0: "F0", 0xF1: "F1", 0xF9: "F9", 0xFD: "FD"}
 
 # Registers that start a procedure or a move in MyNice Pro (search, delete, reset, activate, go to
 # position, test, calibration; docs/register_map.md group F). Their INFO is read, GET is never sent.
@@ -77,13 +78,14 @@ def _read(client: Any, target: tuple[int, int], group: int, parameter: int, flag
         raise SystemExit(f"refusing to send a frame that is not a DMP read: {frame.hex(' ')}")
     _, plains = client._t4_request_locked("DMP", frame, *target, client.t4_timeout_ms)
     for plain in plains:
-        reply = decode_dmp_response(plain)
-        if (reply.group, reply.parameter, reply.operation) == (group, parameter, expected):
-            status = reply.value_type
-            return {
-                "status": STATUS_NAMES.get(status, f"{status:02X}") if status is not None else "?",
-                "data": reply.value.hex(" ") if reply.value else "",
-            }
+        try:
+            reply = checked_dmp_reply(plain, target=target, group=group, parameter=parameter, operation=expected)
+        except NiceResponseError as error:
+            return {"status": error.code, "data": ""}
+        except NiceProtocolError:
+            return {"status": "malformed reply", "data": ""}
+        if reply is not None:
+            return {"status": "OK", "data": reply.value.hex(" ") if reply.value else ""}
     return {"status": "no reply", "data": ""}
 
 
@@ -102,7 +104,7 @@ def probe(client: Any, include_oxi: bool) -> list[dict[str, Any]]:
         for name, target, group, parameter, get_allowed in plan:
             row: dict[str, Any] = {"target": name, "register": f"{group:02X}/{parameter:02X}"}
             row["info"] = _read(client, target, group, parameter, INFO)
-            if row["info"]["status"] == "FD" or not get_allowed:
+            if row["info"]["status"] not in {"OK", "F0"} or not get_allowed:
                 row["get"] = {"status": "not sent" if not get_allowed else "skipped (INFO FD)", "data": ""}
             else:
                 row["get"] = _read(client, target, group, parameter, GET)

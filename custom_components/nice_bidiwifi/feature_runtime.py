@@ -269,8 +269,9 @@ class FeatureRuntime:
             return await owner.diagnostic_runtime.async_read(binding.operation)
         if binding.handler == "snapshot":
             from .parity import parity_summary
+            if binding.operation == "parity":
+                return await owner.hass.async_add_executor_job(parity_summary)
             return {
-                "parity": lambda: parity_summary(),
                 "ecosystem": lambda: owner.ecosystem.diagnostics(),
                 "status": lambda: owner.observations.snapshot(),
                 "incident_timeline": lambda: owner.incidents.export(),

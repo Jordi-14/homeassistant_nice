@@ -11,7 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 from ..configuration import MAX_INDEXED_ELEMENTS
 from ..controller_catalog import PARAMETERS, parameter_for_setting
 from ..entity import NiceCoordinatorEntity
-from ..protocol.t4.settings import SETTINGS
+from ..protocol.t4.settings import SETTINGS, ADDITIONAL_SETTINGS
 
 
 class ConfigurationEntity(NiceCoordinatorEntity):
@@ -98,8 +98,9 @@ class ConfigurationSensor(ConfigurationEntity, SensorEntity):
 class ConfigurationSelect(ConfigurationEntity, SelectEntity):
     def __init__(self, coordinator, entry, definition):
         super().__init__(coordinator, entry, definition, "select")
-        self._attr_translation_key = definition.setting.key
-        del self._attr_name
+        if not definition.setting.requires_menu_permission:
+            self._attr_translation_key = definition.setting.key
+            del self._attr_name
 
     @property
     def available(self):
@@ -210,18 +211,36 @@ def setup_configuration_sensors(coordinator, entry, async_add_entities):
 def configuration_controls(coordinator, entry, kind):
     if not hasattr(coordinator, "configuration"):
         return []
-    # Additional model-specific writes stay read-only until menu permissions,
-    # identities and encodings are verified. These aliases use reviewed setters.
     if kind == "select":
-        keys = ("photo_close_mode", "always_close_mode")
-        return [
-            ConfigurationSelect(coordinator, entry, parameter_for_setting(key))
-            for key in keys
-        ]
-    return [
-        ConfigurationNumber(coordinator, entry, parameter_for_setting(setting.key))
-        for setting in SETTINGS.values()
-        if not setting.requires_menu_permission
-        and setting.kind != "boolean"
-        and setting.key not in {"photo_close_mode", "always_close_mode"}
-    ]
+        entities = [ConfigurationSelect(coordinator, entry, parameter_for_setting(key))
+                    for key in ("photo_close_mode", "always_close_mode")]
+    else:
+        entities = [ConfigurationNumber(coordinator, entry, parameter_for_setting(setting.key))
+                    for setting in SETTINGS.values() if not setting.requires_menu_permission
+                    and setting.kind != "boolean" and setting.key not in {"photo_close_mode", "always_close_mode"}]
+    for setting in ADDITIONAL_SETTINGS:
+        definition = parameter_for_setting(setting.key)
+        view = coordinator.configuration.view(definition.key)
+        if not view.writable:
+            continue
+        if kind == "select" and view.options:
+            entities.append(ConfigurationSelect(coordinator, entry, definition))
+        elif kind == "number" and not view.options:
+            entities.append(ConfigurationNumber(coordinator, entry, definition))
+    return entities
+
+
+def setup_configuration_controls(coordinator, entry, kind, async_add_entities):
+    if not hasattr(coordinator, "configuration"):
+        return
+    added = set()
+    def add_new():
+        rows = []
+        for entity in configuration_controls(coordinator, entry, kind):
+            if entity.unique_id not in added:
+                added.add(entity.unique_id)
+                rows.append(entity)
+        if rows:
+            async_add_entities(rows)
+    add_new()
+    entry.async_on_unload(coordinator.async_add_listener(add_new))

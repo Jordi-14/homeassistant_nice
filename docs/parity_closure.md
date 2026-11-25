@@ -69,6 +69,7 @@ An already loaded CORE entry can request the same reader from Configure. Non-COR
 
 | Matrix case | Evidence level | Scope | Remaining limit |
 | --- | --- | --- | --- |
+| native_phase2_menu | source_and_software_fixture | Bounded STD_MENU FIN/sequence paging; target/session/model fences; synthetic verified role and fresh INFO write path; cold-cache export and stale snapshot fixes | Controller role authentication wire binding and live menu comparison remain unverified; no additional privileged setting is activated. |
 | native_phase1_readonly | static_native_and_software_fixture | 04/01 byte decoding, raw menu records without role grants, maneuver slot bounds, optional diagnostic observation ownership | No physical flag semantics, app-version association, live menu permissions, receiver operations or installer writes are established. |
 | upgrade_identity | software_fixture | Legacy/current entry migration, credential and entity-ID preservation, unload/reload fences | No registry migration is introduced by b11; fixtures do not establish every historical custom entity name. |
 | shared_wifi_routes | software_fixture | BiDi-WiFi, IT4WIFI, CU_WIFI and local/cloud/fallback serialization, no automatic write replay | All firmware/network variants have not been physically tested. |

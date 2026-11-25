@@ -31,8 +31,11 @@ class FakeClient:
         status = 0xFD if group == 0x04 and parameter % 2 and parameter not in probe.SECRET_04 else 0x00
         op = 0x09 if flags == probe.INFO else 0x19
         data = b"" if status else b"\x01"
-        frame = bytes(9) + bytes([group, parameter, op, len(data), status]) + data + b"\x00"
-        return b"<Response />", [b"\x55" + frame[1:]]
+        from custom_components.nice_bidiwifi.protocol.t4.codec import dmp_checksum
+        header = [0x50, 0x91, *target, 8, len(data) + 6]
+        payload = [group, parameter, op, 42, status, *data]
+        body = [*header, dmp_checksum(*header), *payload, dmp_checksum(*payload)]
+        return b"<Response />", [bytes([0x55, len(body), *body, len(body)])]
 
 
 def test_probe_reads_only_and_skips_procedures_and_secrets() -> None:
@@ -67,3 +70,17 @@ def test_write_frames_are_refused() -> None:
     assert probe.is_read_frame(probe.build_dmp_read_frame(0, 3, 4, 0x81, flags=probe.INFO))
     assert not probe.is_read_frame(build_dmp_write_frame(0, 3, 4, 0x81, b"\x1e"))
     assert not probe.is_read_frame(probe.build_dmp_read_frame(0, 3, 4, 0x81, flags=0xA9))
+
+
+def test_corrupt_info_does_not_trigger_a_value_probe():
+    client = FakeClient()
+    original = client._t4_request_locked
+    def corrupt(*args):
+        response, plains = original(*args)
+        raw = bytearray(plains[0])
+        raw[-2] ^= 1
+        return response, [bytes(raw)]
+    client._t4_request_locked = corrupt
+    rows = probe.probe(client, include_oxi=False)
+    assert not any(flags == probe.GET for *_, flags in client.sent)
+    assert all(row['info']['status'] == 'malformed reply' for row in rows)

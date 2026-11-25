@@ -421,6 +421,9 @@ class NiceConnectionRouter:
         return self._read("read_dmp_indexed", group, parameter, index,
                           operation_priority=OperationPriority.DIAGNOSTIC if background else None, **kwargs)
 
+    def read_controller_menu(self, *, preemptible: bool = True):
+        return self._read("read_controller_menu", preemptible=preemptible, operation_priority=OperationPriority.METADATA)
+
     def read_dmp_info(self, group: int, parameter: int, **kwargs):
         return self._read("read_dmp_info", group, parameter, **kwargs)
 

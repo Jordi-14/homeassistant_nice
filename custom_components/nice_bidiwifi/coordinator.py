@@ -73,6 +73,7 @@ from .lifecycle import LifecycleRuntime
 from .ecosystem import EcosystemRuntime
 from .ecosystem_catalog import blocks_gate_adapter, require_gate_adapter
 from .diagnostic_runtime import DiagnosticRuntime
+from .controller_menu import ControllerMenu
 from .runtime_tasks import RuntimeTasks
 from .scheduler import OperationExpired
 from .parameters import ParameterRepository, SupportState
@@ -282,6 +283,7 @@ class NiceBidiDataUpdateCoordinator(
         self.tasks = RuntimeTasks(hass)
         self.features = FeatureRuntime(self)
         self.configuration = ControllerConfiguration(self)
+        self.controller_menu = ControllerMenu(self)
         self.incidents = IncidentTimeline(entry.data)
         self.diagnostic_runtime = DiagnosticRuntime(self)
         self.access = AccessManagement(self)
@@ -360,12 +362,14 @@ class NiceBidiDataUpdateCoordinator(
             return self.data or self.observations.snapshot()
         status = self.event_controller.reconcile_polled_obstacle(status)
         status = self.observations.apply_poll(status, token)
+        self.diagnostic_runtime.record_poll(status)
         self.incidents.measurement(self.position_controller._normalize_live_scalar_status(status))
         self._track_controller_limits(status)
         status = self.position_controller._normalize_status_for_display(self.position_controller._apply_recent_stop_status_hint(status))
         self._store_successful_status(status)
         self.event_controller.mark_connected()
         self.configuration.schedule_refresh()
+        self.controller_menu.schedule()
         self.diagnostic_runtime.schedule()
         self.access.schedule()
         if self._setting_info_task is None:
@@ -532,7 +536,6 @@ class NiceBidiDataUpdateCoordinator(
             if trace_registers:
                 if self.motion_trace.enabled():
                     self.motion_trace.record(status)
-                self.diagnostic_runtime.record_poll(status)
         except NiceBidiConnectionError as err:
             error_code = nice_bidi_error_code(err)
             if error_code not in DMP_STATUS_NHK_FALLBACK_ERROR_CODES:
@@ -835,6 +838,11 @@ class NiceBidiDataUpdateCoordinator(
             raise HomeAssistantError("Nice DMP writes are blocked while the gate is moving")
         if self.calibration_controller.calibration_state == CALIBRATION_STATE_RUNNING:
             raise HomeAssistantError("Nice DMP writes are blocked during calibration")
+        if self.controller_menu.requires_proof(setting):
+            try:
+                await self.controller_menu.async_prepare_write(setting)
+            except NiceBidiError as error:
+                raise HomeAssistantError(str(error)) from error
         if reason := self.setting_write_block_reason(setting):
             raise HomeAssistantError(f"Nice setting {setting.key} cannot be written: {reason}")
         try:
@@ -894,6 +902,11 @@ class NiceBidiDataUpdateCoordinator(
         setting: DmpSetting,
     ) -> str | None:
         """Return a device-specific block reason for a reviewed setting."""
+        if self.controller_menu.requires_proof(setting):
+            try:
+                self.controller_menu.require_permission(setting)
+            except NiceParameterError as error:
+                return str(error)
         self.configuration.sync_session()
         self.parameters.setting_info = self.setting_info
         return self.parameters.block_reason(setting, self.device_info)
@@ -901,6 +914,8 @@ class NiceBidiDataUpdateCoordinator(
     def _prepare_parameter_write(self, setting: DmpSetting, value: int):
         """Validate before side effects and again after asynchronous boundaries."""
         self.configuration.sync_session()
+        if self.controller_menu.requires_proof(setting):
+            self.controller_menu.require_permission(setting)
         if self.reported_moving:
             raise NiceParameterError("configuration write blocked: gate started moving")
         if self.calibration_controller.calibration_state == CALIBRATION_STATE_RUNNING:
@@ -1189,6 +1204,7 @@ class NiceBidiDataUpdateCoordinator(
         await self.lifecycle.async_close()
         self.configuration.invalidate()
         self.diagnostic_runtime.invalidate()
+        self.diagnostic_runtime.close()
         self.access.invalidate()
         # a still-valid issue is recreated by the first poll after setup
         ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)

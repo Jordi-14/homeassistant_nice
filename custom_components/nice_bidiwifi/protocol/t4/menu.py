@@ -6,7 +6,8 @@ controller role. They cannot become session permissions without those contracts.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import time
 from enum import StrEnum
 
 from ...errors import NiceParameterError
@@ -69,6 +70,7 @@ class MenuPermission:
     role: MenuRole
     entry: MenuEntry
     session_generation: int
+    verified_monotonic: float = field(default_factory=time.monotonic, compare=False)
 
     def can_set(self) -> bool | None:
         return (
@@ -81,10 +83,9 @@ class MenuPermission:
 class MenuWireDecoder:
     gap = "controller.menu_wire"
 
-    def decode(self, payload: bytes) -> tuple[MenuEntry, ...]:
-        raise NiceParameterError(
-            "Live STD_MENU framing and authenticated role are unresolved; controller.menu_wire"
-        )
+    def decode(self, payload: bytes, *, group: int = 4) -> tuple[NativeMenuRecord, ...]:
+        """Decode records only; no controller role or permission is granted."""
+        return decode_menu_records(payload, group=group)
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,3 +122,23 @@ def decode_menu_records(payload: bytes, *, group: int) -> tuple[NativeMenuRecord
         NativeMenuRecord(group, payload[index + 1], *(bool(payload[index] & bit) for bit in (0x80, 0x40, 0x20, 0x10, 8)), payload[index] & 7)
         for index in range(0, len(payload), 2)
     )
+
+
+@dataclass(frozen=True, slots=True)
+class ControllerMenuSnapshot:
+    records: tuple[NativeMenuRecord, ...]
+    session_scope: tuple | None
+    pages: int
+    device_id: int
+    complete: bool = True
+
+
+def build_controller_menu_request(sequence: int) -> bytes:
+    """STD_MENU GET for controller group 4, retaining the app's sequence cookie."""
+    from .codec import dmp_checksum
+    if isinstance(sequence, bool) or not isinstance(sequence, int) or not 0 <= sequence <= 255:
+        raise NiceParameterError("Invalid menu continuation sequence")
+    payload = [0, 0x10, 0x99, sequence, 1, 4]
+    header = [0, 3, 0x50, 0x91, 8, len(payload) + 1]
+    body = [*header, dmp_checksum(*header), *payload, dmp_checksum(*payload)]
+    return bytes([0x55, len(body), *body, len(body)])

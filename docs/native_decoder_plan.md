@@ -74,3 +74,27 @@ matches the copy inside the Pro split APK; exact association with the exported
 Pro 2.18 app still needs stronger packaging/version evidence. Static interpretation,
 fixture validation and hardware verification are distinct. No cloud mutation,
 HA automation changes or live gate movement is required for phase 1 development.
+
+## Phase 2 software delivery: v0.9.0b16
+
+Implemented: addressed bounded menu paging, native sequence/FIN decoding,
+complete-snapshot reconciliation, session/model/expiry fences, dynamic additional
+control creation behind verified permissions and complete INFO, and the guarded
+single-send/readback path. Existing settings keep their identities and default
+compatibility behavior; a verified role adapter also applies controller denials
+to those existing settings. Stale diagnostic readouts and blocking export reads
+are corrected in the same beta. The enabled diagnostic has an independent timer,
+failed reads back off, unsupported GETs are not probed repeatedly, and late polls
+cannot publish a diagnostic snapshot across an observation-generation reset. The
+menu entity exposes a compact summary; full bounded records are retained for
+downloaded diagnostics, with no repeating table in recorder history.
+
+**Remaining phase 2 blocker:** `controller.role_binding`. The supplied Pro code
+selects installer columns but does not establish the authenticated controller-role
+exchange for HA. The adapter boundary is implemented and tested with explicit
+synthetic proofs, but no production role proof is fabricated. Thus no additional
+privileged setting is activated. The live menu/hardware comparison and full
+phase 2 hardware exit gate remain pending; this is not universal write parity.
+
+Phase 3 remains unimplemented. The original ownership boundary and prohibition on
+automatic installer actions continue to apply.

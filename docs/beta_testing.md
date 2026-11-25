@@ -366,3 +366,28 @@ No controller setting, calibration, pairing or network change is required.
 Menu-record decoding is audit-only in this beta. It does not add menu reads,
 authenticate an installer role or unlock additional writes. Maneuver-slot decoding
 has a native audit but still cannot establish freshness or newest-slot order.
+
+## Native menu phase 2 and diagnostic fixes: v0.9.0b16
+
+Select b16 in HACS and restart HA. No gate/controller changes or calibration are
+required. The existing Controller automation state entity keeps its ID and enabled
+selection. It uses an opt-in five-second timer while stationary, with failure backoff and no repeat of unsupported GETs; a snapshot older than
+ten seconds, or contradicting the current cover state, is marked stale. Attributes
+retain the captured reading and expose the current cover state separately.
+Diagnostics downloads load metadata off HA's event loop, including a cold cache.
+
+Optionally enable **Controller menu permissions**. This starts a read-only,
+bounded group-4 menu inspection while stationary. Its entity reports completion, capture
+age and counts for the separate user/installer columns; the full bounded table is
+in downloaded diagnostics; `role_unverified` is expected until the
+controller-role binding is established. It may become stale after thirty seconds;
+enabled inspections are refreshed while idle. No additional setting is unlocked
+by enabling this entity, and no listed parameter or password is automatically read.
+An unsupported or denied menu request remains an explicit failure, not an empty
+success. Download sanitized diagnostics through the GitHub web UI and include
+version, controller/firmware and capture time for any mismatch with the app.
+
+The next missing evidence is the actual controller-role authentication contract
+and a normal-use menu comparison. Do not change passwords, activate installer
+procedures or deliberately trigger a fault to collect it. Additional controls
+require a separately verified role adapter, fresh menu/INFO and existing guards.

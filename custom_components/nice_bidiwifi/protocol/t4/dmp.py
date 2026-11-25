@@ -39,6 +39,8 @@ class DmpResponse:
     operation: int | None = None
     value_type: int | None = None
     value: bytes | None = None
+    sequence: int | None = None
+    finished: bool = True
 
     def as_dict(self) -> dict[str, Any]:
         """Return the legacy dictionary representation."""
@@ -135,11 +137,10 @@ def decode_dmp_response(plain: bytes) -> DmpResponse:
     group = plain[9]
     parameter = plain[10]
     operation = plain[11]
-    if plain[11] in (0x19, 0x09) and len(plain) >= 15:  # GET or INFO reply
-        value_len = plain[12]
+    if plain[11] & 0xFE in (0x18, 0x08) and len(plain) >= 16:  # GET or INFO reply
         value_type = plain[13]
-        value = plain[14 : 14 + value_len]
-        if len(value) == value_len:
+        value = plain[14:-2]
+        if plain[1] == len(plain) - 3 and plain[-1] == plain[1]:
             return DmpResponse(
                 plain_hex=plain_hex,
                 group=group,
@@ -147,6 +148,8 @@ def decode_dmp_response(plain: bytes) -> DmpResponse:
                 operation=operation,
                 value_type=value_type,
                 value=value,
+                sequence=plain[12],
+                finished=bool(plain[11] & 1),
             )
     return DmpResponse(
         plain_hex=plain_hex,

@@ -56,6 +56,37 @@ app readouts during normal use, without learning, reset or deliberate faults.
 
 Run `python scripts/audit_native_library.py /path/to/libnative-lib.so --pro-split
 /path/to/config.arm64_v8a.apk` with your private supplied files. The output confirms
-the fingerprint, three audited symbol anchors and optional APK byte equality. It
+the fingerprint, audited symbol anchors and optional APK byte equality. It
 does not execute code or prove dynamic behavior. The machine-readable audit scope
 is [native_decoder_evidence.json](../custom_components/nice_bidiwifi/native_decoder_evidence.json).
+
+## Phase 2 menu and session audit
+
+`RxJavaT4Manager.getControlUnitMenuCommands` requests STD_MENU with a group-4
+selector. `getCommands` uses reply FIN to end the query and otherwise resubmits
+the reply sequence. The bounded reader starts at sequence zero, validates the
+controller source and both checksums, rejects ambiguous/missing pages, cyclic
+cookies, odd records and oversized/incomplete results, and yields to queued work.
+No partial result can become a permission snapshot.
+
+Native DMPGet at 0x23694 extracts five header fields in order: group, command,
+flags, **sequence**, status. It does not identify the sequence as a value length.
+T4Reply_getSeq at 0xd074 consumes the fourth field. T4Reply_getFinishFlag at
+0xcefc returns the flag byte and Java checks its low bit. Request framing at
+0x238b8 places the sequence before the request payload length. These anchors
+justify the paged STD_MENU request and the correction to the general reply parser;
+DNP frame lengths and checksums still validate payload integrity.
+
+The supplied Pro path selects installer GET/SET columns when building its menu
+model. No recovered application call establishes that HA's NHK principal is an
+authenticated controller installer. Native STD_FUNCTION_AUTHORIZATION and password
+symbols do not establish the missing exchange, response layout or role lifetime.
+No password or authorization-register probe is added to guess that contract.
+
+`ControllerRoleProof` and the `read_verified_role` adapter boundary provide the
+completion point. A future passive verified-role adapter must bind its result to
+the exact session and controller identity and a fresh local timestamp. No role
+can be supplied through HA options. The shipped adapter remains absent; new
+privileged controls stay blocked even for an NHK admin. Synthetic adapter tests
+exercise fresh metadata, denial, role expiration, reconnect/model changes,
+queued revocation, exactly-once dispatch and readback. They are not hardware proof.

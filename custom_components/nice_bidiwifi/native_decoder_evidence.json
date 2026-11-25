@@ -27,7 +27,7 @@
       "symbol_bytes": 928,
       "decoder": "protocol/t4/menu.py",
       "tests": "tests/test_native_decoders.py",
-      "runtime_access": "offline_only_no_role_or_write_grant"
+      "runtime_access": "bounded_read_only_menu_no_implicit_role_grant"
     },
     {
       "key": "maneuver_slots",
@@ -38,6 +38,33 @@
       "decoder": "protocol/t4/maneuvers.py",
       "tests": "tests/test_native_decoders.py",
       "runtime_access": "existing_read_only_history_validity_unknown"
+    },
+    {
+      "key": "dmp_sequence",
+      "symbol": "_Z6DMPGetPhRiRhS1_S1_S1_S1_",
+      "address": "0x23694",
+      "symbol_bytes": 128,
+      "decoder": "protocol/t4/replies.py",
+      "tests": "tests/test_controller_menu.py",
+      "runtime_access": "addressed_reply_validation"
+    },
+    {
+      "key": "menu_finish",
+      "symbol": "Java_it_buildingapp_appoview_libraryt4_msg_T4Reply_getFinishFlag",
+      "address": "0xcefc",
+      "symbol_bytes": 376,
+      "decoder": "protocol/t4/menu.py",
+      "tests": "tests/test_controller_menu.py",
+      "runtime_access": "read_only_menu_continuation"
+    },
+    {
+      "key": "menu_request_framing",
+      "symbol": "_Z9T4RequestPhRihhhhhhhhhP5FlagshiS_i",
+      "address": "0x238b8",
+      "symbol_bytes": 1780,
+      "decoder": "protocol/t4/menu.py",
+      "tests": "tests/test_controller_menu.py",
+      "runtime_access": "read_only_STD_MENU_group4"
     }
   ]
 }

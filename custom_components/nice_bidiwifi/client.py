@@ -332,6 +332,42 @@ class NiceBidiClient:
         """Read static BiDi-WiFi and control-unit metadata."""
         return self._run_with_reconnect(self._read_info_locked)
 
+    def read_controller_menu(self, *, preemptible: bool = True):
+        """Read a complete bounded STD_MENU without changing controller access."""
+        return self._run_with_reconnect(self._read_controller_menu_locked, preemptible=preemptible)
+
+    def _read_controller_menu_locked(self):
+        from .protocol.t4.menu import ControllerMenuSnapshot, build_controller_menu_request, decode_menu_records
+        scope = (self._route_name, self.session_state.generation)
+        sequence = 0
+        seen = {0}
+        records = []
+        started = time.monotonic()
+        for page in range(16):
+            if self._should_yield is not None and self._should_yield():
+                raise NiceReadPreemptedError("Menu yielded to a pending command")
+            if time.monotonic() - started > 15:
+                raise NiceProtocolError("Menu continuation deadline exceeded")
+            response, plains = self._t4_request_locked("DMP", build_controller_menu_request(sequence), 0, 3, self.t4_timeout_ms)
+            self._raise_response_error(response, "T4_REQUEST")
+            matches = [value for plain in plains if (value := checked_dmp_reply(plain, target=(0, 3), group=0, parameter=0x10, operation=0x19, allow_continuation=True)) is not None]
+            if len(matches) != 1:
+                raise NiceProtocolError("Menu requires exactly one matching page")
+            reply = matches[0]
+            decoded = decode_menu_records(reply.value, group=4)
+            records.extend(decoded)
+            if len(records) > 512:
+                raise NiceProtocolError("Menu exceeds record limit")
+            if scope != (self._route_name, self.session_state.generation):
+                raise NiceProtocolError("Menu session changed during inspection")
+            if reply.finished:
+                return ControllerMenuSnapshot(tuple(records), scope, page + 1, self.device_id)
+            if not decoded or reply.sequence in seen:
+                raise NiceProtocolError("Menu continuation did not progress")
+            sequence = reply.sequence
+            seen.add(sequence)
+        raise NiceProtocolError("Menu exceeds page limit")
+
     def read_dmp_info(
         self, group: int, parameter: int, *, preemptible: bool = False
     ) -> DmpInfo | None:
@@ -1068,7 +1104,12 @@ class NiceBidiClient:
             for profile in profiles
             for group, parameter in profile.registers
         ]
-        reads += [(CONTROLLER_TARGET.as_tuple(), group, parameter, False) for group, parameter in extra_registers]
+        covered = {(target, group, parameter) for target, group, parameter, _ in reads}
+        for group, parameter in extra_registers:
+            identity = (CONTROLLER_TARGET.as_tuple(), group, parameter)
+            if identity not in covered:
+                reads.append((*identity, False))
+                covered.add(identity)
         for target, group, parameter, required in reads:
             if preemptible and self._should_yield is not None and self._should_yield():
                 raise NiceReadPreemptedError("status read yielded to a pending command")

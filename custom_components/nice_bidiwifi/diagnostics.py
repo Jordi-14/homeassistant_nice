@@ -129,6 +129,8 @@ async def async_get_config_entry_diagnostics(
             "evidence_gaps": [asdict(gap) for gap in GAPS],
         }
     coordinator = get_coordinator(entry)
+    parity_data = await hass.async_add_executor_job(parity_summary)
+    matrix_data = await hass.async_add_executor_job(validation_matrix)
     status = coordinator.data
     device_info = coordinator.device_info
     command_result = getattr(coordinator, "last_command_result", None)
@@ -381,8 +383,8 @@ async def async_get_config_entry_diagnostics(
             if capabilities is not None
             else None
         ),
-        "parity_closure": parity_summary(),
-        "validation_matrix": validation_matrix(),
+        "parity_closure": parity_data,
+        "validation_matrix": matrix_data,
         "ecosystem": coordinator.ecosystem.diagnostics() if hasattr(coordinator, "ecosystem") else {},
         "installer_lifecycle": coordinator.lifecycle.diagnostics() if hasattr(coordinator, "lifecycle") else {},
         "access": coordinator.access.diagnostics() if hasattr(coordinator, "access") else {},
@@ -391,6 +393,7 @@ async def async_get_config_entry_diagnostics(
         "diagnostic_screens": coordinator.diagnostic_runtime.report() if hasattr(coordinator, "diagnostic_runtime") else {},
         "incident_timeline": coordinator.incidents.export() if hasattr(coordinator, "incidents") else {},
         "controller_configuration": coordinator.configuration.report() if hasattr(coordinator, "configuration") else {},
+        "controller_menu": coordinator.controller_menu.report(include_records=True) if hasattr(coordinator, "controller_menu") else {},
         "feature_report": getattr(coordinator, "capability_report", {}),
         "evidence_gaps": [asdict(gap) for gap in GAPS],
         "observations": coordinator.observations.diagnostics(),
