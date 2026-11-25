@@ -32,7 +32,7 @@ The recovery screen only clears an interface-restart hold after explicit operato
 | `inspect_boot` | implemented | read_info, file_info, boot_devices, programming_status | administrator, stationary, local, advertised_interface_id | none |
 | `snapshot_configuration` | implemented | capture_observations | configured access | none |
 | `restart_interface` | implemented | send_restart_once | administrator, stationary, reboot_capability | none |
-| `discover_bus` | blocked | profile_broadcast, scoped_identity_reads, decode_profiles | installer_adapter | installer.bus_discovery |
+| `discover_bus` | implemented | profiles_and_public_identity | administrator, stationary | none |
 | `search_devices` | blocked | validate_model_sequence, start_search, observe_completion | installer, stationary, physical_setup | installer.commissioning |
 | `search_bluebus` | blocked | validate_model_sequence, start_bluebus_search, observe_completion | installer, stationary, physical_setup | installer.commissioning |
 | `learn_positions` | blocked | validate_motor_ownership, model_learning_sequence, verify_endpoints | installer, physical_setup, gate_visible | installer.commissioning |

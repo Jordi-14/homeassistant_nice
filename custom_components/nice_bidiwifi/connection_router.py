@@ -423,6 +423,9 @@ class NiceConnectionRouter:
         return self._read("read_dmp_indexed", group, parameter, index,
                           operation_priority=OperationPriority.DIAGNOSTIC if background else None, **kwargs)
 
+    def read_bus_profiles(self):
+        return self._read("read_bus_profiles", operation_priority=OperationPriority.READBACK)
+
     def read_receiver_memory_page(self, start: int, count: int):
         return self._read(
             "read_receiver_memory_page",

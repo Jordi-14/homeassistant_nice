@@ -5,6 +5,15 @@
   "stable_release_authorized": false,
   "cases": [
     {
+      "key": "bounded_bus_profile_inspection",
+      "level": "source_and_software_fixture",
+      "scope": "FF.FF STD_PROFILE broadcast; strict source/profile decoding, deduplication and conflict rejection; public identity fields from at most eight observed sources; no private MAC/PIN/key reads or write permissions",
+      "tests": [
+        "tests/test_bus_profile_inspection.py"
+      ],
+      "limitation": "Observed profiles do not prove complete inventory, absence, serial identity, peripheral control support or mutation authorization; live model validation remains part of beta testing."
+    },
+    {
       "key": "native_receiver_scoped_inspection",
       "level": "source_and_software_fixture",
       "scope": "Bounded redacted slot queries, explicit single-send nonce/capability exchange, menu renewal priority, old-session and missing-consent guards",

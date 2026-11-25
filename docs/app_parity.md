@@ -193,7 +193,7 @@ Implementation, device support, permissions and current availability are separat
 | `installer.inspect_boot` | implemented | 6 | installer | none |
 | `installer.snapshot_configuration` | implemented | 6 | installer | none |
 | `installer.restart_interface` | implemented | 6 | installer | none |
-| `installer.discover_bus` | blocked | 6 | none | installer.bus_discovery |
+| `installer.discover_bus` | implemented | 6 | installer | none |
 | `installer.search_devices` | blocked | 6 | none | installer.commissioning |
 | `installer.search_bluebus` | blocked | 6 | none | installer.commissioning |
 | `installer.learn_positions` | blocked | 6 | none | installer.commissioning |

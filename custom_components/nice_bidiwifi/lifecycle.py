@@ -22,6 +22,9 @@ class LifecycleRuntime:
         self.owner = owner
         self.inventory = None
         self.inventory_at = None
+        self.bus_inventory = None
+        self.bus_inventory_at = None
+        self._bus_scope = None
         self.boot = {}
         self.boot_at = None
         self._programming_hold = False
@@ -34,6 +37,7 @@ class LifecycleRuntime:
         self.runner = ProcedureRunner(
             {
                 "inventory": self._inventory,
+                "bus_profiles": self._bus_profiles,
                 "file_info": partial(self._boot_read, "FILE_INFO"),
                 "boot_devices": partial(self._boot_read, "DEV_ON_BOOT"),
                 "programming_status": partial(self._boot_read, "STATUS_PROGRAMMING"),
@@ -235,6 +239,16 @@ class LifecycleRuntime:
             )
             return {"observed_slots": 8, "complete_inventory": False}
 
+    async def _bus_profiles(self):
+        result = await self.owner.hass.async_add_executor_job(self.owner.client.read_bus_profiles)
+        self._guard(self.runner._spec)
+        if result.get("session_scope") is None or result["session_scope"] != getattr(self.owner.client, "access_session_scope", None):
+            raise FeatureBlocked("Bus inventory belongs to an obsolete session")
+        self._bus_scope = (self.owner.observations.generation, result["session_scope"])
+        self.bus_inventory = {k:v for k,v in result.items() if k != "session_scope"}
+        self.bus_inventory_at = datetime.now(UTC).isoformat()
+        return dict(self.bus_inventory)
+
     async def _inventory(self):
         inventory = await self.owner.hass.async_add_executor_job(
             self.owner.client.read_device_inventory
@@ -404,6 +418,11 @@ class LifecycleRuntime:
             "busy": self.runner.busy,
             "inventory": self.inventory.export() if self.inventory else None,
             "inventory_at": self.inventory_at,
+            "bus_discovery": {
+                "state": "not_inspected" if self.bus_inventory is None else "observed"
+                if self._bus_scope == (self.owner.observations.generation, getattr(self.owner.client,"access_session_scope",None)) and not self.owner.observations.closed else "stale",
+                "observed_at": self.bus_inventory_at, "data": self.bus_inventory,
+            },
             "boot_observations": self.boot,
             "boot_at": self.boot_at,
             "programming_observed_hold": self._programming_hold,

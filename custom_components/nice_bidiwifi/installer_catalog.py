@@ -134,13 +134,15 @@ PROCEDURES = (
         evidence=("Shared Wi-Fi CHANGE Interface/Commands/Reboot",),
         state_machine_verified=True,
     ),
-    blocked(
+    InstallerProcedure(
         "discover_bus",
-        "Discover BusT4 peripherals",
-        "installer.bus_discovery",
-        ("profile_broadcast", "scoped_identity_reads", "decode_profiles"),
-        ("installer_adapter",),
-        "Pro T4DiscoveryProcedure.profileBroadcast and model-specific profile decoders",
+        "Inspect BusT4 profiles and device addresses",
+        (InstallerStep("profiles_and_public_identity", "bus_profiles", timeout=90),),
+        ("administrator", "stationary"),
+        "Bounded STD_PROFILE broadcast replies and public model/version fields; absence and complete inventory are not established",
+        "Retry the read after checking connectivity; no address, pairing or setting is changed",
+        evidence=("Pro T4DiscoveryProcedure.profileBroadcast; RxJavaT4Manager.sendBroadcastCommand; T4SourceExtensions FF.FF",),
+        state_machine_verified=True,
     ),
     blocked(
         "search_devices",

@@ -24,11 +24,11 @@ Indexed source dependencies: 0. Full references are in the source inventory.
 
 ## `installer.bus_discovery`
 
-Full BusT4 discovery needs scoped profile decoding.
+Complete peripheral management exceeds observed BusT4 profiles.
 
-Missing: Pro T4DiscoveryProcedure broadcasts profiles then reads controller, radio and power-unit identities; native framing/decoders and endpoint ownership are not complete.
+Missing: Bounded FF.FF profile discovery and public model/version reads are implemented. Profile-specific configuration and completeness/absence claims are not established by the observed replies.
 
-To unblock: Implement profile broadcast, reply addressing/continuation and the required profile decoders together. NHK INFO inventory is a separate supported subset.
+To unblock: Add separately validated profile-specific adapters and target/recovery contracts; never turn a discovered profile or address into write permission.
 
 Indexed source dependencies: 1. Full references are in the source inventory.
 

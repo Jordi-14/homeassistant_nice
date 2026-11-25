@@ -235,3 +235,21 @@ metadata only, and leaves the connection established. Such a response does not
 trigger a reconnect, replay or cloud-route fallback. Pure codecs still reject the
 invalid record. Sanitized cause-chain extraction preserves the original stage
 when a transport wrapper has retained it only through its exception cause.
+
+## Read-only BusT4 profile discovery
+
+T4SourceExtensions defines the app's default controller as 00.03 and broadcast
+as FF.FF. RxJavaT4Manager.sendBroadcastCommand sends ordinary GET; the discovery
+procedure first requests STD_PROFILE, then addresses the sources that replied.
+The integration bounds the broadcast batch to 64 replies and validates DNP
+checksums, addressed source, group/parameter, operation and leading profile byte, matching the app's firstOrNull consumer.
+Additional bytes are not interpreted.
+It rejects conflicting profiles for one source. Unknown profile codes remain
+numeric and do not imply a supported HA actuator.
+
+Only the first eight observed sources receive bounded STD_PRODUCT, STD_VERSIONHW
+and STD_VERSIONFW GETs, with receivers/controllers prioritized. The reader never
+queries descriptions, MACs, PINs, keys or private memory during discovery. It yields
+to higher-priority work and fences the result to the current session. An inspection
+is a partial observation: absent devices and complete inventory are not asserted.
+A profile, bus address or model string never creates write permission.

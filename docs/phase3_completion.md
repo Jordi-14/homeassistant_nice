@@ -24,6 +24,11 @@ See [native audit](native_decoder_audit.md) for fingerprints and contract anchor
   They do not program remotes or change enabled protocols. Hardware acceptance
   remains separately reported, including an explicit unsupported response.
 
+The installer BusT4 profile inspection also sends the app's FF.FF STD_PROFILE
+GET and reads public product/hardware/firmware fields from up to eight observed
+sources. Unknown profiles and incomplete inventory remain explicit. It does not
+read private identifiers, change addresses or authorize peripheral writes.
+
 ## Remaining completion points
 
 | Capability | Recovered evidence | Required before enabling execution | Existing extension point |

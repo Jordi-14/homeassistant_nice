@@ -333,6 +333,108 @@ class NiceBidiClient:
         """Read static BiDi-WiFi and control-unit metadata."""
         return self._run_with_reconnect(self._read_info_locked)
 
+    def read_bus_profiles(self):
+        """Read advertised BusT4 profiles and bounded public identity fields."""
+        return self._run_with_reconnect(
+            self._read_bus_profiles_locked, preemptible=True
+        )
+
+    def _read_bus_profiles_locked(self):
+        from .protocol.t4.discovery import PROFILE_NAMES, decode_profile_replies
+
+        scope = (self._route_name, self.session_state.generation)
+        if self._should_yield is not None and self._should_yield():
+            raise NiceReadPreemptedError("Bus discovery yielded before dispatch")
+        request = build_dmp_read_frame(255, 255, 0, 4)
+        response, plains = self._t4_request_locked(
+            "DMP", request, 255, 255, self.t4_timeout_ms
+        )
+        self._raise_response_error(response, "T4_REQUEST")
+        try:
+            profiles, rejected, ignored = decode_profile_replies(plains)
+        except NiceProtocolError as error:
+            raise NiceUnsupportedError(
+                "Bus profile response has an unverified format",
+                code="bus_profile_layout",
+            ) from error
+        # Inspect receivers/controllers first, without turning observed profiles
+        # into write permissions or reading MACs, descriptions, PINs or keys.
+        targets = sorted(profiles, key=lambda t: (profiles[t] not in {10, 4}, t))
+        devices = []
+        for index, target in enumerate(targets):
+            row = {
+                "source": f"{target[0]:02X}.{target[1]:02X}",
+                "profile_code": profiles[target],
+                "profile": PROFILE_NAMES.get(profiles[target]),
+                "identity_inspected": index < 8,
+            }
+            if index < 8:
+                for parameter, key in (
+                    (9, "product"),
+                    (10, "hardware"),
+                    (11, "firmware"),
+                ):
+                    if self._should_yield is not None and self._should_yield():
+                        raise NiceReadPreemptedError(
+                            "Bus identity query yielded to queued work"
+                        )
+                    request = build_dmp_read_frame(*target, 0, parameter)
+                    response, replies = self._t4_request_locked(
+                        "DMP", request, *target, self.t4_timeout_ms
+                    )
+                    self._raise_response_error(response, "T4_REQUEST")
+                    try:
+                        matches = [
+                            r
+                            for raw in replies
+                            if (
+                                r := checked_dmp_reply(
+                                    raw,
+                                    target=target,
+                                    group=0,
+                                    parameter=parameter,
+                                    operation=0x19,
+                                )
+                            )
+                            is not None
+                        ]
+                    except NiceResponseError as error:
+                        row[key] = {
+                            "state": "unsupported"
+                            if error.unsupported
+                            else "unavailable",
+                            "code": error.code,
+                        }
+                        continue
+                    except NiceProtocolError:
+                        row[key] = {"state": "unverified_reply"}
+                        continue
+                    if len(matches) != 1:
+                        row[key] = {"state": "unverified_reply"}
+                        continue
+                    raw = matches[0].value
+                    row[key] = (
+                        "".join(
+                            c
+                            for c in raw.decode("ascii", errors="ignore")
+                            if 32 <= ord(c) < 127
+                        ).strip()[:96]
+                        or None
+                    )
+            devices.append(row)
+        if scope != (self._route_name, self.session_state.generation):
+            raise NiceParameterError("Bus discovery session changed")
+        return {
+            "session_scope": scope,
+            "devices": devices,
+            "rejected": rejected,
+            "ignored_replies": ignored,
+            "complete_inventory": False,
+            "absence_established": False,
+            "configuration_changed": False,
+            "identity_basis": "reported_profile_and_model_not_serial_identity",
+        }
+
     def read_receiver_memory_page(self, start: int, count: int):
         if (
             isinstance(start, bool)

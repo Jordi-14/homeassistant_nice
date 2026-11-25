@@ -149,3 +149,11 @@ make the shared client reconnect/replay a valid read or erase the useful origina
 failure details. These results remain unverified formats, not guessed private
 records or proof the firmware does not support a command. Tests cover a valid
 16-byte unsupported record, no reconnect/replay, and sanitized wrapped causes.
+
+### Bounded profile discovery: v0.9.0b23
+
+The installer UI now exposes a read-only FF.FF STD_PROFILE inspection and public
+identity reads for up to eight observed sources. This closes the basic address /
+profile observation path without claiming complete BusT4 discovery or granting
+peripheral permissions. Profile-specific control, full inventory completeness and
+physical procedures retain their separate contracts and completion points.
