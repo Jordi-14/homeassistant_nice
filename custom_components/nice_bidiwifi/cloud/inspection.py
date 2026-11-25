@@ -551,3 +551,104 @@ def inspection_now(scope, scenes, rules, timers):
     return AutomationInspection(
         scope, scenes, rules, timers, datetime.now(UTC).isoformat()
     )
+
+
+def inspect_macro_inventory(payload, scope):
+    root = successful(payload)
+    if scope.home_id is None:
+        sections = [
+            RecordCollection(kind, "unavailable", error_type="NoBoundHomeInventory")
+            for kind in ("scenes", "rules", "timers")
+        ]
+        return inspection_now(scope, *sections)
+    homes = _list(_object(root.get("data")).get("homes"))
+    matches = [
+        home
+        for home in homes
+        if isinstance(home, Mapping) and _id(home.get("id")) == scope.home_id
+    ]
+    if scope.home_id is None or len(matches) != 1:
+        sections = [
+            RecordCollection(kind, "unavailable", error_type="NoBoundHomeInventory")
+            for kind in ("scenes", "rules", "timers")
+        ]
+        return inspection_now(scope, *sections)
+    home = matches[0]
+    shape = collection_shape(
+        {
+            "result": True,
+            **{key: home[key] for key in ("scenes", "rules") if key in home},
+        }
+    )
+    shape["inventory_source"] = "macro_user_home"
+    # A home's unfiltered list length can include other gateways. Expose only
+    # this accessory's parsed counts, not unrelated home-resource counts.
+    shape = {key: value for key, value in shape.items() if not key.endswith("_length")}
+
+    def selected(rows):
+        output = []
+        for value in _list(rows):
+            row = _object(value)
+            mac = _mac(row.get("accessoryMacAddress"))
+            if mac is None:
+                raise NiceCloudSchemaError("A home record has no accessory scope")
+            if mac == scope.target_mac:
+                output.append(row)
+        return output
+
+    try:
+        if "scenes" not in home:
+            raise NiceCloudSchemaError("Home scene inventory was not reported")
+        rows = [] if home["scenes"] is None else home["scenes"]
+        scenes = parse_scenes({"result": True, "scenes": selected(rows)}, scope)
+    except NiceCloudSchemaError:
+        scenes = RecordCollection(
+            "scenes", "unavailable", error_type="MissingOrUnscopedHomeInventory"
+        )
+    try:
+        if "rules" not in home:
+            raise NiceCloudSchemaError("Home rule inventory was not reported")
+        groups = [] if home["rules"] is None else _list(home["rules"])
+        all_rules, all_timers = [], []
+        for value in groups:
+            group = _object(value)
+            if "rule" not in group or "timers" not in group:
+                raise NiceCloudSchemaError("Home rule group is incomplete")
+            all_rules += [] if group["rule"] is None else _list(group["rule"])
+            all_timers += [] if group["timers"] is None else _list(group["timers"])
+            if len(all_rules) > MAX_RECORDS or len(all_timers) > MAX_RECORDS:
+                raise NiceCloudSchemaError("Home inventory exceeds retention limit")
+        parent_scopes = {}
+        for value in all_rules:
+            row = _object(value)
+            identity = _id(row.get("id"))
+            mac = _mac(row.get("accessoryMacAddress"))
+            if identity in parent_scopes or mac is None:
+                raise NiceCloudSchemaError("Ambiguous home rule identity")
+            parent_scopes[identity] = mac
+        timers = []
+        for value in all_timers:
+            row = _object(value)
+            parent = _id(row.get("ruleId"))
+            if parent not in parent_scopes:
+                raise NiceCloudSchemaError("Home timer has no authoritative parent")
+            if parent_scopes[parent] == scope.target_mac:
+                timers.append(row)
+        rules, timer_section = parse_rules(
+            {"result": True, "rules": {"rule": selected(all_rules), "timers": timers}},
+            scope,
+        )
+    except NiceCloudSchemaError:
+        rules = RecordCollection(
+            "rules", "unavailable", error_type="MissingOrUnscopedHomeInventory"
+        )
+        timer_section = RecordCollection(
+            "timers", "unavailable", error_type="MissingOrUnboundHomeInventory"
+        )
+    from dataclasses import replace
+
+    sections = [
+        replace(section, response_shape=shape)
+        for section in (scenes, rules, timer_section)
+    ]
+    return inspection_now(scope, *sections)

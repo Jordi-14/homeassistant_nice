@@ -35,9 +35,10 @@ async def test_cloud_queries_keep_server_identifier_while_comparisons_stay_norma
     assert (
         result.scope.target_mac == MAC and result.scope.request_identifier == identifier
     )
-    for _, path, kwargs in session.calls:
-        if path in {"api/v1/rules", "api/v1/scene"}:
-            assert kwargs["params"] == {"accessoryMacAddress": identifier}
+    assert [(method, path) for method, path, _ in session.calls] == [
+        ("POST", "oauth/token"),
+        ("GET", "api/v1/macrouser/user"),
+    ]
     assert result.state == "records_found"
     assert identifier not in str(result.summary())
 

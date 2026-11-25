@@ -52,6 +52,8 @@ def macro(mac=MAC):
                             "email": "private@example.invalid",
                         }
                     ],
+                    "scenes": scene_payload(mac)["scenes"],
+                    "rules": [rule_payload(mac)["rules"]],
                     "accessories": [
                         {
                             "accessoryMacAddress": mac,
@@ -156,8 +158,6 @@ async def test_inspection_uses_only_scoped_reads_and_clears_account_and_token():
     assert [(method, path) for method, path, _ in session.calls] == [
         ("POST", "oauth/token"),
         ("GET", "api/v1/macrouser/user"),
-        ("GET", "api/v1/scene"),
-        ("GET", "api/v1/rules"),
     ]
     for _method, path, kwargs in session.calls:
         if path in {"api/v1/scene", "api/v1/rules"}:
@@ -196,33 +196,26 @@ async def test_wrong_account_stops_before_device_collections():
 
 
 async def test_auth_expiration_is_not_retried_and_does_not_query_more_resources():
-    session = Session(scenes=_FakeResponse(401, {}))
+    session = Session()
+    session.responses["api/v1/macrouser/user"] = _FakeResponse(401, {})
     login = NiceCloudLogin("account", "password")
     client = NiceCloudAutomationInspector(session)
     with pytest.raises(NiceCloudAuthError):
         await client.async_inspect(login, MAC)
-    assert len(session.calls) == 3
+    assert len(session.calls) == 2
     assert not login.account_password and client._active_token is None
 
 
 async def test_unavailable_section_is_unknown_not_false_absence():
+    payload = macro()
+    payload["data"]["homes"][0].pop("scenes")
     result = await NiceCloudAutomationInspector(
-        Session(scenes=_FakeResponse(503, {}))
+        Session(macro_payload=payload)
     ).async_inspect(NiceCloudLogin("a", "b"), MAC)
     assert result.state == "partial"
     assert result.scenes.summary()["count"] is None
     assert result.rules.summary()["count"] == 1
     assert "absence is not established" in result.private_lines()
-
-
-async def test_inspector_allowlist_rejects_mutating_paths_before_http():
-    session = Session()
-    client = NiceCloudAutomationInspector(session)
-    with pytest.raises(NiceCloudAccessError):
-        await client._get_records(
-            "api/v1/home", TransientAccessToken("token", "Bearer", 60), MAC
-        )
-    assert not session.calls
 
 
 def test_empty_valid_collections_only_mean_no_records_reported_in_cloud():

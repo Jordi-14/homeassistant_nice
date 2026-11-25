@@ -295,3 +295,14 @@ identifiers, list lengths and identity-format labels; arbitrary messages, raw
 identifiers, credentials and records are not exported. A successful b12 result
 still does not confirm CORE execution or the absence of all local controller
 behavior.
+
+## Corrective beta: v0.9.0b13
+
+Repeat optional cloud inspection after updating/restarting. The reader now uses
+the app's successful macro-user home inventory and does not call the failing
+per-accessory scene/rule endpoints. Explicit empty/null home collections may report
+zero; omitted or malformed collections remain unknown. Other gateway records are
+filtered out and timers must link to scoped rules. No home/resource is imported,
+changed or executed, and no account secrets or private records enter diagnostics.
+The read-only live result still needs confirmation rather than assuming that a
+source-correct parser change has resolved every response variant.
