@@ -520,7 +520,8 @@
           "installer_recovery": "Review interrupted procedure",
           "installer_cancel": "Request procedure cancellation",
           "ecosystem": "HA and existing Nice automations",
-          "pro_controls": "Pro controls"
+          "pro_controls": "Pro controls",
+          "receiver": "Receiver and remotes"
         }
       },
       "inspect_users": {
@@ -630,6 +631,33 @@
         "data": {
           "pro_controls": "Enable Pro controls"
         }
+      },
+      "receiver": {
+        "title": "Receiver",
+        "menu_options": {
+          "receiver_status": "Inspect receiver status",
+          "receiver_memory": "Inspect stored slots",
+          "receiver_protocols": "Inspect supported protocols"
+        }
+      },
+      "receiver_status": {
+        "title": "Receiver status",
+        "description": "Passive inspection; no configuration is changed. Submit to read.\n\n{summary}"
+      },
+      "receiver_memory": {
+        "title": "Receiver slots",
+        "description": "Bounded read-only inspection. Private remote codes and security counters are not displayed.\n\n{summary}",
+        "data": {
+          "start": "First slot",
+          "count": "Number of slots"
+        }
+      },
+      "receiver_protocols": {
+        "title": "Receiver protocols",
+        "description": "Establishes a receiver session challenge to read signed capabilities. It does not program remotes or change enabled protocols.\n\n{summary}",
+        "data": {
+          "confirm": "Run authenticated inspection"
+        }
       }
     },
     "error": {
@@ -646,7 +674,8 @@
       "ecosystem_invalid_login": "Enter a valid account and password.",
       "ecosystem_inspection_failed": "The inspection could not complete. Check the account’s access to this accessory. Any previous capture keeps its original timestamp; no resource or integration connection policy was changed.",
       "ecosystem_core_failed": "A coherent CORE table snapshot could not be captured. Nothing was written or executed.",
-      "pro_controls_unavailable": "Could not verify the controller menu or administrator access. Check the connection and try again while the gate is stationary."
+      "pro_controls_unavailable": "Could not verify the controller menu or administrator access. Check the connection and try again while the gate is stationary.",
+      "receiver_inspection_failed": "Inspection could not complete. Check connectivity, permissions and integration diagnostics."
     },
     "abort": {
       "not_loaded": "Load the integration before managing module access.",

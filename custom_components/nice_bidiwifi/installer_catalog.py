@@ -174,13 +174,17 @@ PROCEDURES = (
         ("installer", "physical_setup"),
         "Force-map procedure remains independent of HA animation calibration",
     ),
-    blocked(
+    InstallerProcedure(
         "radio_inspect",
-        "Inspect receiver memory and remote channels",
-        "installer.radio_memory",
-        ("receiver_identity", "read_memory_page", "decode_and_redact"),
-        ("receiver_adapter",),
-        "T4_RADIO_RD, Memory attributes and receiver-specific native layouts",
+        "Inspect the first eight receiver memory slots",
+        (InstallerStep("read_redacted_page", "radio_page", timeout=90),),
+        ("administrator", "stationary", "pro_controls"),
+        "Eight addressed OXI memory replies with verified position echoes; private codes discarded; not a complete inventory",
+        "Retry the read after checking connectivity; no receiver setting is changed",
+        evidence=(
+            "Pro RadioQueryMemory; native QueryMemoryResult; strict position/length validation",
+        ),
+        state_machine_verified=True,
     ),
     blocked(
         "radio_enroll",

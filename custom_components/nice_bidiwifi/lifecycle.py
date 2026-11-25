@@ -38,6 +38,7 @@ class LifecycleRuntime:
                 "boot_devices": partial(self._boot_read, "DEV_ON_BOOT"),
                 "programming_status": partial(self._boot_read, "STATUS_PROGRAMMING"),
                 "snapshot": self._snapshot,
+                "radio_page": self._radio_page,
                 "restart": self._restart,
             },
             prepare=self._prepare,
@@ -145,9 +146,12 @@ class LifecycleRuntime:
             "local",
             "advertised_interface_id",
             "reboot_capability",
+            "pro_controls",
         }
         if set(spec.prerequisites) - known:
             raise FeatureBlocked("An installer prerequisite has no verified adapter")
+        if "pro_controls" in spec.prerequisites and not owner.controller_menu.enabled:
+            raise FeatureBlocked("Enable Pro controls before receiver management")
         if "local" in spec.prerequisites and owner.active_connection_route != "local":
             raise FeatureBlocked("This inspection requires an active local connection")
         if spec.mutates and self.programming_observed:
@@ -193,6 +197,11 @@ class LifecycleRuntime:
                 getattr(owner.client, "access_session_scope", None),
             ):
                 raise FeatureBlocked("The device session changed during the procedure")
+            if (
+                "pro_controls" in spec.prerequisites
+                and not owner.controller_menu.enabled
+            ):
+                raise FeatureBlocked("Pro controls were disabled")
             if "stationary" in spec.prerequisites:
                 owner.access.stationary_guard()
             if "administrator" in spec.prerequisites:
@@ -210,6 +219,21 @@ class LifecycleRuntime:
         except Exception as error:
             error.delivery = "not_sent"
             raise
+
+    async def _radio_page(self):
+        receiver = self.owner.receiver
+        async with receiver._lock:
+            receiver.memory_page = None
+            generation = receiver.generation
+            observation_generation = self.owner.observations.generation
+            result = await self.owner.hass.async_add_executor_job(
+                self.owner.client.read_receiver_memory_page, 0, 8
+            )
+            self._guard(self.runner._spec)
+            receiver.memory_page = receiver._accept_operator_result(
+                result, generation, observation_generation
+            )
+            return {"observed_slots": 8, "complete_inventory": False}
 
     async def _inventory(self):
         inventory = await self.owner.hass.async_add_executor_job(

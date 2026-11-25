@@ -198,7 +198,7 @@ Implementation, device support, permissions and current availability are separat
 | `installer.search_bluebus` | blocked | 6 | none | installer.commissioning |
 | `installer.learn_positions` | blocked | 6 | none | installer.commissioning |
 | `installer.learn_force_map` | blocked | 6 | none | fg01h.force_map_learning |
-| `installer.radio_inspect` | blocked | 6 | none | installer.radio_memory |
+| `installer.radio_inspect` | implemented | 6 | installer | none |
 | `installer.radio_enroll` | blocked | 6 | none | installer.radio_mutation |
 | `installer.radio_edit` | blocked | 6 | none | installer.radio_mutation |
 | `installer.radio_remove` | blocked | 6 | none | installer.radio_mutation |

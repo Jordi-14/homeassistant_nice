@@ -360,3 +360,23 @@ async def test_menu_entity_summary_does_not_repeat_full_table_in_state_history(h
     evidence = owner.controller_menu.report(include_records=True)
     assert [row["binding"] for row in evidence["records"]] == ["04/5A", "04/81"]
     await owner.async_shutdown()
+
+
+async def test_permission_renewal_starts_with_margin_and_above_background_sweeps(
+    hass, monkeypatch
+):
+    owner = await instance(hass)
+    install_menu_fixture(owner)
+    await owner.controller_menu.async_refresh()
+    menu = owner.controller_menu
+    menu.captured -= 12
+    menu._last_attempt -= 12
+    refresh = __import__("unittest.mock", fromlist=["AsyncMock"]).AsyncMock()
+    monkeypatch.setattr(menu, "async_refresh", refresh)
+    menu.schedule()
+    task = menu._task
+    assert task is not None
+    await task
+    refresh.assert_awaited_once_with(background=False)
+    assert menu.valid()
+    await owner.async_shutdown()

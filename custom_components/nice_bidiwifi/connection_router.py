@@ -362,10 +362,12 @@ class NiceConnectionRouter:
             with self._waiting_commands_lock:
                 self._waiting_commands -= 1
 
-    def _write(self, method: str, *args, **kwargs):
+    def _write(self, method: str, *args, operation_priority=None, **kwargs):
         """Execute a command once; an ambiguous failure is never replayed."""
         deadline = self._deadline_clock() + self._command_timeout
         priority = (OperationPriority.STOP if method in {"send_action", "send_dep_action", "send_t4_action"} and args in {("stop",), ("stop_remote",)} else OperationPriority.CONTROL)
+        if operation_priority is not None:
+            priority = operation_priority
         self._acquire_for_command(priority=priority, timeout=self._command_timeout)
         try:
             original_guard = kwargs.pop("before_dispatch", None)
@@ -420,6 +422,21 @@ class NiceConnectionRouter:
         background = kwargs.pop("background", False)
         return self._read("read_dmp_indexed", group, parameter, index,
                           operation_priority=OperationPriority.DIAGNOSTIC if background else None, **kwargs)
+
+    def read_receiver_memory_page(self, start: int, count: int):
+        return self._read(
+            "read_receiver_memory_page",
+            start,
+            count,
+            operation_priority=OperationPriority.READBACK,
+        )
+
+    def inspect_receiver_protocols(self, *, before_dispatch=None):
+        return self._write(
+            "inspect_receiver_protocols",
+            before_dispatch=before_dispatch,
+            operation_priority=OperationPriority.READBACK,
+        )
 
     def read_receiver_diagnostics(self, *, background: bool = True):
         return self._read("read_receiver_diagnostics", operation_priority=OperationPriority.DIAGNOSTIC if background else OperationPriority.READBACK)

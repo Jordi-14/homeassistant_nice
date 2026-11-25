@@ -21,6 +21,8 @@ from .errors import NiceBidiError, NiceParameterError
 from .protocol.t4.menu import MenuEntry, MenuPermission, MenuRole
 
 MENU_MAX_AGE = 30
+MENU_REFRESH_AGE = 10
+MENU_RETRY_INTERVAL = 10
 
 
 CONF_PRO_CONTROLS = "pro_controls"
@@ -73,9 +75,9 @@ class ControllerMenu:
             or owner.reported_moving
             or owner.calibration_controller.calibration_state == "running"
             or self._task is not None
-            or time.monotonic() - self._last_attempt < 20
+            or time.monotonic() - self._last_attempt < MENU_RETRY_INTERVAL
             or self.valid()
-            and time.monotonic() - self.captured < 20
+            and time.monotonic() - self.captured < MENU_REFRESH_AGE
         ):
             return
         self._task = owner.tasks.create(
@@ -84,7 +86,9 @@ class ControllerMenu:
 
     async def _background_refresh(self):
         try:
-            await self.async_refresh(background=True)
+            # Permission renewal must not sit behind optional diagnostic sweeps.
+            # READBACK remains below STOP and CONTROL, and paging is preemptible.
+            await self.async_refresh(background=False)
         except (NiceBidiError, OSError, HomeAssistantError) as error:
             self.last_error = type(error).__name__
         finally:
@@ -158,7 +162,11 @@ class ControllerMenu:
             self.invalidate()
         try:
             snapshot = await owner.hass.async_add_executor_job(
-                partial(owner.client.read_controller_menu, preemptible=True, background=background)
+                partial(
+                    owner.client.read_controller_menu,
+                    preemptible=True,
+                    background=background,
+                )
             )
             if (
                 owner.observations.closed

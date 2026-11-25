@@ -332,6 +332,123 @@ class NiceBidiClient:
         """Read static BiDi-WiFi and control-unit metadata."""
         return self._run_with_reconnect(self._read_info_locked)
 
+    def read_receiver_memory_page(self, start: int, count: int):
+        if (
+            isinstance(start, bool)
+            or isinstance(count, bool)
+            or not isinstance(start, int)
+            or not isinstance(count, int)
+            or not 0 <= start <= 1023
+            or not 1 <= count <= 16
+            or start + count > 1024
+        ):
+            raise NiceParameterError("Receiver memory page is outside its bounds")
+        return self._run_with_reconnect(
+            lambda: self._read_receiver_memory_page_locked(start, count),
+            preemptible=True,
+        )
+
+    def _receiver_exchange_locked(self, group, parameter, payload=b"", *, flags=0x99):
+        from .protocol.t4.radio import build_receiver_request
+
+        if self._should_yield is not None and self._should_yield():
+            raise NiceReadPreemptedError("Receiver query yielded to queued work")
+        request = build_receiver_request(group, parameter, payload, flags=flags)
+        response, plains = self._t4_request_locked(
+            "DMP", request, 0, 10, self.t4_timeout_ms
+        )
+        self._raise_response_error(response, "T4_REQUEST")
+        matches = [
+            reply
+            for plain in plains
+            if (
+                reply := checked_dmp_reply(
+                    plain,
+                    target=(0, 10),
+                    group=group,
+                    parameter=parameter,
+                    operation=flags & 0x7F,
+                )
+            )
+            is not None
+        ]
+        if len(matches) != 1:
+            raise NiceProtocolError("Receiver query requires one addressed reply")
+        return matches[0].value
+
+    def _read_receiver_memory_page_locked(self, start, count):
+        from .protocol.t4.radio import decode_memory_reply
+
+        scope = (self._route_name, self.session_state.generation)
+        if self._receiver_exchange_locked(0, 4) != b"\x0a":
+            raise NiceProtocolError("Receiver profile is not verified")
+        records = []
+        for position in range(start, start + count):
+            raw = self._receiver_exchange_locked(10, 0x25, position.to_bytes(2, "big"))
+            record = decode_memory_reply(raw, expected_position=position)
+            records.append(record.public_summary())
+        if scope != (self._route_name, self.session_state.generation):
+            raise NiceProtocolError("Receiver memory session changed")
+        return {
+            "session_scope": scope,
+            "target": "00.0A",
+            "start": start,
+            "count": count,
+            "records": records,
+            "complete_receiver_inventory": False,
+            "private_codes_retained": False,
+        }
+
+    def inspect_receiver_protocols(self, *, before_dispatch=None):
+        return self._run_command_once(
+            lambda: self._inspect_receiver_protocols_locked(before_dispatch),
+            before_dispatch=before_dispatch,
+        )
+
+    def _inspect_receiver_protocols_locked(self, before_dispatch):
+        import secrets
+        from .protocol.t4.radio import RadioAuthContext, decode_radio_protocols
+
+        scope = (self._route_name, self.session_state.generation)
+        if self._receiver_exchange_locked(0, 4) != b"\x0a":
+            raise NiceProtocolError("Receiver profile is not verified")
+        mac = self._receiver_exchange_locked(0, 7)
+        if len(mac) != 4:
+            raise NiceProtocolError(
+                "Receiver authentication identity has an unverified shape"
+            )
+        result = {}
+        for parameter, key in ((0x71, "supported"), (0x72, "enabled")):
+            if before_dispatch is not None:
+                before_dispatch()
+            nonce = secrets.randbits(32)
+            self._receiver_exchange_locked(
+                10, 0x6F, nonce.to_bytes(4, "little"), flags=0xA9
+            )
+            receiver_nonce = self._receiver_exchange_locked(10, 0x6F)
+            if len(receiver_nonce) != 4:
+                raise NiceProtocolError("Receiver challenge has an unverified shape")
+            context = RadioAuthContext(
+                int.from_bytes(mac, "little"),
+                0,
+                nonce,
+                int.from_bytes(receiver_nonce, "little"),
+                parameter,
+            )
+            signature = context.signature(b"").to_bytes(4, "little")
+            encrypted = self._receiver_exchange_locked(10, parameter, signature)
+            result[key] = decode_radio_protocols(encrypted, context)
+        if scope != (self._route_name, self.session_state.generation):
+            raise NiceProtocolError("Receiver authentication session changed")
+        return {
+            "session_scope": scope,
+            "target": "00.0A",
+            "state": "available",
+            **result,
+            "gate_configuration_changed": False,
+            "authentication_session_changed": True,
+        }
+
     def read_receiver_diagnostics(self, *, background: bool = True):
         """Inspect the existing OXI slot, never scan keys or remote memory."""
         return self._run_with_reconnect(self._read_receiver_diagnostics_locked, preemptible=True)

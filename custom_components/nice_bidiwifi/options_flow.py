@@ -36,6 +36,7 @@ class NiceAccessOptionsFlow(OptionsFlow):
             menu_options=[
                 "inspect_users",
                 "pro_controls",
+                "receiver",
                 "ecosystem",
                 "installer",
                 "installer_recovery",
@@ -46,6 +47,93 @@ class NiceAccessOptionsFlow(OptionsFlow):
                 "network_setup",
                 "ownership",
             ],
+        )
+
+    async def async_step_receiver(self, user_input=None):
+        if self._owner() is None:
+            return self.async_abort(reason="not_loaded")
+        return self.async_show_menu(
+            step_id="receiver",
+            menu_options=["receiver_status", "receiver_memory", "receiver_protocols"],
+        )
+
+    async def async_step_receiver_status(self, user_input=None):
+        owner = self._owner()
+        if owner is None:
+            return self.async_abort(reason="not_loaded")
+        errors = {}
+        summary = ""
+        if user_input is not None:
+            try:
+                value = await owner.receiver.async_inspect(background=False)
+                summary = str(value)
+            except Exception:
+                errors["base"] = "receiver_inspection_failed"
+        return self.async_show_form(
+            step_id="receiver_status",
+            data_schema=vol.Schema({}),
+            errors=errors,
+            description_placeholders={"summary": summary},
+        )
+
+    async def async_step_receiver_memory(self, user_input=None):
+        owner = self._owner()
+        if owner is None:
+            return self.async_abort(reason="not_loaded")
+        errors = {}
+        summary = ""
+        if user_input is not None:
+            try:
+                value = await owner.receiver.async_memory_page(
+                    user_input["start"], user_input["count"]
+                )
+                summary = "\n".join(str(row) for row in value["records"])
+            except Exception:
+                errors["base"] = "receiver_inspection_failed"
+        return self.async_show_form(
+            step_id="receiver_memory",
+            errors=errors,
+            description_placeholders={"summary": summary},
+            data_schema=vol.Schema(
+                {
+                    vol.Required("start", default=0): vol.All(
+                        vol.Coerce(int), vol.Range(min=0, max=1023)
+                    ),
+                    vol.Required("count", default=8): vol.All(
+                        vol.Coerce(int), vol.Range(min=1, max=16)
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_receiver_protocols(self, user_input=None):
+        owner = self._owner()
+        if owner is None:
+            return self.async_abort(reason="not_loaded")
+        errors = {}
+        summary = ""
+        if user_input is not None:
+            try:
+                value = await owner.receiver.async_protocols(
+                    confirmed=user_input.get("confirm") is True
+                )
+                from .protocol.t4.radio import RADIO_PROTOCOLS
+
+                summary = "\n".join(
+                    name
+                    + ": "
+                    + ", ".join(
+                        RADIO_PROTOCOLS.get(code, str(code)) for code in value[name]
+                    )
+                    for name in ("supported", "enabled")
+                )
+            except Exception:
+                errors["base"] = "receiver_inspection_failed"
+        return self.async_show_form(
+            step_id="receiver_protocols",
+            data_schema=vol.Schema({vol.Required("confirm", default=False): bool}),
+            errors=errors,
+            description_placeholders={"summary": summary},
         )
 
     async def async_step_pro_controls(self, user_input=None):

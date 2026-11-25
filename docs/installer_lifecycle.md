@@ -37,7 +37,7 @@ The recovery screen only clears an interface-restart hold after explicit operato
 | `search_bluebus` | blocked | validate_model_sequence, start_bluebus_search, observe_completion | installer, stationary, physical_setup | installer.commissioning |
 | `learn_positions` | blocked | validate_motor_ownership, model_learning_sequence, verify_endpoints | installer, physical_setup, gate_visible | installer.commissioning |
 | `learn_force_map` | blocked | validate_fg01h, learn_force_map, verify_adaptation | installer, physical_setup | fg01h.force_map_learning |
-| `radio_inspect` | blocked | receiver_identity, read_memory_page, decode_and_redact | receiver_adapter | installer.radio_memory |
+| `radio_inspect` | implemented | read_redacted_page | administrator, stationary, pro_controls | none |
 | `radio_enroll` | blocked | physical_consent, receiver_mode, write_remote, verify_remote | installer, receiver_adapter, physical_remote | installer.radio_mutation |
 | `radio_edit` | blocked | read_target, authorize_channel, write_once, readback | installer, receiver_adapter | installer.radio_mutation |
 | `radio_remove` | blocked | identify_exact_remote, remove_once, verify_removal | installer, receiver_adapter | installer.radio_mutation |

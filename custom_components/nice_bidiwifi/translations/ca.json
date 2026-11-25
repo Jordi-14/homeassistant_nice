@@ -520,7 +520,8 @@
           "installer_recovery": "Revisa una operació interrompuda",
           "installer_cancel": "Sol·licita cancel·lació d’un procediment",
           "ecosystem": "HA i automatitzacions Nice existents",
-          "pro_controls": "Controls Pro"
+          "pro_controls": "Controls Pro",
+          "receiver": "Receptor i comandaments"
         }
       },
       "inspect_users": {
@@ -630,6 +631,33 @@
         "data": {
           "pro_controls": "Activa els controls Pro"
         }
+      },
+      "receiver": {
+        "title": "Receptor",
+        "menu_options": {
+          "receiver_status": "Diagnòstic del receptor",
+          "receiver_memory": "Inspecciona posicions de memòria",
+          "receiver_protocols": "Inspecciona protocols admesos"
+        }
+      },
+      "receiver_status": {
+        "title": "Estat del receptor",
+        "description": "Lectura passiva; no modifica cap configuració. Continua per llegir.\n\n{summary}"
+      },
+      "receiver_memory": {
+        "title": "Posicions del receptor",
+        "description": "Lectura limitada. Els codis privats i comptadors de seguretat no es mostren.\n\n{summary}",
+        "data": {
+          "start": "Primera posició",
+          "count": "Nombre de posicions"
+        }
+      },
+      "receiver_protocols": {
+        "title": "Protocols del receptor",
+        "description": "Estableix un repte de sessió per llegir les capacitats signades. No programa comandaments ni canvia els protocols activats.\n\n{summary}",
+        "data": {
+          "confirm": "Executa la inspecció autenticada"
+        }
       }
     },
     "error": {
@@ -646,7 +674,8 @@
       "ecosystem_invalid_login": "Introdueix un compte i una contrasenya vàlids.",
       "ecosystem_inspection_failed": "No s’ha pogut completar la inspecció. Comprova l’accés del compte a aquest accessori. Es conserva la data de qualsevol captura anterior; no es modifica cap recurs ni la connexió de la integració.",
       "ecosystem_core_failed": "No s’ha pogut capturar una instantània coherent. No s’ha escrit ni executat res.",
-      "pro_controls_unavailable": "No es pot verificar el menú o l’accés d’administrador. Revisa la connexió i torna-ho a provar amb la porta aturada."
+      "pro_controls_unavailable": "No es pot verificar el menú o l’accés d’administrador. Revisa la connexió i torna-ho a provar amb la porta aturada.",
+      "receiver_inspection_failed": "No s’ha pogut completar la inspecció; revisa la connexió, els permisos i les dades de diagnòstic."
     },
     "abort": {
       "not_loaded": "Carrega la integració abans de gestionar l’accés.",

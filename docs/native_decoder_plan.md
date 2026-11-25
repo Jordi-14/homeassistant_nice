@@ -71,8 +71,8 @@ operations are never performed automatically during upgrade or discovery.
 ## Evidence and testing policy
 
 See [Native decoder audit](native_decoder_audit.md). The supplied arm64 library
-matches the copy inside the Pro split APK; exact association with the exported
-Pro 2.18 app still needs stronger packaging/version evidence. Static interpretation,
+matches the copy inside the Pro split APK. The complete Pro 2.18 base APK and
+both arm64 splits now have verified v2/v3 signatures with the same signing certificate. Static interpretation,
 fixture validation and hardware verification are distinct. No cloud mutation,
 HA automation changes or live gate movement is required for phase 1 development.
 
@@ -99,8 +99,8 @@ controller menu/INFO, session identity, bounds and device responses still apply.
 No password read, password change or automatic parameter write is required.
 Hardware/model comparison and genuinely unknown layouts remain beta evidence limits.
 
-Phase 3 remains unimplemented. The original ownership boundary and prohibition on
-automatic installer actions continue to apply.
+Phase 3 progress is tracked below. The original ownership boundary and prohibition
+on automatic installer actions continue to apply.
 
 ## Phase 3 progress: v0.9.0b19 inspection set
 
@@ -115,3 +115,12 @@ Still to complete in the final phase: the scoped radio challenge runtime and
 capability readback; live memory-query/paging and credential/mutation contracts;
 individual installer/reset/learning and firmware/restore audits. No first-step
 inspection result should be described as completion of those operations.
+
+### Next final-phase set: v0.9.0b20
+
+The operator UI adds bounded, privacy-safe stored-slot inspection and a scoped
+challenge transaction for signed capability reads. Ephemeral nonce SETs are not
+configuration writes, but are explicit, single-send and not silently replayed or
+moved to a second route after failure. Actual remote programming remains a separate
+supervised procedure. Slot summaries do not expose identity codes or rolling
+counters, and a page is never claimed as a complete backup.

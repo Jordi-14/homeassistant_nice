@@ -214,3 +214,35 @@ def decode_remote_record(raw: bytes, *, position: int):
         raw[8] if extended else None,
         raw[9] if extended else None,
     )
+
+
+def build_receiver_request(
+    group: int, parameter: int, payload: bytes = b"", *, flags=0x99
+):
+    """Only scoped receiver inspection/authentication queries, never arbitrary I/O."""
+    from .codec import dmp_checksum
+
+    allowed = {
+        (0, 4, 0x99, 0),
+        (0, 7, 0x99, 0),
+        (10, 0x25, 0x99, 2),
+        (10, 0x6F, 0xA9, 4),
+        (10, 0x6F, 0x99, 0),
+        (10, 0x71, 0x99, 4),
+        (10, 0x72, 0x99, 4),
+    }
+    if (group, parameter, flags, len(payload)) not in allowed:
+        raise NiceParameterError("Receiver operation is outside its reviewed contract")
+    body = [group, parameter, flags, 0, len(payload), *payload]
+    header = [0, 10, 0x50, 0x91, 8, len(body) + 1]
+    packet = [*header, dmp_checksum(*header), *body, dmp_checksum(*body)]
+    return bytes([0x55, len(packet), *packet, len(packet)])
+
+
+def decode_memory_reply(raw: bytes, *, expected_position: int):
+    if len(raw) not in {10, 12}:
+        raise NiceProtocolError("Incomplete receiver memory record")
+    position = int.from_bytes(raw[:2], "big")
+    if position != expected_position:
+        raise NiceProtocolError("Receiver memory position echo differs from request")
+    return decode_remote_record(raw[2:], position=position)

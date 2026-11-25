@@ -3,7 +3,7 @@
 Artifact: arm64 `libnative-lib.so`, 170472 bytes, SHA256
 `874d0e1d0ff486a1297b465568f49d73bf55ec411e50589e4ccecec1536a88e0`,
 ELF Build ID `769d74ad8578a129c0450b6b754db9d4a107920c`.
-Its bytes match the supplied Pro arm64 split APK. The library is not distributed
+Its bytes match the supplied Pro arm64 split APK and the complete Pro 2.18 archive. The library is not distributed
 with this integration. Audit uses static instructions and the Java field consumers;
 no vendor native code is loaded into HA or executed for this implementation.
 
@@ -142,3 +142,60 @@ reading model/version, type/coding, outputs and counts. It never reads a PIN, ke
 certificate or memory-code register. Unsupported optional fields remain explicit;
 missing data is not a count of zero. Model identity is not serial identity and
 these observations never grant mutation authority.
+
+## Scoped receiver memory and capability inspection
+
+The bounded memory query uses RADIO_CODEINMEMORY 0A/25 with a two-byte big-endian
+position. Native qryPosition at 0x1482c and the BaseRemotes.readLegacyCode caller
+agree on this shape. A response must contain the exact position echo plus an
+8/10-byte record; short, wrong-position or oversized replies are not a valid page.
+The operator page is limited to 16 slots, and only redacted summaries leave the
+client. It is never described as a complete receiver backup or inventory.
+
+The authentication codec is now wired as an explicit operator inspection. For
+the existing external radio slot it verifies profile 0A, reads the four-byte T4
+identity privately, sends a fresh four-byte client nonce to the audited 0A/6F
+challenge register, reads the receiver nonce and supplies the command-specific
+request signature before decoding each signed mask. The app's certificate-zero
+context is used for this reviewed inspection path, not a guessed PIN or key.
+Fresh challenges are used for supported/enabled reads separately. No identity,
+nonce, certificate or encrypted body is retained in the public result.
+
+This exchange changes ephemeral authentication state, not enabled radio formats or
+gate configuration. It therefore uses a single-send route with no implicit cloud
+fallback/replay after uncertain delivery. Failed authentication or a mismatched
+signature is an error, never an empty capability list. A receiver that does not
+support this extension remains explicitly unsupported; there is no key probing.
+
+## Complete app archive verification
+
+The complete Pro base APK identifies version v2.18 r188 / 20261008. Google's
+ApkVerifier validates its v2/v3 signatures and those of both the downloaded arm64
+split and the originally supplied arm64 split. All three report signer certificate
+SHA256 `4d3ee4c411e18c709d66b456ddabd685bd0a847485d748f61d04c7571f1ad753`.
+The contained native library matches the fingerprint at the top of this document.
+These checks establish consistency with the supplied signed artifact; no app or
+vendor native code was executed. Neither APK nor decompiled source is distributed.
+
+InstallationFinder's recovered body first matches the control-unit catalog code,
+then falls back to the reported scan product. It loads a local updated procedure
+file, falling back to bundled `res/raw/installazione.json`. That bundled file has
+15 model groups with ordered screen identifiers. It is not a generic opcode list:
+motor selection, manual endpoint gathering and first maneuvers vary by group.
+The literal `SLIGHTR10` is absent from this bundled table. A `SLIGHT` group exists,
+but substituting it without the catalog mapping is not verified model support.
+
+## Live b19 inspection
+
+On SLIGHTR10 / 604a1r00 / FG01h, all 35 additional Pro editors acquired complete
+metadata and readable values. The six-page controller menu contains 82 records.
+The existing 00.0A slot advertises OXIBD group / 672B / BK00E, receiver type OXI,
+coding Flor. This firmware returns FD (unsupported) for 0A/08 and 0A/70, so output
+status and transmitter counts remain explicitly unsupported rather than zero.
+No controller parameter or stored remote was changed for these checks.
+
+B20 renews menu evidence at ten seconds, leaving margin before its thirty-second
+expiry. Permission renewal uses READBACK priority above optional diagnostics;
+STOP and CONTROL still take precedence and paging remains preemptible. A failed
+replacement still revokes the permission snapshot. Bounded memory inspection is
+also available through the existing installer lifecycle with shared redaction.

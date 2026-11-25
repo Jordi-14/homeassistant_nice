@@ -1,6 +1,7 @@
 """Bounded passive receiver inspection with separate authentication/layout gaps."""
 
 from datetime import UTC, datetime
+import asyncio
 from functools import partial
 import time
 
@@ -17,14 +18,23 @@ class ReceiverRuntime:
         self.scope = None
         self.generation = 0
         self.last_error = None
+        self._lock = asyncio.Lock()
+        self.memory_page = None
+        self.protocols = None
 
     def invalidate(self):
         self.generation += 1
         self.snapshot = None
         self.captured = None
         self.scope = None
+        self.memory_page = None
+        self.protocols = None
 
     async def async_inspect(self, *, background=True):
+        async with self._lock:
+            return await self._async_inspect_locked(background=background)
+
+    async def _async_inspect_locked(self, *, background):
         owner = self.owner
         if owner.capabilities is not None and owner.capabilities.family in {
             ProductFamily.CORE,
@@ -63,13 +73,76 @@ class ReceiverRuntime:
             self.last_error = type(error).__name__
             raise
 
-    def report(self):
+    async def _prepare_operator_read(self):
+        if not self.owner.controller_menu.enabled:
+            raise NiceParameterError("Enable Pro controls before receiver management")
+        self.owner.lifecycle.require_idle()
+        await self.owner.access.async_prepare_admin()
+
+    def _accept_operator_result(self, result, generation, observation_generation):
+        if (
+            self.owner.observations.closed
+            or generation != self.generation
+            or observation_generation != self.owner.observations.generation
+            or result.get("session_scope")
+            != getattr(self.owner.client, "access_session_scope", None)
+        ):
+            raise NiceParameterError("Receiver result belongs to an obsolete session")
+        value = dict(result)
+        value.pop("session_scope", None)
+        value["received_at"] = datetime.now(UTC).isoformat()
+        return value
+
+    async def async_memory_page(self, start=0, count=8):
+        async with self._lock:
+            self.memory_page = None
+            await self._prepare_operator_read()
+            generation = self.generation
+            observation_generation = self.owner.observations.generation
+            result = await self.owner.hass.async_add_executor_job(
+                self.owner.client.read_receiver_memory_page, start, count
+            )
+            self.memory_page = self._accept_operator_result(
+                result, generation, observation_generation
+            )
+            return dict(self.memory_page)
+
+    async def async_protocols(self, *, confirmed=False):
+        if not confirmed:
+            raise NiceParameterError("Confirm the receiver authentication inspection")
+        async with self._lock:
+            self.protocols = None
+            await self._prepare_operator_read()
+            generation = self.generation
+            observation_generation = self.owner.observations.generation
+            guard = self.owner.access.mutation_guard()
+
+            def before_dispatch():
+                if not self.owner.controller_menu.enabled:
+                    raise NiceParameterError("Pro controls were disabled")
+                guard()
+
+            result = await self.owner.hass.async_add_executor_job(
+                partial(
+                    self.owner.client.inspect_receiver_protocols,
+                    before_dispatch=before_dispatch,
+                )
+            )
+            self.protocols = self._accept_operator_result(
+                result, generation, observation_generation
+            )
+            return dict(self.protocols)
+
+    def report(self, *, include_memory=False):
         if self.snapshot is None:
-            return {
+            result = {
                 "state": "unavailable",
                 "reason": "No receiver inspection completed",
                 "last_error": self.last_error,
             }
+            if include_memory:
+                result.update(memory_page=self.memory_page, protocols=self.protocols)
+            return result
         result = dict(self.snapshot)
         stale = (
             self.scope != getattr(self.owner.client, "access_session_scope", None)
@@ -86,4 +159,6 @@ class ReceiverRuntime:
         )
         if stale:
             result["state"] = "stale"
+        if include_memory:
+            result.update(memory_page=self.memory_page, protocols=self.protocols)
         return result
