@@ -10,6 +10,7 @@ from .errors import (
     NiceResponseError,
     NicePermissionError,
     NiceUnsupportedError,
+    NiceReceiverFormatError,
 )
 from .models.capabilities import ProductFamily
 
@@ -120,9 +121,19 @@ class ReceiverRuntime:
 
     def _record_operator_error(self, key, error):
         # Device exception text can contain request details. Keep only safe fields.
+        top_error_type = type(error).__name__
+        for _ in range(4):
+            if getattr(error, "inspection_stage", None) or getattr(error, "code", None):
+                break
+            cause = error.__cause__
+            if cause is None:
+                break
+            error = cause
         register = error.register if isinstance(error, NiceResponseError) else None
         self.operator_errors[key] = {
-            "state": "unsupported"
+            "state": "unverified_format"
+            if isinstance(error, NiceReceiverFormatError)
+            else "unsupported"
             if isinstance(error, NiceUnsupportedError)
             or isinstance(error, NiceResponseError)
             and error.unsupported
@@ -130,6 +141,7 @@ class ReceiverRuntime:
             if isinstance(error, NicePermissionError)
             else "unavailable",
             "error_type": type(error).__name__,
+            "outer_error_type": top_error_type,
             "code": getattr(error, "code", None),
             "stage": getattr(error, "inspection_stage", None),
             "shape": getattr(error, "inspection_evidence", None),

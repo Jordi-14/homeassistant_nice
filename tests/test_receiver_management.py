@@ -9,6 +9,7 @@ from custom_components.nice_bidiwifi.errors import (
     NiceBidiConnectionError,
     NiceParameterError,
     NiceProtocolError,
+    NiceReceiverFormatError,
 )
 from custom_components.nice_bidiwifi.protocol.t4.radio import (
     RadioAuthContext,
@@ -49,7 +50,7 @@ def test_memory_wrong_echo_is_not_a_valid_page(monkeypatch):
         "_receiver_exchange_locked",
         lambda g, p, data=b"", **kw: b"\x0a" if g == 0 else bytes(10),
     )
-    with pytest.raises(NiceProtocolError, match="echo"):
+    with pytest.raises(NiceReceiverFormatError):
         client._read_receiver_memory_page_locked(1, 1)
     for start, count in [(1020, 8), (-1, 1), (0, 17), (0, 0), (True, 1)]:
         with pytest.raises(NiceParameterError):
@@ -297,7 +298,7 @@ def test_mismatched_reply_diagnostics_include_headers_without_private_payload(
         "_t4_request_locked",
         lambda *a: (b"<Response/>", [reply(10, 0x25, private, target=(0, 3))]),
     )
-    with pytest.raises(NiceProtocolError) as error:
+    with pytest.raises(NiceReceiverFormatError) as error:
         client._receiver_exchange_locked(10, 0x25, b"\0\0")
     evidence = error.value.inspection_evidence
     assert error.value.code == "receiver_reply_count"
@@ -305,3 +306,45 @@ def test_mismatched_reply_diagnostics_include_headers_without_private_payload(
     assert evidence["headers"][0]["source"] == "0003"
     assert private.decode() not in str(vars(error.value))
     assert private.hex() not in str(vars(error.value))
+
+
+def test_answered_unknown_memory_layout_does_not_reconnect_or_replay(monkeypatch):
+    client = _client()
+    sent = []
+    monkeypatch.setattr(client, "_ensure_connected_locked", lambda: None)
+    close = Mock()
+    monkeypatch.setattr(client, "_close_locked", close)
+
+    def exchange(g, p, data=b"", **kw):
+        sent.append((g, p))
+        return b"\x0a" if g == 0 else b"\0\0" + bytes(14)
+
+    monkeypatch.setattr(client, "_receiver_exchange_locked", exchange)
+    with pytest.raises(NiceReceiverFormatError) as captured:
+        client.read_receiver_memory_page(0, 1)
+    assert captured.value.code == "memory_record_length"
+    assert captured.value.inspection_evidence == {
+        "response_size": 16,
+        "requested_slot": 0,
+    }
+    assert sent == [(0, 4), (10, 0x25)]
+    close.assert_not_called()
+
+
+async def test_transport_wrapping_cannot_erase_sanitized_receiver_failure_details(hass):
+    from tests.test_controller_menu import instance
+
+    owner = await instance(hass)
+    cause = NiceProtocolError("private text", code="memory_record_length")
+    cause.inspection_stage = "memory_record_decode"
+    cause.inspection_evidence = {"response_size": 16, "requested_slot": 0}
+    outer = NiceBidiConnectionError("private text")
+    outer.__cause__ = cause
+    owner.receiver._record_operator_error("memory_page", outer)
+    data = owner.receiver.report(include_memory=True)["operator_errors"]["memory_page"]
+    assert (
+        data["code"] == "memory_record_length" and data["shape"]["response_size"] == 16
+    )
+    assert data["outer_error_type"] == "NiceBidiConnectionError"
+    assert "private text" not in json.dumps(data)
+    await owner.async_shutdown()

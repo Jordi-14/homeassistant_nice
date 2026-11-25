@@ -225,3 +225,13 @@ controller setting or stored remote changed. B21 records sanitized error type,
 code/register and stage while excluding arbitrary exception text, and never
 exports an old-generation operator result as a current inspection. These changes
 allow the subsequent hardware attempts to establish actual supported scope.
+
+## Answered receiver data is distinct from a failed transport
+
+A valid addressed receiver reply with an unverified memory layout must not be
+reported as a broken TLS session. The bounded reader maps record length/position
+contract failures to NiceReceiverFormatError, retains numeric lengths/header
+metadata only, and leaves the connection established. Such a response does not
+trigger a reconnect, replay or cloud-route fallback. Pure codecs still reject the
+invalid record. Sanitized cause-chain extraction preserves the original stage
+when a transport wrapper has retained it only through its exception cause.

@@ -141,3 +141,11 @@ a blocker. The remaining contracts and exact inputs required to enable them are
 listed in [Phase 3 completion audit](phase3_completion.md). A feature still lacking
 its model/data/recovery contract stays unavailable. Publication does not mark
 physical learning, reset, restore, remote programming or firmware as validated.
+
+### Receiver inspection transport isolation: v0.9.0b22
+
+Unknown answered receiver record formats use a separate domain error. They cannot
+make the shared client reconnect/replay a valid read or erase the useful original
+failure details. These results remain unverified formats, not guessed private
+records or proof the firmware does not support a command. Tests cover a valid
+16-byte unsupported record, no reconnect/replay, and sanitized wrapped causes.

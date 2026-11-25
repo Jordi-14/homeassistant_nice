@@ -74,6 +74,14 @@ class NiceParameterError(NiceBidiError, ValueError):
         self.delivery = "not_sent"
 
 
+class NiceReceiverFormatError(NiceBidiError):
+    """The receiver answered, but its record layout or target is unverified.
+
+    This is not evidence of a broken TLS session and must not cause reconnects
+    or automatic replay of an otherwise valid, answered inspection request.
+    """
+
+
 class NiceReadPreemptedError(NiceBidiError):
     """A background read released the session for a pending command."""
 

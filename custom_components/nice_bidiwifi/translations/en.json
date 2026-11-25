@@ -677,7 +677,8 @@
       "pro_controls_unavailable": "Could not verify the controller menu or administrator access. Check the connection and try again while the gate is stationary.",
       "receiver_inspection_failed": "Inspection could not complete. Check connectivity, permissions and integration diagnostics.",
       "receiver_inspection_unsupported": "This receiver does not support this query. Its existing functions are unchanged.",
-      "receiver_inspection_interrupted": "Inspection yielded to a higher-priority command. Try again while the gate is stationary."
+      "receiver_inspection_interrupted": "Inspection yielded to a higher-priority command. Try again while the gate is stationary.",
+      "receiver_format_unverified": "The receiver replied, but its data format is not verified yet. The failure details are in integration diagnostics. The query was not replayed and the connection was kept."
     },
     "abort": {
       "not_loaded": "Load the integration before managing module access.",

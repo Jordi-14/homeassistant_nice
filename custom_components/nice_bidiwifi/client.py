@@ -20,6 +20,7 @@ from .errors import (
     NiceError as NiceBidiError,
     NiceProtocolError,
     NiceReadPreemptedError,
+    NiceReceiverFormatError,
     NiceParameterError,
     NiceUnsupportedError,
     NiceResponseError,
@@ -378,7 +379,7 @@ class NiceBidiClient:
                 is not None
             ]
             if len(matches) != 1:
-                error = NiceProtocolError("Receiver query requires one addressed reply", code="receiver_reply_count")
+                error = NiceReceiverFormatError("Receiver query requires one addressed reply", code="receiver_reply_count")
                 error.inspection_evidence = {
                     "payload_lengths": [len(plain) for plain in plains[:16]],
                     "headers": [
@@ -404,10 +405,13 @@ class NiceBidiClient:
             raw = self._receiver_exchange_locked(10, 0x25, position.to_bytes(2, "big"))
             try:
                 record = decode_memory_reply(raw, expected_position=position)
-            except NiceBidiError as error:
+            except NiceProtocolError as cause:
+                error = NiceReceiverFormatError(
+                    "Receiver memory format has not been verified", code=cause.code
+                )
                 error.inspection_stage = "memory_record_decode"
                 error.inspection_evidence = {"response_size": len(raw), "requested_slot": position}
-                raise
+                raise error from cause
             records.append(record.public_summary())
         if scope != (self._route_name, self.session_state.generation):
             raise NiceProtocolError("Receiver memory session changed")

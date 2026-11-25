@@ -7,7 +7,7 @@ from functools import partial
 from homeassistant.config_entries import OptionsFlow
 from homeassistant.helpers import selector
 
-from .errors import NiceResponseError, NiceReadPreemptedError, NiceUnsupportedError
+from .errors import NiceResponseError, NiceReadPreemptedError, NiceUnsupportedError, NiceReceiverFormatError
 from .protocol.nhk.access import UserRole
 from .installer_catalog import PROCEDURES, PROCEDURES_BY_KEY
 from .runtime import get_coordinator
@@ -15,6 +15,8 @@ from .controller_menu import CONF_PRO_CONTROLS
 
 
 def receiver_inspection_error(error):
+    if isinstance(error, NiceReceiverFormatError):
+        return "receiver_format_unverified"
     if isinstance(error, NiceUnsupportedError) or isinstance(error, NiceResponseError) and error.unsupported:
         return "receiver_inspection_unsupported"
     if isinstance(error, NiceReadPreemptedError):

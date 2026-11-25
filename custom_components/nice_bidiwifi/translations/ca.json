@@ -677,7 +677,8 @@
       "pro_controls_unavailable": "No es pot verificar el menú o l’accés d’administrador. Revisa la connexió i torna-ho a provar amb la porta aturada.",
       "receiver_inspection_failed": "No s’ha pogut completar la inspecció; revisa la connexió, els permisos i les dades de diagnòstic.",
       "receiver_inspection_unsupported": "El receptor no admet aquesta consulta. Les funcions existents no han canviat.",
-      "receiver_inspection_interrupted": "La consulta ha cedit el pas a una ordre prioritària. Torna-ho a provar amb la porta aturada."
+      "receiver_inspection_interrupted": "La consulta ha cedit el pas a una ordre prioritària. Torna-ho a provar amb la porta aturada.",
+      "receiver_format_unverified": "El receptor ha respost, però el format de les dades encara no està verificat. Consulta els detalls de la incidència als diagnòstics. No s’ha repetit la consulta ni restablert la connexió."
     },
     "abort": {
       "not_loaded": "Carrega la integració abans de gestionar l’accés.",
