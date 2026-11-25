@@ -20,13 +20,12 @@ from custom_components.nice_bidiwifi.errors import (
 from custom_components.nice_bidiwifi.protocol.t4.codec import dmp_checksum
 from custom_components.nice_bidiwifi.protocol.t4.info import decode_dmp_info
 from custom_components.nice_bidiwifi.protocol.t4.menu import (
-    MenuRole,
     build_controller_menu_request,
     decode_menu_records,
 )
 from custom_components.nice_bidiwifi.protocol.t4.replies import checked_dmp_reply
 from tests.conftest import FakeClient, make_device_info, make_status
-from tests.native_menu_fixtures import install_menu_fixture
+from tests.native_menu_fixtures import install_menu_fixture, set_pro_controls
 from tests.test_client import _client
 from tests.test_coordinator import _coordinator
 
@@ -150,14 +149,14 @@ async def instance(hass):
 async def test_module_admin_and_menu_flags_do_not_grant_controller_role(hass):
     owner = await instance(hass)
     install_menu_fixture(owner)
-    owner.controller_menu.role_adapter = None
+    set_pro_controls(owner, False)
     await owner.controller_menu.async_refresh()
     report = owner.controller_menu.report()
-    assert report["state"] == "role_unverified"
-    assert report["controller_role"] == "unknown"
+    assert report["state"] == "controls_disabled"
+    assert report["menu_profile"] == "unknown"
     assert not report["module_admin_grants_installer"]
     setting = PARAMETERS_BY_KEY["ctrl_time_electric_lock"].setting
-    with pytest.raises(NiceParameterError, match="role"):
+    with pytest.raises(NiceParameterError, match="Enable Pro controls"):
         await owner.controller_menu.async_prepare_write(setting)
     assert owner.client.dmp_writes == []
     assert not [
@@ -195,19 +194,17 @@ async def test_role_and_scope_revocation_are_checked_at_dispatch(hass, change):
         owner.device_info = replace(owner.device_info, device_fw_version="different")
     elif change == "identity":
         owner.parameters.device_id = 2
-    elif change in {"denied", "unknown"}:
-        owner.controller_menu.proof = replace(
-            owner.controller_menu.proof,
-            role=MenuRole.USER if change == "denied" else MenuRole.UNKNOWN,
+    elif change == "denied":
+        owner.controller_menu.snapshot = replace(
+            owner.controller_menu.snapshot,
+            records=decode_menu_records(bytes.fromhex("40 5a"), group=4),
         )
+    elif change == "unknown":
+        owner.access.snapshot = None
     elif change == "proof_scope":
-        owner.controller_menu.proof = replace(
-            owner.controller_menu.proof, session_scope=("cloud", 99)
-        )
+        owner.access.scope = ("cloud", 99)
     elif change == "proof_future":
-        owner.controller_menu.proof = replace(
-            owner.controller_menu.proof, verified_monotonic=time.monotonic() + 100
-        )
+        owner.access._verified_at = time.monotonic() + 100
     with pytest.raises(NiceParameterError):
         owner.controller_menu.require_permission(setting)
     assert owner.client.dmp_writes == []
@@ -290,7 +287,7 @@ async def test_verified_controller_denial_also_protects_legacy_settings(hass):
     owner = await instance(hass)
     install_menu_fixture(owner, bytes.fromhex("40 81"))
     await owner.controller_menu.async_refresh()
-    with pytest.raises(HomeAssistantError, match="denies"):
+    with pytest.raises(HomeAssistantError, match="does not advertise"):
         await owner.async_write_setting(PAUSE_TIME, 20)
     assert owner.client.dmp_writes == []
     await owner.async_shutdown()
@@ -325,12 +322,14 @@ async def test_ambiguous_additional_write_is_never_replayed(hass):
 async def test_menu_never_reads_password_or_parameter_values(hass):
     owner = await instance(hass)
     install_menu_fixture(owner, bytes.fromhex("f0 fb f0 45"))
-    owner.controller_menu.role_adapter = None
+    set_pro_controls(owner, False)
     owner.client.dmp_values[(4, 0xFB)] = b"secret-not-to-export"
     await owner.controller_menu.async_refresh()
     assert owner.client.value_reads == []
     assert getattr(owner.client, "dmp_info_reads", []) == []
-    assert "secret-not-to-export" not in str(owner.controller_menu.report(include_records=True))
+    assert "secret-not-to-export" not in str(
+        owner.controller_menu.report(include_records=True)
+    )
     await owner.async_shutdown()
 
 
@@ -350,14 +349,14 @@ async def test_menu_inspection_is_blocked_before_queue_during_installer_work(has
 
 async def test_menu_entity_summary_does_not_repeat_full_table_in_state_history(hass):
     owner = await instance(hass)
-    install_menu_fixture(owner, bytes.fromhex('70 5a 40 81'))
-    owner.controller_menu.role_adapter = None
+    install_menu_fixture(owner, bytes.fromhex("70 5a 40 81"))
+    set_pro_controls(owner, False)
     await owner.controller_menu.async_refresh()
     summary = owner.controller_menu.report()
-    assert summary['reported_record_count'] == 2
-    assert summary['binding_count'] == 2
-    assert summary['reported_installer_set_rows'] == 1
-    assert 'records' not in summary
+    assert summary["reported_record_count"] == 2
+    assert summary["binding_count"] == 2
+    assert summary["reported_installer_set_rows"] == 1
+    assert "records" not in summary
     evidence = owner.controller_menu.report(include_records=True)
-    assert [row['binding'] for row in evidence['records']] == ['04/5A', '04/81']
+    assert [row["binding"] for row in evidence["records"]] == ["04/5A", "04/81"]
     await owner.async_shutdown()

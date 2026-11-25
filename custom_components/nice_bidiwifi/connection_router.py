@@ -421,8 +421,9 @@ class NiceConnectionRouter:
         return self._read("read_dmp_indexed", group, parameter, index,
                           operation_priority=OperationPriority.DIAGNOSTIC if background else None, **kwargs)
 
-    def read_controller_menu(self, *, preemptible: bool = True):
-        return self._read("read_controller_menu", preemptible=preemptible, operation_priority=OperationPriority.METADATA)
+    def read_controller_menu(self, *, preemptible: bool = True, background: bool = False):
+        return self._read("read_controller_menu", preemptible=preemptible,
+                          operation_priority=OperationPriority.DIAGNOSTIC if background else OperationPriority.READBACK)
 
     def read_dmp_info(self, group: int, parameter: int, **kwargs):
         return self._read("read_dmp_info", group, parameter, **kwargs)
@@ -452,7 +453,7 @@ class NiceConnectionRouter:
                           before_dispatch=before_dispatch, operation_priority=OperationPriority.DIAGNOSTIC)
 
     def read_pairings(self):
-        return self._read("read_pairings",operation_priority=OperationPriority.METADATA)
+        return self._read("read_pairings", operation_priority=OperationPriority.READBACK)
 
     def change_user(self,target,operation,role,*,before_dispatch=None):
         return self._write("change_user",target,operation,role,before_dispatch=before_dispatch)

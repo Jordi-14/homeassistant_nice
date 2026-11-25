@@ -151,11 +151,11 @@ def documents() -> dict[str, str]:
         "",
         "Indexed replies use exact target/index echoes and separate element entities. A generic element index is never labelled M1/M2 or converted to a combined gate percentage. Indexed writes stay blocked until the identity and write layout are verified. Arrays larger than the bounded element limit are not scanned.",
         "",
-        f"{len(ADDITIONAL_SETTINGS)} additional scalar/enum SET codecs are prepared behind mandatory session-scoped menu permissions, complete INFO and existing movement/calibration guards. The bounded live STD_MENU reader and configuration path are implemented, but controller.role_binding remains unresolved, so these additional writes remain blocked in shipped installations. A verified controller-role adapter is required independently of NHK admin. They are not counted as writable app parity and no unavailable placeholder controls are added for them.",
+        f"{len(ADDITIONAL_SETTINGS)} additional scalar/enum settings use the reviewed controller bindings, complete INFO and fresh menu evidence. Explicit Pro controls mode selects the installer columns, following the reviewed Pro app path. Fresh module-admin access, stationary/calibration guards, target/session identity, exact ranges/options, one-send and readback checks remain mandatory. Device rejection is never overridden. Additional controls are enabled and visible when their metadata and menu support are verified; no controller value is changed simply by enabling the mode.",
         "",
-        "## Completing the missing permissions",
+        "## Pro controls and authorization",
         "",
-        "`MenuWireDecoder.decode` decodes native two-byte records. The addressed STD_MENU reader follows bounded FIN/sequence continuation and accepts only a complete, consistent snapshot. ControllerMenu reconciles reviewed bindings and fresh INFO, scopes evidence to the active route/session and controller identity, and expires permissions after 30 seconds. Additional controls are created only when those contracts and a verified controller-role adapter permit the setting. The supplied Pro code selecting installer columns is not proof of HA controller-role authentication; controller.role_binding remains blocked. Neither module admin, a configured role string nor INFO ranges grant installer permission. Unknown indexed/motor layouts remain read-only.",
+        "Pro selects installer permission columns for normal parameter SET requests. Its reviewed local PIN check compares against app-cached data rather than producing a separate device-role token. The b16 requirement for an invented controller-role proof is removed. HA's explicit Pro controls option selects a menu profile, not an authenticated controller role. Actual module authorization and controller replies remain authoritative. Password registers are not probed or modified to enable this mode, and unknown/indexed layouts remain blocked.",
         "",
         "Unknown wire formats, units, per-motor layouts, additional Pro actions and unverified bindings remain listed in the gap report. New clues should fill a decoder, binding, profile or index identity under these contracts, without replacing the HA adapters.",
         "",
@@ -188,9 +188,11 @@ def documents() -> dict[str, str]:
         write = (
             "existing t4." + definition.reviewed_action
             if definition.reviewed_action
+            else "Pro controls + current menu/INFO"
+            if definition.setting and definition.setting.requires_menu_permission
             else "existing scalar setter"
-            if definition.setting and not definition.setting.requires_menu_permission
-            else "controller.menu_wire"
+            if definition.setting
+            else "reviewed setter binding required"
             if definition.safe_read
             else definition.gap
         )
@@ -245,7 +247,7 @@ def documents() -> dict[str, str]:
         "",
         "The enabled automation-state diagnostic has its own five-second timer while stationary, backs off after read errors and does not repeat explicitly unsupported GETs. Extra DMP reads are deduplicated against the primary status registers. Accepted poll snapshots are published on the HA loop after the observation-generation fence. Its snapshot is stale after ten seconds or immediately when it contradicts the current normalized cover state. Original fields and age are retained; current_gate_state is separate. Diagnostic snapshots never overwrite live cover state. Diagnostics export and parity snapshots load JSON metadata through HA's executor, including cold-cache reads.",
         "",
-        "Controller menu permissions is an optional, disabled diagnostic. Enabling it performs a bounded read-only menu inspection. Its entity exposes counts rather than a full table; downloaded diagnostics include the bounded records. Capture-age timestamps are excluded from recorder attributes to avoid history noise. It can show role_unverified or stale, with both raw permission columns; neither grants writes by itself. Complete hardware comparison and authenticated controller-role binding remain required. There are no automatic menu reads on upgrade and no password-register probing.",
+        "Controller menu permissions is an optional, disabled diagnostic. Enabling it performs a bounded read-only menu inspection. Its entity exposes counts rather than a full table; downloaded diagnostics include the bounded records. Capture-age timestamps are excluded from recorder attributes to avoid history noise. It shows a compact profile/support summary; full raw menu columns are in downloaded diagnostics. Pro controls are opt-in and use fresh admin access plus controller-advertised support, not a fabricated device-role token. Hardware comparison remains part of beta testing. There are no automatic menu reads on upgrade and no password-register probing.",
         "",
         "## Hardware, inverter and power",
         "",

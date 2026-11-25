@@ -486,8 +486,8 @@
           "stale": "Lectura del menú antiga",
           "all_zero_unverified": "Historial de zeros, validesa desconeguda",
           "reported_slots": "Entrades d’historial reportades",
-          "role_unverified": "Rol del controlador no verificat",
-          "verified": "Rol verificat"
+          "controls_disabled": "Controls Pro desactivats",
+          "admin_required": "Cal accés d’administrador verificat"
         }
       }
     }
@@ -506,7 +506,8 @@
           "installer": "Procediments d’instal·lació i dispositius",
           "installer_recovery": "Revisa una operació interrompuda",
           "installer_cancel": "Sol·licita cancel·lació d’un procediment",
-          "ecosystem": "HA i automatitzacions Nice existents"
+          "ecosystem": "HA i automatitzacions Nice existents",
+          "pro_controls": "Controls Pro"
         }
       },
       "inspect_users": {
@@ -609,6 +610,13 @@
       "ecosystem_core_result": {
         "title": "Taules CORE llegides",
         "description": "Captura: {captured_at}. Regles: {rules}. Entrades d’escena: {scene_inputs}. Sortides d’escena: {scene_outputs}. Versions coherents. No és una prova d’execució ni del nombre d’escenes actives."
+      },
+      "pro_controls": {
+        "title": "Controls Pro",
+        "description": "Mostra els ajustos compatibles que anuncia el controlador. El compte Nice ha de tenir permisos d'administrador. No modifica cap ajust en activar-se.",
+        "data": {
+          "pro_controls": "Activa els controls Pro"
+        }
       }
     },
     "error": {
@@ -624,7 +632,8 @@
       "ecosystem_consent_required": "Confirma la inspecció de només lectura abans de connectar.",
       "ecosystem_invalid_login": "Introdueix un compte i una contrasenya vàlids.",
       "ecosystem_inspection_failed": "No s’ha pogut completar la inspecció. Comprova l’accés del compte a aquest accessori. Es conserva la data de qualsevol captura anterior; no es modifica cap recurs ni la connexió de la integració.",
-      "ecosystem_core_failed": "No s’ha pogut capturar una instantània coherent. No s’ha escrit ni executat res."
+      "ecosystem_core_failed": "No s’ha pogut capturar una instantània coherent. No s’ha escrit ni executat res.",
+      "pro_controls_unavailable": "No es pot verificar el menú o l’accés d’administrador. Revisa la connexió i torna-ho a provar amb la porta aturada."
     },
     "abort": {
       "not_loaded": "Carrega la integració abans de gestionar l’accés.",

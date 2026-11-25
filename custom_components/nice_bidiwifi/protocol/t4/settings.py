@@ -134,8 +134,7 @@ SETTINGS_BY_REGISTER = {
 }
 
 # These scalar SET codecs use controller INFO and require a verified menu/role
-# observation. The controller-role authentication adapter is unresolved, so they remain read-only
-# in shipped installations. No name or range is treated as permission to write.
+# observation. Pro controls must be explicitly enabled before these settings are exposed. No name or range is treated as permission to write.
 ADDITIONAL_SETTINGS = tuple(
     DmpSetting(
         key,

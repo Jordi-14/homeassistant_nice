@@ -10,6 +10,7 @@ from homeassistant.helpers import selector
 from .protocol.nhk.access import UserRole
 from .installer_catalog import PROCEDURES, PROCEDURES_BY_KEY
 from .runtime import get_coordinator
+from .controller_menu import CONF_PRO_CONTROLS
 
 
 class NiceAccessOptionsFlow(OptionsFlow):
@@ -34,6 +35,7 @@ class NiceAccessOptionsFlow(OptionsFlow):
             step_id="init",
             menu_options=[
                 "inspect_users",
+                "pro_controls",
                 "ecosystem",
                 "installer",
                 "installer_recovery",
@@ -45,6 +47,32 @@ class NiceAccessOptionsFlow(OptionsFlow):
                 "ownership",
             ],
         )
+
+    async def async_step_pro_controls(self, user_input=None):
+        owner = self._owner()
+        if owner is None:
+            return self.async_abort(reason="not_loaded")
+        errors = {}
+        if user_input is not None:
+            enabled = user_input.get(CONF_PRO_CONTROLS) is True
+            if enabled:
+                try:
+                    await owner.access.async_prepare_admin()
+                    await owner.controller_menu.async_refresh()
+                    owner.access.require_admin()
+                    if not owner.controller_menu.valid() or not all(owner.controller_menu.identity[1:]):
+                        raise ValueError("Controller identity or menu incomplete")
+                except Exception:
+                    errors["base"] = "pro_controls_unavailable"
+            if not errors:
+                options = dict(self._entry.options) | {CONF_PRO_CONTROLS: enabled}
+                self.hass.config_entries.async_update_entry(self._entry, options=options)
+                owner.controller_menu.apply_profile()
+                owner.controller_menu.start()
+                owner.async_update_listeners()
+                return self.async_create_entry(title="", data=options)
+        return self.async_show_form(step_id="pro_controls", errors=errors,
+            data_schema=vol.Schema({vol.Required(CONF_PRO_CONTROLS, default=self._entry.options.get(CONF_PRO_CONTROLS, False)): bool}))
 
     async def async_step_inspect_users(self, user_input=None):
         owner = self._owner()

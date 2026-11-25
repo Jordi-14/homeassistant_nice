@@ -486,8 +486,8 @@
           "stale": "Older menu snapshot",
           "all_zero_unverified": "All-zero history, validity unknown",
           "reported_slots": "Reported history slots",
-          "role_unverified": "Controller role unverified",
-          "verified": "Verified role"
+          "controls_disabled": "Pro controls disabled",
+          "admin_required": "Verified administrator access required"
         }
       }
     }
@@ -506,7 +506,8 @@
           "installer": "Installer procedures and device lifecycle",
           "installer_recovery": "Review interrupted procedure",
           "installer_cancel": "Request procedure cancellation",
-          "ecosystem": "HA and existing Nice automations"
+          "ecosystem": "HA and existing Nice automations",
+          "pro_controls": "Pro controls"
         }
       },
       "inspect_users": {
@@ -609,6 +610,13 @@
       "ecosystem_core_result": {
         "title": "CORE tables read",
         "description": "Captured: {captured_at}. Rules: {rules}. Scene inputs: {scene_inputs}. Scene outputs: {scene_outputs}. Table versions were consistent. These counts do not prove execution or the number of active scenes."
+      },
+      "pro_controls": {
+        "title": "Pro controls",
+        "description": "Show supported settings advertised by your controller. Your Nice account needs administrator access. Enabling this mode does not change any gate setting.",
+        "data": {
+          "pro_controls": "Enable Pro controls"
+        }
       }
     },
     "error": {
@@ -624,7 +632,8 @@
       "ecosystem_consent_required": "Confirm the read-only inspection before connecting.",
       "ecosystem_invalid_login": "Enter a valid account and password.",
       "ecosystem_inspection_failed": "The inspection could not complete. Check the account’s access to this accessory. Any previous capture keeps its original timestamp; no resource or integration connection policy was changed.",
-      "ecosystem_core_failed": "A coherent CORE table snapshot could not be captured. Nothing was written or executed."
+      "ecosystem_core_failed": "A coherent CORE table snapshot could not be captured. Nothing was written or executed.",
+      "pro_controls_unavailable": "Could not verify the controller menu or administrator access. Check the connection and try again while the gate is stationary."
     },
     "abort": {
       "not_loaded": "Load the integration before managing module access.",

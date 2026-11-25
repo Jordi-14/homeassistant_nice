@@ -16,11 +16,11 @@ Additional configuration sensors are disabled by default. Enabling one requests 
 
 Indexed replies use exact target/index echoes and separate element entities. A generic element index is never labelled M1/M2 or converted to a combined gate percentage. Indexed writes stay blocked until the identity and write layout are verified. Arrays larger than the bounded element limit are not scanned.
 
-22 additional scalar/enum SET codecs are prepared behind mandatory session-scoped menu permissions, complete INFO and existing movement/calibration guards. The bounded live STD_MENU reader and configuration path are implemented, but controller.role_binding remains unresolved, so these additional writes remain blocked in shipped installations. A verified controller-role adapter is required independently of NHK admin. They are not counted as writable app parity and no unavailable placeholder controls are added for them.
+22 additional scalar/enum settings use the reviewed controller bindings, complete INFO and fresh menu evidence. Explicit Pro controls mode selects the installer columns, following the reviewed Pro app path. Fresh module-admin access, stationary/calibration guards, target/session identity, exact ranges/options, one-send and readback checks remain mandatory. Device rejection is never overridden. Additional controls are enabled and visible when their metadata and menu support are verified; no controller value is changed simply by enabling the mode.
 
-## Completing the missing permissions
+## Pro controls and authorization
 
-`MenuWireDecoder.decode` decodes native two-byte records. The addressed STD_MENU reader follows bounded FIN/sequence continuation and accepts only a complete, consistent snapshot. ControllerMenu reconciles reviewed bindings and fresh INFO, scopes evidence to the active route/session and controller identity, and expires permissions after 30 seconds. Additional controls are created only when those contracts and a verified controller-role adapter permit the setting. The supplied Pro code selecting installer columns is not proof of HA controller-role authentication; controller.role_binding remains blocked. Neither module admin, a configured role string nor INFO ranges grant installer permission. Unknown indexed/motor layouts remain read-only.
+Pro selects installer permission columns for normal parameter SET requests. Its reviewed local PIN check compares against app-cached data rather than producing a separate device-role token. The b16 requirement for an invented controller-role proof is removed. HA's explicit Pro controls option selects a menu profile, not an authenticated controller role. Actual module authorization and controller replies remain authoritative. Password registers are not probed or modified to enable this mode, and unknown/indexed layouts remain blocked.
 
 Unknown wire formats, units, per-motor layouts, additional Pro actions and unverified bindings remain listed in the gap report. New clues should fill a decoder, binding, profile or index identity under these contracts, without replacing the HA adapters.
 
@@ -43,27 +43,27 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CONTROLLER_RADIO_CFG_CODES` | `04/BB` | blocked | controller.parameter_format |
 | `CONTROLLER_RADIO_CODEINMEMORY` | `04/BA` | blocked | controller.parameter_format |
 | `CONTROLLER_TLC_CNT` | `04/BD` | blocked | controller.parameter_format |
-| `CTRL_ACCELERATION` | `04/5E` | selective INFO/GET | controller.menu_wire |
+| `CTRL_ACCELERATION` | `04/5E` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_ACTIVATE_RECEIVER` | `04/09` | blocked | controller.parameter_format |
 | `CTRL_ADVANCED_LOG` | `04/DB` | blocked | controller.parameter_format |
 | `CTRL_ALT` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_ALWAYS_CLOSE` | `04/88` | selective INFO/GET | existing scalar setter |
 | `CTRL_ALWAYS_CLOSE_MODE` | `04/8A` | selective INFO/GET | existing scalar setter |
 | `CTRL_ALWAYS_CLOSE_TIME` | `04/89` | selective INFO/GET | existing scalar setter |
-| `CTRL_ALWAYS_INVERT` | `04/A0` | selective INFO/GET | controller.menu_wire |
+| `CTRL_ALWAYS_INVERT` | `04/A0` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_AUTOMATIC_CLOSE` | `04/80` | selective INFO/GET | existing scalar setter |
-| `CTRL_AUTOMATIC_WORKING_1` | `04/82` | selective INFO/GET | controller.menu_wire |
-| `CTRL_AUTOMATION_SLAVE_STATUS` | `04/02` | selective INFO/GET | controller.menu_wire |
+| `CTRL_AUTOMATIC_WORKING_1` | `04/82` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_AUTOMATION_SLAVE_STATUS` | `04/02` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_AUTOMATION_STATUS` | `04/01` | automation.status | controller.parameter_format |
-| `CTRL_AUTOMATION_TYPE` | `04/00` | selective INFO/GET | controller.menu_wire |
-| `CTRL_BALANCING` | `04/34` | selective INFO/GET | controller.menu_wire |
+| `CTRL_AUTOMATION_TYPE` | `04/00` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_BALANCING` | `04/34` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_BLOCK` | `unresolved` | existing action | existing t4.lock |
-| `CTRL_BLOCK_AUTOMATISM` | `04/9A` | selective INFO/GET | controller.menu_wire |
-| `CTRL_BRAKE_MODE` | `04/36` | selective INFO/GET | controller.menu_wire |
-| `CTRL_BRAKING_LEVEL` | `04/35` | selective INFO/GET | controller.menu_wire |
+| `CTRL_BLOCK_AUTOMATISM` | `04/9A` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_BRAKE_MODE` | `04/36` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_BRAKING_LEVEL` | `04/35` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_BURGLARY_LOOP_DETECT` | `04/EC` | blocked | controller.parameter_format |
-| `CTRL_BURGLARY_MODE` | `04/9F` | selective INFO/GET | controller.menu_wire |
-| `CTRL_BUZZER_ENABLE` | `04/7F` | selective INFO/GET | controller.menu_wire |
+| `CTRL_BURGLARY_MODE` | `04/9F` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_BUZZER_ENABLE` | `04/7F` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_BUZZER_TEST` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_CLOSE` | `unresolved` | existing action | existing t4.close_remote |
 | `CTRL_CLOSE_BLOCK` | `unresolved` | existing action | existing t4.close_and_block |
@@ -73,18 +73,18 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_CLOSE_PARTIAL_3` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_CLOSE_SLAVE_DOOR` | `unresolved` | existing action | existing t4.slave_close |
 | `CTRL_CMD_QUOTA` | `04/0F` | blocked | controller.parameter_format |
-| `CTRL_COMPENSATION_SENSIBLE_BORDER` | `04/97` | selective INFO/GET | controller.menu_wire |
-| `CTRL_COURTESY_LIGHT_MNG` | `04/B9` | selective INFO/GET | controller.menu_wire |
+| `CTRL_COMPENSATION_SENSIBLE_BORDER` | `04/97` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_COURTESY_LIGHT_MNG` | `04/B9` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_COURTESY_LIGHT_SWITCH_OFF` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_COURTESY_LIGHT_SWITCH_ON` | `unresolved` | blocked | controller.action_binding |
-| `CTRL_DECELERATION` | `04/5F` | selective INFO/GET | controller.menu_wire |
-| `CTRL_DECELERATIONS` | `04/A2` | selective INFO/GET | controller.menu_wire |
-| `CTRL_DECELERATION_FORCE` | `04/4C` | selective INFO/GET | controller.menu_wire |
-| `CTRL_DECELERATION_FORCE_CLOSING` | `04/4E` | selective INFO/GET | controller.menu_wire |
-| `CTRL_DECELERATION_FORCE_OPENING` | `04/4D` | selective INFO/GET | controller.menu_wire |
-| `CTRL_DECELERATION_POSITION_CLOSING` | `04/25` | selective INFO/GET | controller.menu_wire |
-| `CTRL_DECELERATION_POSITION_INTERMEDIATE` | `04/26` | selective INFO/GET | controller.menu_wire |
-| `CTRL_DECELERATION_POSITION_OPENING` | `04/24` | selective INFO/GET | controller.menu_wire |
+| `CTRL_DECELERATION` | `04/5F` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DECELERATIONS` | `04/A2` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DECELERATION_FORCE` | `04/4C` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DECELERATION_FORCE_CLOSING` | `04/4E` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DECELERATION_FORCE_OPENING` | `04/4D` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DECELERATION_POSITION_CLOSING` | `04/25` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DECELERATION_POSITION_INTERMEDIATE` | `04/26` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DECELERATION_POSITION_OPENING` | `04/24` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_DELETE_MAPS_IN_MEMORY` | `04/3F` | blocked | controller.parameter_format |
 | `CTRL_DELETE_PARAMETERS` | `04/0C` | blocked | controller.parameter_format |
 | `CTRL_DIAGNOSTICS_BLUEBUS_DEVICES` | `04/D0` | blocked | controller.parameter_format |
@@ -94,42 +94,42 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_DIAGNOSTICS_MODULAR_SM_ADVLOG` | `04/D6` | blocked | controller.parameter_format |
 | `CTRL_DIAGNOSTICS_OTHER` | `04/D3` | blocked | controller.parameter_format |
 | `CTRL_DIAGNOSTICS_VISUAL` | `04/D5` | blocked | controller.parameter_format |
-| `CTRL_DISABLE_CONTROL` | `04/A6` | selective INFO/GET | controller.menu_wire |
-| `CTRL_DISCHARGING_CLOSING` | `04/2B` | selective INFO/GET | controller.menu_wire |
-| `CTRL_DISCHARGING_OPENING` | `04/2A` | selective INFO/GET | controller.menu_wire |
+| `CTRL_DISABLE_CONTROL` | `04/A6` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DISCHARGING_CLOSING` | `04/2B` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DISCHARGING_OPENING` | `04/2A` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_EMERGENCY_ALT` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_EMERGENCY_CLOSE` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_EMERGENCY_COMMAND` | `unresolved` | blocked | controller.action_binding |
-| `CTRL_EMERGENCY_DECELERATION` | `04/AE` | selective INFO/GET | controller.menu_wire |
-| `CTRL_EMERGENCY_MODE` | `04/A8` | selective INFO/GET | controller.menu_wire |
+| `CTRL_EMERGENCY_DECELERATION` | `04/AE` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_EMERGENCY_MODE` | `04/A8` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_EMERGENCY_OPEN` | `unresolved` | blocked | controller.action_binding |
-| `CTRL_FORCE_AUTOMATIC_MAXIMUM` | `04/E1` | selective INFO/GET | controller.menu_wire |
-| `CTRL_FORCE_AUTOMATIC_MINIMUM` | `04/E0` | selective INFO/GET | controller.menu_wire |
-| `CTRL_FORCE_AUTOMATIC_SLOWING_DOWN_MAXIMUM` | `04/E2` | selective INFO/GET | controller.menu_wire |
-| `CTRL_FORCE_AUTOMATIC_SLOWING_DOWN_MINIMUM` | `04/E3` | selective INFO/GET | controller.menu_wire |
+| `CTRL_FORCE_AUTOMATIC_MAXIMUM` | `04/E1` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_FORCE_AUTOMATIC_MINIMUM` | `04/E0` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_FORCE_AUTOMATIC_SLOWING_DOWN_MAXIMUM` | `04/E2` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_FORCE_AUTOMATIC_SLOWING_DOWN_MINIMUM` | `04/E3` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_FORCE_CLOSING` | `04/4B` | selective INFO/GET | existing scalar setter |
-| `CTRL_FORCE_CRUISE` | `04/49` | selective INFO/GET | controller.menu_wire |
+| `CTRL_FORCE_CRUISE` | `04/49` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_FORCE_GND_IMPACT` | `04/CE` | blocked | controller.parameter_format |
-| `CTRL_FORCE_MANAGEMENT` | `04/48` | selective INFO/GET | controller.menu_wire |
+| `CTRL_FORCE_MANAGEMENT` | `04/48` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_FORCE_OPENING` | `04/4A` | selective INFO/GET | existing scalar setter |
 | `CTRL_FOTO` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_FOTO_1` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_FOTO_2` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_FOTO_3` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_FOTO_OPEN` | `unresolved` | blocked | controller.action_binding |
-| `CTRL_FUNCTION_MODE` | `04/06` | selective INFO/GET | controller.menu_wire |
-| `CTRL_HEATING` | `04/9E` | selective INFO/GET | controller.menu_wire |
-| `CTRL_INITIAL_DECELERATION_DURING_CLOSING` | `04/33` | selective INFO/GET | controller.menu_wire |
-| `CTRL_INITIAL_DECELERATION_DURING_OPENING` | `04/32` | selective INFO/GET | controller.menu_wire |
+| `CTRL_FUNCTION_MODE` | `04/06` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_HEATING` | `04/9E` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_INITIAL_DECELERATION_DURING_CLOSING` | `04/33` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_INITIAL_DECELERATION_DURING_OPENING` | `04/32` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_INPUT` | `unresolved` | blocked | controller.binding_map |
-| `CTRL_INPUT_1` | `04/71` | selective INFO/GET | controller.menu_wire |
-| `CTRL_INPUT_2` | `04/72` | selective INFO/GET | controller.menu_wire |
-| `CTRL_INPUT_3` | `04/73` | selective INFO/GET | controller.menu_wire |
-| `CTRL_INPUT_4` | `04/74` | selective INFO/GET | controller.menu_wire |
-| `CTRL_INPUT_5` | `04/7C` | selective INFO/GET | controller.menu_wire |
-| `CTRL_INPUT_6` | `04/7D` | selective INFO/GET | controller.menu_wire |
-| `CTRL_INPUT_AUX_TYPE` | `04/75` | selective INFO/GET | controller.menu_wire |
-| `CTRL_INSTALLATIONS_TYPE` | `04/0D` | selective INFO/GET | controller.menu_wire |
+| `CTRL_INPUT_1` | `04/71` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_INPUT_2` | `04/72` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_INPUT_3` | `04/73` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_INPUT_4` | `04/74` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_INPUT_5` | `04/7C` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_INPUT_6` | `04/7D` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_INPUT_AUX_TYPE` | `04/75` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_INSTALLATIONS_TYPE` | `04/0D` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_INSTALLATION_FORCE` | `04/14` | blocked | controller.parameter_format |
 | `CTRL_INSTALLATION_SPEED` | `04/15` | blocked | controller.parameter_format |
 | `CTRL_INSTALLATION_SPEED_2` | `04/CF` | blocked | controller.parameter_format |
@@ -139,65 +139,65 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_INTERMEDIATE_POSITION_1` | `04/21` | selective INFO/GET | existing scalar setter |
 | `CTRL_INTERMEDIATE_POSITION_2` | `04/22` | selective INFO/GET | existing scalar setter |
 | `CTRL_INTERMEDIATE_POSITION_3` | `04/23` | selective INFO/GET | existing scalar setter |
-| `CTRL_INTERNAL_RADIO_INH` | `04/9B` | selective INFO/GET | controller.menu_wire |
-| `CTRL_INVERTER_MODE` | `04/AD` | selective INFO/GET | controller.menu_wire |
-| `CTRL_INVERT_MOVEMENT_DIRECTION` | `04/A3` | selective INFO/GET | controller.menu_wire |
-| `CTRL_IO_EXP_BOARD` | `04/B6` | selective INFO/GET | controller.menu_wire |
+| `CTRL_INTERNAL_RADIO_INH` | `04/9B` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_INVERTER_MODE` | `04/AD` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_INVERT_MOVEMENT_DIRECTION` | `04/A3` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_IO_EXP_BOARD` | `04/B6` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_KEY_LOCK` | `04/9C` | selective INFO/GET | existing scalar setter |
 | `CTRL_LOG_8_MANEUVERS` | `04/DA` | blocked | controller.parameter_format |
 | `CTRL_LOG_TEST_1` | `04/DC` | blocked | controller.parameter_format |
 | `CTRL_LOG_TEST_2` | `04/DD` | blocked | controller.parameter_format |
 | `CTRL_LOG_TEST_3` | `04/DE` | blocked | controller.parameter_format |
 | `CTRL_LOG_TEST_4` | `04/DF` | blocked | controller.parameter_format |
-| `CTRL_LOOP_ACTIVATION_MODE` | `04/EA` | selective INFO/GET | controller.menu_wire |
-| `CTRL_LOOP_ACTIVATION_TIME` | `04/EB` | selective INFO/GET | controller.menu_wire |
+| `CTRL_LOOP_ACTIVATION_MODE` | `04/EA` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_LOOP_ACTIVATION_TIME` | `04/EB` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_LOOP_CALIBRATION` | `04/E5` | blocked | controller.parameter_format |
 | `CTRL_LOOP_FREQUENCY_VIEW` | `04/ED` | blocked | controller.parameter_format |
 | `CTRL_LOOP_OFF` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_LOOP_ON` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_LOOP_RECALIBRATION_TIME` | `04/E9` | blocked | controller.parameter_format |
-| `CTRL_LOOP_SENSIBILITY` | `04/E4` | selective INFO/GET | controller.menu_wire |
-| `CTRL_LOOP_SUPPLY` | `04/E6` | selective INFO/GET | controller.menu_wire |
+| `CTRL_LOOP_SENSIBILITY` | `04/E4` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_LOOP_SUPPLY` | `04/E6` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_LOOP_WORKING_ACTIVATE` | `04/E7` | blocked | controller.parameter_format |
-| `CTRL_LOOP_WORKING_MODE` | `04/E8` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MAINTENANCE_MANAGEMENT` | `04/B0` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MAINTENANCE_MANEUVERS_COUNTER` | `04/B2` | selective INFO/GET | controller.menu_wire |
+| `CTRL_LOOP_WORKING_MODE` | `04/E8` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MAINTENANCE_MANAGEMENT` | `04/B0` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_MAINTENANCE_MANEUVERS_COUNTER` | `04/B2` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MAINTENANCE_MANEUVERS_DELETE` | `04/B4` | blocked | controller.parameter_format |
-| `CTRL_MANAGEMENT_DISCHARGING_CLOSING` | `04/2D` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MANAGEMENT_DISCHARGING_OPENING` | `04/2C` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MANEUVERS_COUNTER` | `04/B3` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MANUAL_FORCE` | `04/4F` | selective INFO/GET | controller.menu_wire |
+| `CTRL_MANAGEMENT_DISCHARGING_CLOSING` | `04/2D` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MANAGEMENT_DISCHARGING_OPENING` | `04/2C` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MANEUVERS_COUNTER` | `04/B3` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MANUAL_FORCE` | `04/4F` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MAN_PRESENT_CLOSE_MOTOR_1` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_MAN_PRESENT_CLOSE_MOTOR_2` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_MAN_PRESENT_OPEN_MOTOR_1` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_MAN_PRESENT_OPEN_MOTOR_2` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_MAN_PRESENT_STOP_MOTOR_1` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_MAN_PRESENT_STOP_MOTOR_2` | `unresolved` | blocked | controller.action_binding |
-| `CTRL_MINIMUM_FREQUENCY` | `04/AC` | selective INFO/GET | controller.menu_wire |
+| `CTRL_MINIMUM_FREQUENCY` | `04/AC` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MODE_COMMAND` | `04/60` | blocked | controller.parameter_format |
-| `CTRL_MODE_COMMAND_ALT_CLOSE` | `04/6C` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_ALT_OPEN` | `04/6B` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_ALT_PRECLOSING` | `04/6E` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_CLOSE` | `04/64` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_EMERGENCY` | `04/6F` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_OPEN` | `04/63` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_OPEN_PARTIAL` | `04/62` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_PHOTO_1` | `04/6D` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_PHOTO_3` | `04/6A` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_PHOTO_CLOSE` | `04/68` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_PHOTO_OPEN` | `04/69` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_CLOSE` | `04/79` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_DURING_CLOSING` | `04/77` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_DURING_OPENING` | `04/76` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_OPEN` | `04/78` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_STEPSTEP` | `04/61` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_COMMAND_STOP` | `04/65` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_DELAY_INVERSION_FOTO` | `04/66` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_DELAY_INVERSION_RIB` | `04/67` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_INPUT_PAUSE_TIME` | `04/7B` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_INPUT_RECLOSE_AFTER_PHOTO` | `04/7A` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_SLAVE` | `04/98` | selective INFO/GET | controller.menu_wire |
-| `CTRL_MODE_TRAFFIC_LIGHT_BLUEBUS` | `04/5D` | selective INFO/GET | controller.menu_wire |
+| `CTRL_MODE_COMMAND_ALT_CLOSE` | `04/6C` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_ALT_OPEN` | `04/6B` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_ALT_PRECLOSING` | `04/6E` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_CLOSE` | `04/64` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_MODE_COMMAND_EMERGENCY` | `04/6F` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_OPEN` | `04/63` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_MODE_COMMAND_OPEN_PARTIAL` | `04/62` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_MODE_COMMAND_PHOTO_1` | `04/6D` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_PHOTO_3` | `04/6A` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_PHOTO_CLOSE` | `04/68` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_PHOTO_OPEN` | `04/69` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_CLOSE` | `04/79` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_DURING_CLOSING` | `04/77` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_DURING_OPENING` | `04/76` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_OPEN` | `04/78` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_STEPSTEP` | `04/61` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_MODE_COMMAND_STOP` | `04/65` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_MODE_DELAY_INVERSION_FOTO` | `04/66` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_DELAY_INVERSION_RIB` | `04/67` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_INPUT_PAUSE_TIME` | `04/7B` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_INPUT_RECLOSE_AFTER_PHOTO` | `04/7A` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_SLAVE` | `04/98` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_TRAFFIC_LIGHT_BLUEBUS` | `04/5D` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MODULAR_BOARD_OPERATIONS` | `04/B7` | blocked | controller.parameter_format |
 | `CTRL_ON_OFF_COURTESY_LIGHT` | `unresolved` | existing action | existing t4.courtesy_light |
 | `CTRL_OPEN` | `unresolved` | existing action | existing t4.open_remote |
@@ -211,37 +211,37 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_OPNC_ON` | `unresolved` | existing action | existing t4.enable_bluebus_inputs |
 | `CTRL_OPN_TOLLERANCE` | `04/1F` | blocked | controller.parameter_format |
 | `CTRL_OUTPUT` | `04/50` | blocked | controller.parameter_format |
-| `CTRL_OUTPUT_1` | `04/51` | selective INFO/GET | controller.menu_wire |
-| `CTRL_OUTPUT_2` | `04/52` | selective INFO/GET | controller.menu_wire |
-| `CTRL_OUTPUT_3` | `04/53` | selective INFO/GET | controller.menu_wire |
-| `CTRL_OUTPUT_4` | `04/54` | selective INFO/GET | controller.menu_wire |
-| `CTRL_OUTPUT_5` | `04/55` | selective INFO/GET | controller.menu_wire |
-| `CTRL_OUTPUT_6` | `04/56` | selective INFO/GET | controller.menu_wire |
-| `CTRL_OUT_OF_SERVICE_PERIOD` | `04/17` | selective INFO/GET | controller.menu_wire |
-| `CTRL_OUT_OF_SERVICE_STATUS` | `04/16` | selective INFO/GET | controller.menu_wire |
+| `CTRL_OUTPUT_1` | `04/51` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_OUTPUT_2` | `04/52` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_OUTPUT_3` | `04/53` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_OUTPUT_4` | `04/54` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_OUTPUT_5` | `04/55` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_OUTPUT_6` | `04/56` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_OUT_OF_SERVICE_PERIOD` | `04/17` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_OUT_OF_SERVICE_STATUS` | `04/16` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_PAUSE_TIME` | `04/81` | selective INFO/GET | existing scalar setter |
-| `CTRL_PEDESTRIAN_POSITION_OPENING_1` | `04/1B` | selective INFO/GET | controller.menu_wire |
-| `CTRL_PEDESTRIAN_POSITION_OPENING_2` | `04/1C` | selective INFO/GET | controller.menu_wire |
-| `CTRL_PEDESTRIAN_POSITION_OPENING_3` | `04/1D` | selective INFO/GET | controller.menu_wire |
-| `CTRL_PHASE_SHIFT_CLOSING` | `04/29` | selective INFO/GET | controller.menu_wire |
-| `CTRL_PHASE_SHIFT_OPENING` | `04/28` | selective INFO/GET | controller.menu_wire |
-| `CTRL_POSITION_AMPEROMETRIC_EXCLUSION` | `04/A4` | selective INFO/GET | controller.menu_wire |
+| `CTRL_PEDESTRIAN_POSITION_OPENING_1` | `04/1B` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_PEDESTRIAN_POSITION_OPENING_2` | `04/1C` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_PEDESTRIAN_POSITION_OPENING_3` | `04/1D` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_PHASE_SHIFT_CLOSING` | `04/29` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_PHASE_SHIFT_OPENING` | `04/28` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_POSITION_AMPEROMETRIC_EXCLUSION` | `04/A4` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_POSITION_CLOSING` | `04/19` | automation.position | controller.parameter_format |
 | `CTRL_POSITION_CURRENT` | `04/11` | automation.position | controller.parameter_format |
-| `CTRL_POSITION_MAXIMUM_OPENING` | `04/12` | selective INFO/GET | controller.menu_wire |
-| `CTRL_POSITION_MINIMUM_CLOSING` | `04/13` | selective INFO/GET | controller.menu_wire |
+| `CTRL_POSITION_MAXIMUM_OPENING` | `04/12` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_POSITION_MINIMUM_CLOSING` | `04/13` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_POSITION_OPENING` | `04/18` | automation.position | controller.parameter_format |
-| `CTRL_POSITION_PHOTO_EXCLUSION` | `04/AF` | selective INFO/GET | controller.menu_wire |
-| `CTRL_POSITION_RECOVERY_FOR_SENSIBLE_BORDER` | `04/2E` | selective INFO/GET | controller.menu_wire |
+| `CTRL_POSITION_PHOTO_EXCLUSION` | `04/AF` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_POSITION_RECOVERY_FOR_SENSIBLE_BORDER` | `04/2E` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_PREFLASHING` | `04/94` | selective INFO/GET | existing scalar setter |
-| `CTRL_PREFLASHING_TIME_CLOSE` | `04/99` | selective INFO/GET | controller.menu_wire |
-| `CTRL_PREFLASHING_TIME_OPEN` | `04/95` | selective INFO/GET | controller.menu_wire |
+| `CTRL_PREFLASHING_TIME_CLOSE` | `04/99` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_PREFLASHING_TIME_OPEN` | `04/95` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_PRESS_TEST` | `04/EE` | blocked | controller.parameter_format |
-| `CTRL_PULSES_SEGMENT_MAPPING` | `04/A5` | selective INFO/GET | controller.menu_wire |
-| `CTRL_QUANTITY_BRIEF_INVERSION` | `04/31` | selective INFO/GET | controller.menu_wire |
+| `CTRL_PULSES_SEGMENT_MAPPING` | `04/A5` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_QUANTITY_BRIEF_INVERSION` | `04/31` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_RADIO_CODES_MANAGEMENT` | `04/B8` | blocked | controller.parameter_format |
 | `CTRL_RADIO_CONTROLS_MODE_2` | `04/07` | blocked | controller.parameter_format |
-| `CTRL_REALIGNMENT_OPN` | `04/1E` | selective INFO/GET | controller.menu_wire |
+| `CTRL_REALIGNMENT_OPN` | `04/1E` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_RECLOSE_AFTER_PHOTO` | `04/84` | selective INFO/GET | existing scalar setter |
 | `CTRL_RECLOSE_AFTER_PHOTO_MODE` | `04/86` | selective INFO/GET | existing scalar setter |
 | `CTRL_RECLOSE_AFTER_PHOTO_TIME` | `04/85` | selective INFO/GET | existing scalar setter |
@@ -253,25 +253,25 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_SEARCH_BLUEBUS_DEVICES` | `04/0A` | blocked | controller.parameter_format |
 | `CTRL_SEARCH_DEVICES` | `04/05` | blocked | controller.parameter_format |
 | `CTRL_SEARCH_POSITIONS` | `04/0B` | blocked | controller.parameter_format |
-| `CTRL_SENSITIVITY_CLOSING` | `04/3B` | selective INFO/GET | controller.menu_wire |
-| `CTRL_SENSITIVITY_DECELERATION` | `04/3C` | selective INFO/GET | controller.menu_wire |
-| `CTRL_SENSITIVITY_DECELERATION_CLOSING` | `04/3E` | selective INFO/GET | controller.menu_wire |
-| `CTRL_SENSITIVITY_DECELERATION_OPENING` | `04/3D` | selective INFO/GET | controller.menu_wire |
+| `CTRL_SENSITIVITY_CLOSING` | `04/3B` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_SENSITIVITY_DECELERATION` | `04/3C` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_SENSITIVITY_DECELERATION_CLOSING` | `04/3E` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_SENSITIVITY_DECELERATION_OPENING` | `04/3D` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_SENSITIVITY_GND_IMPACT` | `04/CD` | blocked | controller.parameter_format |
-| `CTRL_SENSITIVITY_INTERVENTION_TIME` | `04/B5` | selective INFO/GET | controller.menu_wire |
-| `CTRL_SENSITIVITY_OBSTACLE` | `04/39` | selective INFO/GET | controller.menu_wire |
-| `CTRL_SENSITIVITY_OPENING` | `04/3A` | selective INFO/GET | controller.menu_wire |
+| `CTRL_SENSITIVITY_INTERVENTION_TIME` | `04/B5` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_SENSITIVITY_OBSTACLE` | `04/39` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_SENSITIVITY_OPENING` | `04/3A` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_SPEED_CLOSING` | `04/43` | selective INFO/GET | existing scalar setter |
-| `CTRL_SPEED_CRUISE` | `04/41` | selective INFO/GET | controller.menu_wire |
-| `CTRL_SPEED_DECELERATION` | `04/44` | selective INFO/GET | controller.menu_wire |
-| `CTRL_SPEED_DECELERATION_CLOSING` | `04/46` | selective INFO/GET | controller.menu_wire |
-| `CTRL_SPEED_DECELERATION_OPENING` | `04/45` | selective INFO/GET | controller.menu_wire |
+| `CTRL_SPEED_CRUISE` | `04/41` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_SPEED_DECELERATION` | `04/44` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_SPEED_DECELERATION_CLOSING` | `04/46` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_SPEED_DECELERATION_OPENING` | `04/45` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_SPEED_OPENING` | `04/42` | selective INFO/GET | existing scalar setter |
 | `CTRL_STANDBY_ACTIVATION` | `04/8C` | selective INFO/GET | existing scalar setter |
-| `CTRL_STANDBY_ACTIVATION_MODE` | `04/8E` | selective INFO/GET | controller.menu_wire |
-| `CTRL_STANDBY_ACTIVATION_TIME` | `04/8D` | selective INFO/GET | controller.menu_wire |
-| `CTRL_STARTING_TORQUE` | `04/90` | selective INFO/GET | controller.menu_wire |
-| `CTRL_STARTING_TORQUE_TIME` | `04/91` | selective INFO/GET | controller.menu_wire |
+| `CTRL_STANDBY_ACTIVATION_MODE` | `04/8E` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_STANDBY_ACTIVATION_TIME` | `04/8D` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_STARTING_TORQUE` | `04/90` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_STARTING_TORQUE_TIME` | `04/91` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_STEP_STEP` | `unresolved` | existing action | existing t4.step_step |
 | `CTRL_STEP_STEP_CONDOMINIUM` | `unresolved` | existing action | existing t4.apartment_step_step |
 | `CTRL_STEP_STEP_HIGH_PRIORITY` | `unresolved` | existing action | existing t4.step_step_hp |
@@ -312,22 +312,22 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_TEST_MODE` | `04/A9` | blocked | controller.parameter_format |
 | `CTRL_THRESHOLD_ALARM_MAINTENANCE` | `04/B1` | selective INFO/GET | existing scalar setter |
 | `CTRL_TIMER_COURTESY_LIGHT` | `unresolved` | existing action | existing t4.courtesy_light_timer |
-| `CTRL_TIME_COURTESY_LIGHT` | `04/5B` | selective INFO/GET | controller.menu_wire |
-| `CTRL_TIME_ELECTRIC_LOCK` | `04/5A` | selective INFO/GET | controller.menu_wire |
-| `CTRL_TIME_FLASH` | `04/59` | selective INFO/GET | controller.menu_wire |
-| `CTRL_TIME_FORCE_OPERATION` | `04/37` | selective INFO/GET | controller.menu_wire |
-| `CTRL_TIME_MAXIMUM_WORK` | `04/A7` | selective INFO/GET | controller.menu_wire |
-| `CTRL_TIME_SCA` | `04/58` | selective INFO/GET | controller.menu_wire |
-| `CTRL_TIME_SUCTION_CUP` | `04/5C` | selective INFO/GET | controller.menu_wire |
-| `CTRL_TRANSFORMATION_RATIO` | `04/10` | selective INFO/GET | controller.menu_wire |
-| `CTRL_TYPE_INVERSION` | `04/96` | selective INFO/GET | controller.menu_wire |
+| `CTRL_TIME_COURTESY_LIGHT` | `04/5B` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_TIME_ELECTRIC_LOCK` | `04/5A` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_TIME_FLASH` | `04/59` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_TIME_FORCE_OPERATION` | `04/37` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_TIME_MAXIMUM_WORK` | `04/A7` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_TIME_SCA` | `04/58` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_TIME_SUCTION_CUP` | `04/5C` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_TRANSFORMATION_RATIO` | `04/10` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_TYPE_INVERSION` | `04/96` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_UNBLOCK` | `unresolved` | existing action | existing t4.unlock |
 | `CTRL_UNBLOCK_AND_CLOSE` | `unresolved` | existing action | existing t4.release_and_close |
 | `CTRL_UNBLOCK_AND_OPEN` | `unresolved` | existing action | existing t4.release_and_open |
-| `CTRL_WATER_HAMMER` | `04/92` | selective INFO/GET | controller.menu_wire |
-| `CTRL_WEIGHT` | `04/9D` | selective INFO/GET | controller.menu_wire |
-| `CTRL_WIFI_MODULE_IS_PRESENT` | `04/A1` | selective INFO/GET | controller.menu_wire |
-| `CTRL_WORKING_WITH_2_ENGINES` | `04/30` | selective INFO/GET | controller.menu_wire |
+| `CTRL_WATER_HAMMER` | `04/92` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_WEIGHT` | `04/9D` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_WIFI_MODULE_IS_PRESENT` | `04/A1` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_WORKING_WITH_2_ENGINES` | `04/30` | selective INFO/GET | reviewed setter binding required |
 | `INVALID_COMMAND` | `unresolved` | blocked | controller.binding_map |
 | `PSU_ADC_ERROR` | `unresolved` | blocked | controller.binding_map |
 | `PSU_BAPTISM` | `unresolved` | blocked | controller.binding_map |

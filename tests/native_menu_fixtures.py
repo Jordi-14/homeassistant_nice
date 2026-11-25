@@ -1,18 +1,23 @@
-"""Synthetic role adapter for exercising guarded writes; no hardware claim."""
+"""Synthetic menu and authenticated module facts for Pro-control tests."""
 
-import time
-
-from custom_components.nice_bidiwifi.controller_menu import ControllerRoleProof
+from custom_components.nice_bidiwifi.controller_menu import CONF_PRO_CONTROLS
 from custom_components.nice_bidiwifi.protocol.t4.menu import (
     ControllerMenuSnapshot,
-    MenuRole,
     decode_menu_records,
 )
 from tests.conftest import make_device_info
 
 
-def install_menu_fixture(owner, payload=b"\x70\x5a", *, role=MenuRole.INSTALLER):
+def set_pro_controls(owner, enabled):
+    owner.hass.config_entries.async_update_entry(
+        owner.config_entry,
+        options=dict(owner.config_entry.options) | {CONF_PRO_CONTROLS: enabled},
+    )
+
+
+def install_menu_fixture(owner, payload=b"\x70\x5a"):
     owner.device_info = owner.device_info or make_device_info()
+    set_pro_controls(owner, True)
 
     def read_menu(**kwargs):
         return ControllerMenuSnapshot(
@@ -23,15 +28,3 @@ def install_menu_fixture(owner, payload=b"\x70\x5a", *, role=MenuRole.INSTALLER)
         )
 
     owner.client.read_controller_menu = read_menu
-
-    class RoleAdapter:
-        def read_verified_role(self, scope, identity):
-            return ControllerRoleProof(
-                role,
-                scope,
-                identity,
-                time.monotonic(),
-                "verified_controller_role_adapter",
-            )
-
-    owner.controller_menu.role_adapter = RoleAdapter()

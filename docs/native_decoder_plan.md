@@ -39,8 +39,9 @@ Deliver a separate beta after completing these contracts:
   denied replies, command maps and session ownership on supported devices.
 - Reconcile decoded menu identities with INFO units, ranges, option lists and
   scalar/indexed layouts. Preserve per-motor identity as unknown until established.
-- Establish authenticated controller user/installer role selection separately
-  from the module's admin role. Scope permissions to the current session/target.
+- Follow the reviewed Pro menu-profile selection explicitly, retaining fresh
+  module-admin access and device-enforced authorization. Do not invent an extra
+  controller-role handshake. Scope menu/metadata evidence to the current session/target.
 - Connect verified bindings to the existing parameter repository and write guards;
   require fresh permissions, stationary-state checks, one-send semantics and
   readback. Keep unknown or incomplete bindings read-only.
@@ -89,12 +90,14 @@ cannot publish a diagnostic snapshot across an observation-generation reset. The
 menu entity exposes a compact summary; full bounded records are retained for
 downloaded diagnostics, with no repeating table in recorder history.
 
-**Remaining phase 2 blocker:** `controller.role_binding`. The supplied Pro code
-selects installer columns but does not establish the authenticated controller-role
-exchange for HA. The adapter boundary is implemented and tested with explicit
-synthetic proofs, but no production role proof is fabricated. Thus no additional
-privileged setting is activated. The live menu/hardware comparison and full
-phase 2 hardware exit gate remain pending; this is not universal write parity.
+The b16 role-proof requirement was too restrictive. Follow-up review found that
+Pro compares its cached PIN locally and selects installer columns for normal
+parameter writes; the reviewed path does not create a separate device-role token.
+In b17, explicit Pro controls mode replaces that requirement. This is a menu-profile
+selection, not a claim to authenticate as a controller installer. Module admin,
+controller menu/INFO, session identity, bounds and device responses still apply.
+No password read, password change or automatic parameter write is required.
+Hardware/model comparison and genuinely unknown layouts remain beta evidence limits.
 
 Phase 3 remains unimplemented. The original ownership boundary and prohibition on
 automatic installer actions continue to apply.

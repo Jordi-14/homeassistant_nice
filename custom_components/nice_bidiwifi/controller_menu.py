@@ -1,16 +1,18 @@
-"""Session-scoped controller menu evidence and a separate controller-role contract.
+"""Pro-style menu controls, scoped to the authenticated module and controller.
 
-Module administration is not controller installer authentication. The shipped
-role adapter is unresolved; complete menu inspection alone cannot unlock writes.
+The selected installer column is an interface profile, not a device-role token.
+Actual device denials, fresh module-admin access and all write guards still apply.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 import time
-from typing import Protocol
+import asyncio
+from datetime import timedelta
+from homeassistant.core import callback
+from homeassistant.helpers.event import async_track_time_interval
 
 from .controller_catalog import PARAMETERS_BY_REGISTER
 from homeassistant.exceptions import HomeAssistantError
@@ -21,23 +23,7 @@ from .protocol.t4.menu import MenuEntry, MenuPermission, MenuRole
 MENU_MAX_AGE = 30
 
 
-@dataclass(frozen=True, slots=True)
-class ControllerRoleProof:
-    """Result supplied only by a verified controller-role protocol adapter."""
-
-    role: MenuRole
-    session_scope: tuple
-    device_identity: tuple
-    verified_monotonic: float
-    contract: str
-
-
-class ControllerRoleReader(Protocol):
-    """Passive protocol evidence only; configuration cannot select a role."""
-
-    def read_verified_role(
-        self, session_scope: tuple, device_identity: tuple
-    ) -> ControllerRoleProof: ...
+CONF_PRO_CONTROLS = "pro_controls"
 
 
 class ControllerMenu:
@@ -47,17 +33,41 @@ class ControllerMenu:
         self.received_at = None
         self.captured = None
         self.identity = None
-        self.proof = None
-        self.role_adapter: ControllerRoleReader | None = None  # controller.role_binding
+        self._lock = asyncio.Lock()
+        self._remove_tick = None
         self.last_error = None
         self._task = None
         self._last_attempt = float("-inf")
 
+    @property
+    def enabled(self):
+        return self._owner.config_entry.options.get(CONF_PRO_CONTROLS, False) is True
+
+    def start(self):
+        self.close()
+        if self.enabled and not self._owner.observations.closed:
+            self._remove_tick = async_track_time_interval(
+                self._owner.hass, self._tick, timedelta(seconds=5)
+            )
+            self.schedule()
+
+    def close(self):
+        if self._remove_tick is not None:
+            self._remove_tick()
+            self._remove_tick = None
+
+    @callback
+    def _tick(self, now):
+        if self._owner.observations.closed or not self.enabled:
+            self.close()
+            return
+        self._owner.async_update_listeners()
+        self.schedule()
+
     def schedule(self):
         owner = self._owner
         if (
-            self.role_adapter is None
-            or not owner.configuration.menu_watched
+            not self.enabled
             or owner.observations.closed
             or owner.reported_moving
             or owner.calibration_controller.calibration_state == "running"
@@ -73,7 +83,7 @@ class ControllerMenu:
 
     async def _background_refresh(self):
         try:
-            await self.async_refresh()
+            await self.async_refresh(background=True)
         except (NiceBidiError, OSError, HomeAssistantError) as error:
             self.last_error = type(error).__name__
         finally:
@@ -91,7 +101,6 @@ class ControllerMenu:
 
     def invalidate(self):
         self.snapshot = None
-        self.proof = None
         self.captured = None
         self.received_at = None
         self.identity = None
@@ -113,26 +122,30 @@ class ControllerMenu:
         )
 
     @property
-    def role(self):
-        p = self.proof
+    def profile(self):
         if (
-            not self.valid()
+            not self.enabled
+            or not self.valid()
             or not all(self.identity[1:])
-            or not isinstance(p, ControllerRoleProof)
-            or p.contract != "verified_controller_role_adapter"
-            or p.session_scope != self.snapshot.session_scope
-            or p.device_identity != self.identity
-            or not 0 <= time.monotonic() - p.verified_monotonic <= MENU_MAX_AGE
+            or not 0
+            <= time.monotonic() - self._owner.access._verified_at
+            <= MENU_MAX_AGE
         ):
             return MenuRole.UNKNOWN
-        return (
-            p.role
-            if p.role in {MenuRole.USER, MenuRole.INSTALLER}
-            else MenuRole.UNKNOWN
-        )
+        try:
+            self._owner.access.require_admin()
+        except NiceBidiError:
+            return MenuRole.UNKNOWN
+        return MenuRole.INSTALLER
 
-    async def async_refresh(self):
+    async def async_refresh(self, *, background=False):
+        async with self._lock:
+            return await self._async_refresh_locked(background=background)
+
+    async def _async_refresh_locked(self, *, background):
         owner = self._owner
+        if self.enabled:
+            await owner.access.async_prepare_admin()
         owner.access.stationary_guard()
         owner.lifecycle.require_idle()
         self._last_attempt = time.monotonic()
@@ -141,7 +154,7 @@ class ControllerMenu:
         self.invalidate()  # partial/failed replacement never retains old grants
         try:
             snapshot = await owner.hass.async_add_executor_job(
-                partial(owner.client.read_controller_menu, preemptible=True)
+                partial(owner.client.read_controller_menu, preemptible=True, background=background)
             )
             if (
                 owner.observations.closed
@@ -179,39 +192,8 @@ class ControllerMenu:
             self.snapshot, self.identity = snapshot, identity
             self.captured = time.monotonic()
             self.received_at = datetime.now(UTC).isoformat()
-            if self.role_adapter is not None:
-                self.proof = await owner.hass.async_add_executor_job(
-                    self.role_adapter.read_verified_role,
-                    snapshot.session_scope,
-                    identity,
-                )
-            if not self.valid():
-                raise NiceParameterError("Menu scope changed during role verification")
-            if self.role is not MenuRole.UNKNOWN:
-                for row in rows.values():
-                    definition = PARAMETERS_BY_REGISTER.get(row.binding)
-                    if definition is None or row.is_group:
-                        continue
-                    entry = MenuEntry(
-                        row.user_set,
-                        row.user_get,
-                        row.installer_set,
-                        row.installer_get,
-                        row.is_group,
-                        row.indentation,
-                        definition.app_id,
-                        row.group | row.parameter << 8,
-                    )
-                    owner.parameters.record_menu_permission(
-                        owner.parameters.address(*row.binding),
-                        MenuPermission(
-                            snapshot.device_id,
-                            row.binding,
-                            self.role,
-                            entry,
-                            owner.parameters.menu_generation,
-                        ),
-                    )
+            owner.configuration.sync_session()
+            self.apply_profile()
             self.last_error = None
             owner.async_update_listeners()
             return snapshot
@@ -220,15 +202,49 @@ class ControllerMenu:
             self.last_error = type(error).__name__
             raise
 
-    def requires_proof(self, setting):
-        return setting.requires_menu_permission or self.role_adapter is not None
+    def apply_profile(self):
+        self._owner.parameters.invalidate_menu_permissions()
+        profile = self.profile
+        if profile is MenuRole.UNKNOWN:
+            return
+        for row in {row.binding: row for row in self.snapshot.records}.values():
+            definition = PARAMETERS_BY_REGISTER.get(row.binding)
+            if definition is None or row.is_group:
+                continue
+            entry = MenuEntry(
+                row.user_set,
+                row.user_get,
+                row.installer_set,
+                row.installer_get,
+                row.is_group,
+                row.indentation,
+                definition.app_id,
+                row.group | row.parameter << 8,
+            )
+            self._owner.parameters.record_menu_permission(
+                self._owner.parameters.address(*row.binding),
+                MenuPermission(
+                    self.snapshot.device_id,
+                    row.binding,
+                    profile,
+                    entry,
+                    self._owner.parameters.menu_generation,
+                ),
+            )
+
+    def requires_menu(self, setting):
+        return setting.requires_menu_permission or self.enabled
 
     def require_permission(self, setting):
+        if not self.enabled:
+            raise NiceParameterError(
+                "Pro controls are disabled; enable controller menu permissions in integration options"
+            )
         if not self.valid():
             raise NiceParameterError("Fresh controller menu permissions are required")
-        if self.role is MenuRole.UNKNOWN:
+        if self.profile is MenuRole.UNKNOWN:
             raise NiceParameterError(
-                "Authenticated controller role is unresolved: controller.role_binding"
+                "Fresh module administrator permission and controller identity are required"
             )
         row = next(
             (
@@ -238,15 +254,15 @@ class ControllerMenu:
             ),
             None,
         )
-        if row is None or row.is_group or not getattr(row, f"{self.role}_set"):
+        if row is None or row.is_group or not getattr(row, f"{self.profile}_set"):
             raise NiceParameterError(
-                "Controller menu denies this write for the verified role"
+                "Controller menu does not advertise this write for the selected Pro profile"
             )
 
     async def async_prepare_write(self, setting):
-        if self.role_adapter is None:
+        if not self.enabled:
             raise NiceParameterError(
-                "Authenticated controller role is unresolved: controller.role_binding"
+                "Enable Pro controls in integration options to use these settings"
             )
         await self.async_refresh()
         self.require_permission(setting)
@@ -274,13 +290,15 @@ class ControllerMenu:
             if snapshot is None
             else "stale"
             if not valid
-            else "role_unverified"
-            if self.role is MenuRole.UNKNOWN
-            else "verified",
-            "controller_role": str(self.role),
-            "role_gap": "controller.role_binding"
-            if self.role is MenuRole.UNKNOWN
-            else None,
+            else "controls_disabled"
+            if not self.enabled
+            else "admin_required"
+            if self.profile is MenuRole.UNKNOWN
+            else "available",
+            "pro_controls_enabled": self.enabled,
+            "menu_profile": str(self.profile),
+            "profile_basis": "explicit_Pro_menu_selection",
+            "device_authorization": "device_response_required",
             "module_admin_grants_installer": False,
             "complete": bool(snapshot and snapshot.complete),
             "pages": snapshot.pages if snapshot else None,

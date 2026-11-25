@@ -63,7 +63,7 @@ class MenuEntry:
 
 @dataclass(frozen=True, slots=True)
 class MenuPermission:
-    """A scoped, decoded adapter observation. No config/import grants this role."""
+    """Scoped menu-column evidence; device authorization is not inferred."""
 
     device_id: int
     binding: tuple[int, int]

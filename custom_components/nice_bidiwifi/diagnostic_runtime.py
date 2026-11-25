@@ -38,7 +38,7 @@ class DiagnosticDefinition:
 
 
 DIAGNOSTICS = (
-    DiagnosticDefinition("controller_menu", "Controller menu permissions", (0, 0x10), "menu", "controller.role_binding"),
+    DiagnosticDefinition("controller_menu", "Controller menu permissions", (0, 0x10), "menu"),
     DiagnosticDefinition(
         "counters", "Controller counters and maintenance", (4, 0xB3), "counters"
     ),
@@ -296,7 +296,7 @@ class DiagnosticRuntime:
         ):
             raise NiceReadPreemptedError("Diagnostic read waits until stationary")
         if key == "controller_menu":
-            await owner.controller_menu.async_refresh()
+            await owner.controller_menu.async_refresh(background=True)
             self._samples.pop(key, None)
             self._attempts[key] = time.monotonic()
             return

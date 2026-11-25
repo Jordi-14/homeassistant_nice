@@ -391,3 +391,23 @@ The next missing evidence is the actual controller-role authentication contract
 and a normal-use menu comparison. Do not change passwords, activate installer
 procedures or deliberately trigger a fault to collect it. Additional controls
 require a separately verified role adapter, fresh menu/INFO and existing guards.
+
+## Pro controls: v0.9.0b17
+
+Enable Pro controls through Nice's integration options to expose supported
+controller settings using the same installer menu columns as the reviewed Pro
+app path. HA verifies module-admin access and a complete current menu before
+enabling the mode. Enabling does not change a gate parameter or read/change its
+PIN. Device denials and all existing scalar/INFO, movement, calibration,
+session/model, bounds/options and one-send/readback checks remain active.
+
+Eligible additional number/select controls are enabled and visible after explicit
+opt-in. Which editors appear depends on the controller's actual menu and complete
+scalar metadata. Unknown/indexed structures and unimplemented installer/receiver
+procedures remain separate gaps; there is no arbitrary register-write interface.
+
+B16's proposed separate controller-role proof was an integration restriction,
+not an established requirement of the reviewed normal Pro SET path. B17 removes
+that blocker without claiming a controller authentication role or bypassing device
+authorization. The app-local PIN comparison and installer menu selection are
+documented in the native audit.

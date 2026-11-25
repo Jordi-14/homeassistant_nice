@@ -83,10 +83,23 @@ authenticated controller installer. Native STD_FUNCTION_AUTHORIZATION and passwo
 symbols do not establish the missing exchange, response layout or role lifetime.
 No password or authorization-register probe is added to guess that contract.
 
-`ControllerRoleProof` and the `read_verified_role` adapter boundary provide the
-completion point. A future passive verified-role adapter must bind its result to
-the exact session and controller identity and a fresh local timestamp. No role
-can be supplied through HA options. The shipped adapter remains absent; new
-privileged controls stay blocked even for an NHK admin. Synthetic adapter tests
-exercise fresh metadata, denial, role expiration, reconnect/model changes,
-queued revocation, exactly-once dispatch and readback. They are not hardware proof.
+## Pro controls correction in b17
+
+The b16 `ControllerRoleProof` requirement was an integration restriction, not an
+established device requirement. Follow-up review of LocalControlUnitsTabPresenter
+shows its security dialog compares the input PIN with the app-cached ControlUnit
+PIN before opening the installed controller. LocalControlUnitsProtectionPresenter
+reads/changes the password for its protection screen. Neither observed comparison
+produces a role token consumed by the reviewed normal parameter SET path.
+RxJavaT4Manager selects installer columns for its controller menu and sends normal
+settings directly through the authenticated connection.
+
+B17 follows that path with explicit HA Pro controls selection. It does not read,
+change or export the controller PIN, and does not claim a device role. Fresh module
+admin, complete current menu and INFO, exact target/model/session, scalar format,
+ranges/options, stationary state and one-send/readback remain enforced. Controller
+rejections are surfaced and never bypassed or automatically replayed.
+
+Actual password/authorization exchanges for other device paths, unknown parameters,
+indexed motor identities and installer/receiver procedures still need their own
+verified contracts. Pro controls does not invent those missing bindings.

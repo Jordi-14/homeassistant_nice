@@ -15,12 +15,11 @@ No generic planned or review_required source disposition is accepted by the clos
 | external_dependency | 394 | A host/hardware/transport dependency remains unavailable |
 | generated_reference | 2 | Resource/build constant retained only for provenance |
 | ha_native | 458 | Use native HA/Companion UI or software; no duplicate engine |
-| implemented | 44 | Named reviewed action/setting path exists; device support/permissions remain separate |
+| implemented | 66 | Named reviewed action/setting path exists; device support/permissions remain separate |
 | implemented_read_only | 8 | Scoped inspection path; no resource execution |
 | manufacturer_app | 543 | Use the manufacturer app for vendor-only workflows/resources |
 | non_capability | 1 | Sentinel or undefined enum item |
 | privacy_protected | 9 | Secret/security material deliberately excluded from generic probe/export |
-| supported_read_blocked_write | 22 | Installer/menu permission evidence is missing |
 | supported_read_only | 111 | Read only with complete validated metadata |
 | supported_subset | 843 | Named runtime family exists with explicit additional gaps |
 | supporting_evidence | 628 | Shared model/utility/container, not a standalone capability |
@@ -69,12 +68,12 @@ An already loaded CORE entry can request the same reader from Configure. Non-COR
 
 | Matrix case | Evidence level | Scope | Remaining limit |
 | --- | --- | --- | --- |
-| native_phase2_menu | source_and_software_fixture | Bounded STD_MENU FIN/sequence paging; target/session/model fences; synthetic verified role and fresh INFO write path; cold-cache export and stale snapshot fixes | Controller role authentication wire binding and live menu comparison remain unverified; no additional privileged setting is activated. |
+| native_phase2_menu | source_and_software_fixture | Bounded STD_MENU FIN/sequence paging; target/session/model fences; explicit Pro profile, fresh module admin and INFO write path; cold-cache export and stale snapshot fixes | The b16 role-token requirement is superseded by the reviewed Pro app path. Hardware/model comparison and unknown indexed/procedure bindings remain pending. |
 | native_phase1_readonly | static_native_and_software_fixture | 04/01 byte decoding, raw menu records without role grants, maneuver slot bounds, optional diagnostic observation ownership | No physical flag semantics, app-version association, live menu permissions, receiver operations or installer writes are established. |
 | upgrade_identity | software_fixture | Legacy/current entry migration, credential and entity-ID preservation, unload/reload fences | No registry migration is introduced by b11; fixtures do not establish every historical custom entity name. |
 | shared_wifi_routes | software_fixture | BiDi-WiFi, IT4WIFI, CU_WIFI and local/cloud/fallback serialization, no automatic write replay | All firmware/network variants have not been physically tested. |
 | position_and_motion | software_fixture | Sparse/live position, directional learned bands, 90% animation, stop/reversal and queued commands | Normal-use hardware confirmation remains part of the beta campaign; no unattended movement test is run. |
-| parameters_and_permissions | software_fixture | Scalar/indexed metadata, model restrictions, menu rights, scope and exactly-once readback | Per-motor writes and native menu/index semantics remain blocked rather than inferred. |
+| parameters_and_permissions | software_fixture | Scalar/indexed metadata, model restrictions, menu rights, scope and exactly-once readback | Per-motor and unverified indexed writes remain blocked. Pro scalar controls require explicit selection, module admin, current menu/INFO and device acceptance. |
 | diagnostics_privacy | software_fixture | Event/history interpretation, retained flags, receiver suppression and bounded export | Unknown native receiver/history structures are not published as decoded data. |
 | installer_interruption | software_fixture | Durable intent, worker/storage drain, irreversible cancellation boundaries and recovery acknowledgement | No live learning, reset, restore, enrollment or firmware mutation is performed. |
 | ha_native_boundary | software_fixture | No duplicate organization/scheduler, fixed read-only cloud paths, correct category guard and secret cleanup | Cloud copies are not proof of device execution, timezone or an actual HA conflict. |

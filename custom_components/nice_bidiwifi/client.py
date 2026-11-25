@@ -332,7 +332,7 @@ class NiceBidiClient:
         """Read static BiDi-WiFi and control-unit metadata."""
         return self._run_with_reconnect(self._read_info_locked)
 
-    def read_controller_menu(self, *, preemptible: bool = True):
+    def read_controller_menu(self, *, preemptible: bool = True, background: bool = False):
         """Read a complete bounded STD_MENU without changing controller access."""
         return self._run_with_reconnect(self._read_controller_menu_locked, preemptible=preemptible)
 

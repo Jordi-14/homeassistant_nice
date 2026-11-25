@@ -36,6 +36,9 @@ class ConfigurationEntity(NiceCoordinatorEntity):
         )
         self.definition = definition
         self.index = index
+        if domain in {"number", "select"} and definition.setting is not None and definition.setting.requires_menu_permission:
+            self._attr_entity_registry_enabled_default = True
+            self._attr_entity_registry_visible_default = True
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()

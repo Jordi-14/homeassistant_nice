@@ -266,20 +266,9 @@ def classify_source(row, facts):
                     "controller",
                 )
             if definition.setting is not None:
-                feature = "setting." + definition.setting.key
-                if not definition.setting.requires_menu_permission:
-                    return (
-                        "implemented",
-                        (feature,),
-                        (),
-                        "Reviewed existing scalar setting; runtime INFO, model and administrator checks still apply.",
-                        "controller",
-                    )
                 return (
-                    "supported_read_blocked_write",
-                    (feature,),
-                    ("controller.menu_wire",),
-                    "Read metadata does not grant installer-menu write rights.",
+                    "implemented", ("setting." + definition.setting.key,), (),
+                    "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance." if definition.setting.requires_menu_permission else "Reviewed existing scalar setting; runtime INFO, model and administrator checks still apply.",
                     "controller",
                 )
             if definition.safe_read:

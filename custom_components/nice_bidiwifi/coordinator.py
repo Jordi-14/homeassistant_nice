@@ -838,7 +838,7 @@ class NiceBidiDataUpdateCoordinator(
             raise HomeAssistantError("Nice DMP writes are blocked while the gate is moving")
         if self.calibration_controller.calibration_state == CALIBRATION_STATE_RUNNING:
             raise HomeAssistantError("Nice DMP writes are blocked during calibration")
-        if self.controller_menu.requires_proof(setting):
+        if self.controller_menu.requires_menu(setting):
             try:
                 await self.controller_menu.async_prepare_write(setting)
             except NiceBidiError as error:
@@ -902,7 +902,7 @@ class NiceBidiDataUpdateCoordinator(
         setting: DmpSetting,
     ) -> str | None:
         """Return a device-specific block reason for a reviewed setting."""
-        if self.controller_menu.requires_proof(setting):
+        if self.controller_menu.requires_menu(setting):
             try:
                 self.controller_menu.require_permission(setting)
             except NiceParameterError as error:
@@ -914,7 +914,7 @@ class NiceBidiDataUpdateCoordinator(
     def _prepare_parameter_write(self, setting: DmpSetting, value: int):
         """Validate before side effects and again after asynchronous boundaries."""
         self.configuration.sync_session()
-        if self.controller_menu.requires_proof(setting):
+        if self.controller_menu.requires_menu(setting):
             self.controller_menu.require_permission(setting)
         if self.reported_moving:
             raise NiceParameterError("configuration write blocked: gate started moving")
@@ -1033,6 +1033,7 @@ class NiceBidiDataUpdateCoordinator(
     def async_start_background_refresh(self) -> None:
         """Continue optional diagnostics after the entry and controls are loaded."""
         self._request_refresh_in_background()
+        self.controller_menu.start()
 
     def _request_refresh_in_background(self) -> None:
         """Refresh after an acknowledged command without delaying the caller."""
@@ -1205,6 +1206,7 @@ class NiceBidiDataUpdateCoordinator(
         self.configuration.invalidate()
         self.diagnostic_runtime.invalidate()
         self.diagnostic_runtime.close()
+        self.controller_menu.close()
         self.access.invalidate()
         # a still-valid issue is recreated by the first poll after setup
         ir.async_delete_issue(self.hass, DOMAIN, self._limits_issue_id)

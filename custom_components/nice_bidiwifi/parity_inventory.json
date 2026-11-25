@@ -4213,15 +4213,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_input_1_function"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -4241,15 +4239,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_input_2_function"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -4269,15 +4265,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_input_3_function"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -4297,15 +4291,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_input_4_function"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -5269,15 +5261,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_maintenance_mode"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -5773,15 +5763,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_close_mode"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -5829,15 +5817,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_open_mode"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -5857,15 +5843,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_partial_open_mode"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -6109,15 +6093,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_step_step_mode"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -6137,15 +6119,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_stop_mode"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -6733,15 +6713,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_output_1_function"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -6761,15 +6739,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_output_2_function"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -7317,15 +7293,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_pre_flash_close_time"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -7345,15 +7319,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_pre_flash_open_time"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -8168,15 +8140,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_closing_slowdown_speed"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -8196,15 +8166,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_opening_slowdown_speed"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -8276,15 +8244,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_standby_mode"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -8304,15 +8270,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_standby_time"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -8360,15 +8324,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_starting_torque_time"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -9464,15 +9426,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_courtesy_light_time"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -9492,15 +9452,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_electric_lock_time"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -9632,15 +9590,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_blocked_write",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
         "setting.config_suction_cup_time"
       ],
-      "blocking_gaps": [
-        "controller.menu_wire"
-      ],
-      "reason": "Read metadata does not grant installer-menu write rights.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
