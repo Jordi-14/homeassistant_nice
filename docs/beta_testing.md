@@ -320,3 +320,21 @@ and attach sanitized diagnostics if something differs. Keep prototype/blocked
 installer, reset, enrollment, per-motor and firmware procedures blocked; this RC
 does not validate their missing contracts. Existing CONNECT Code 1 and other open
 hardware-specific investigations remain open until confirmed on a clean baseline.
+
+## Corrective beta: v0.9.0b14
+
+Use b14 instead of RC1 for further testing. The router now forwards the
+coordinator's dispatch guard for open/close/stop, DEP and NHK T4Action commands.
+This fixes the unexpected `before_dispatch` TypeError introduced in b9 while
+retaining permission/lifecycle checks immediately before transmission.
+
+Install through HACS with prereleases enabled and restart HA. Existing credentials,
+controller settings and learned profiles remain; no re-pairing, recalibration or
+controller relearning is required. Confirm ordinary commands and supported partial
+opening during normal use. Do not provoke faults or obstructions.
+
+For a naturally occurring premature stop, attach sanitized native diagnostics
+through the GitHub web UI (email attachments may not appear), with the matching
+time/timezone. NHK causeCodeX91 now appears in abnormal-stop evidence as a reported
+diagnostic with unknown physical cause; later generic stops remain unclassified.
+This release does not claim to fix the physical stopping or CONNECT Code 1.

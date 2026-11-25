@@ -173,6 +173,15 @@ class NiceEventController(RuntimeController):
     # LOCAL-DIAGNOSTIC(pr55): abnormal-stop and implausible-travel detection.
     def _check_abnormal_stop(self, event: NiceEvent) -> NiceEvent:
         """Detect stops that no command explains and travel that cannot be real."""
+        # Preserve the explicit NHK report from #75 independently of the
+        # legacy five-second motion heuristic. This is a reported code, not
+        # proof of a physical obstacle or a general NHK-to-T4 mapping.
+        if event.kind is NiceEventKind.DIAGNOSTIC:
+            if event.cause_code == "causeCodeX91":
+                self._fire_abnormal_stop(event, "controller_diagnostic", time.monotonic())
+            # A diagnostic's DoorStatus is context, not a movement boundary
+            # for the heuristic (the reported X91 carried "closed" mid-open).
+            return event
         change_state = event.t4_change_state
         nhk = status_value(event.raw_state) if event.raw_state else None
         if change_state is None and nhk is None:
@@ -314,6 +323,10 @@ class NiceEventController(RuntimeController):
             at=event.received_at.isoformat(),
             change_state=event.t4_change_state,
             cause=event.t4_cause,
+            cause_code=event.cause_code,
+            basic_diagnostic_code=event.basic_diagnostic_code,
+            advanced_diagnostic_code=event.advanced_diagnostic_code,
+            evidence_source="nhk_diagnostic" if event.kind is NiceEventKind.DIAGNOSTIC else "legacy_stop_heuristic",
             position=self._coordinator.data.position
             if self._coordinator.data
             else None,

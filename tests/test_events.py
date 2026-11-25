@@ -1197,3 +1197,64 @@ async def test_photocell_reversal_during_close_is_not_abnormal(
     assert events == []
     assert coordinator.data.state == "open"
     await coordinator.async_shutdown()
+
+
+async def test_issue75_nhk_diagnostic_after_long_open_is_retained(hass, monkeypatch):
+    """The reported X91/closed, then stopped sequence must not vanish at 21 s."""
+    clock = _Clock(monkeypatch)
+    events = async_capture_events(hass, "nice_bidiwifi_abnormal_stop")
+    coordinator = await _abnormal_coordinator(
+        hass, state="closed", current_position=0, closed_position=0, open_position=2315
+    )
+    controller = coordinator.event_controller
+    controller._handle_raw_frame(frame_xml(_nhk_change("opening")))
+    started = controller._nhk_move
+    clock.now += 21
+    coordinator.async_set_updated_data(make_status(state="opening", current_position=2186, position=94.4))
+    diagnostic = frame_xml(
+        '<Event id="1771" type="DIAGNOSTIC"><Devices><Device id="1"><Properties>'
+        '<DoorStatus>closed</DoorStatus><Obstruct>false</Obstruct><EventDetails>'
+        '<CauseCode>causeCodeX91</CauseCode><BasicDiagnostic>basicDiagCode00</BasicDiagnostic>'
+        '<AdvDiagnostic>advDiagCode0000</AdvDiagnostic></EventDetails>'
+        '</Properties></Device></Devices></Event>'
+    )
+    controller._handle_raw_frame(diagnostic)
+    assert controller._nhk_move == started
+    # Duplicate frame and a matching T4 fault must not count the same incident again.
+    controller._handle_raw_frame(diagnostic)
+    clock.now += 0.15
+    controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
+    controller._handle_raw_frame(_t4_event("04 02 91 00 00 00"))
+    await hass.async_block_till_done()
+    assert coordinator.abnormal_stop_count == 1
+    assert len(events) == 1
+    data = events[0].data
+    assert data["reason"] == "controller_diagnostic"
+    assert data["cause_code"] == "causeCodeX91"
+    assert data["basic_diagnostic_code"] == "basicDiagCode00"
+    assert data["advanced_diagnostic_code"] == "advDiagCode0000"
+    assert data["evidence_source"] == "nhk_diagnostic"
+    assert data["physical_cause"] == "unknown"
+    assert data["actor"] == "unknown"
+    assert data["travel_seconds"] == 21
+    assert coordinator._extended_scan_requests == 1
+    await coordinator.async_shutdown()
+
+
+async def test_late_nhk_stop_without_explicit_fault_stays_unclassified(hass, monkeypatch):
+    """A remote or partial stop later in travel is not automatically a fault."""
+    clock = _Clock(monkeypatch)
+    coordinator = await _abnormal_coordinator(hass)
+    controller = coordinator.event_controller
+    controller._handle_raw_frame(frame_xml(_nhk_change("opening")))
+    clock.now += 21
+    controller._handle_raw_frame(frame_xml(_nhk_change("stopped")))
+    # Neither a lookalike code nor a CHANGE property is the explicit diagnostic.
+    controller._handle_raw_frame(frame_xml(
+        '<Event type="DIAGNOSTIC"><Devices><Device id="1"><Properties>'
+        '<EventDetails><CauseCode>unknownX91</CauseCode></EventDetails>'
+        '</Properties></Device></Devices></Event>'
+    ))
+    await hass.async_block_till_done()
+    assert coordinator.abnormal_stop_count == 0
+    await coordinator.async_shutdown()

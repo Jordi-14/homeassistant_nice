@@ -469,14 +469,14 @@ class NiceConnectionRouter:
     def test_connection(self):
         return self._read("test_connection")
 
-    def send_action(self, action: str) -> None:
-        self._write("send_action", action)
+    def send_action(self, action: str, *, before_dispatch: Callable[[], None] | None = None) -> None:
+        self._write("send_action", action, before_dispatch=before_dispatch)
 
-    def send_dep_action(self, action: str) -> None:
-        self._write("send_dep_action", action)
+    def send_dep_action(self, action: str, *, before_dispatch: Callable[[], None] | None = None) -> None:
+        self._write("send_dep_action", action, before_dispatch=before_dispatch)
 
-    def send_t4_action(self, action: str) -> None:
-        self._write("send_t4_action", action)
+    def send_t4_action(self, action: str, *, before_dispatch: Callable[[], None] | None = None) -> None:
+        self._write("send_t4_action", action, before_dispatch=before_dispatch)
 
     def write_parameter(self, prepared, *, before_dispatch=None):
         return self._write("write_parameter", prepared, before_dispatch=before_dispatch)

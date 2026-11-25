@@ -239,6 +239,8 @@ def documents() -> dict[str, str]:
         "",
         "`0x88` establishes command arrival, not an external actor. A nearby HA command is labelled `temporal_only`, not proven causation. A static limiter level is a load observation, not an intervention. Explicit controller diagnostic codes are labelled reported; reversal/abnormal-stop heuristics are inferred. Physical cause and actor remain unknown unless independent evidence establishes them.",
         "",
+        "NHK DIAGNOSTIC causeCodeX91 also records a controller_diagnostic abnormal-stop entry with the raw cause/basic/advanced codes and evidence_source=nhk_diagnostic, independently of the legacy five-second motion heuristic. Diagnostic DoorStatus does not start or clear that heuristic's movement tracking. Duplicate suppression and scan rate limits still apply. This preserves the reported #75 sequence after a 21-second opening without requiring a matching T4 frame. It does not establish a universal NHK-to-T4 mapping or a physical cause. Later generic stops remain unclassified; a zero counter is not proof that no premature stop occurred.",
+        "",
         "## Hardware, inverter and power",
         "",
         "BlueBus and I/O use the reviewed decoders and installed-item masks. Hardware D2 and inverter D4 use the same app hardware decoder with controller-supplied availability and scales. Motor 1 and motor 2 fields remain distinct. Primary service-voltage and temperature values are included where descriptors make them available. Missing installation metadata is explicit; no aggregate motor percentage is invented.",

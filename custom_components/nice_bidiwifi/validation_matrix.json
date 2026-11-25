@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release_channel": "release_candidate",
+  "release_channel": "beta",
   "universal_hardware_validation": false,
   "stable_release_authorized": false,
   "cases": [
