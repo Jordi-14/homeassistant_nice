@@ -67,20 +67,20 @@ class AccessManagement:
 
     async def _background_refresh(self):
         try:
-            await self.async_refresh()
+            await self.async_refresh(background=True)
         except (NiceBidiError, OSError, HomeAssistantError) as error:
             self.last_error = type(error).__name__
         finally:
             self._task = None
 
-    async def async_refresh(self):
+    async def async_refresh(self, *, background=False):
         owner = self._owner
         if owner.observations.closed:
             raise HomeAssistantError("Integration is shutting down")
         generation = owner.observations.generation
 
         def inspect():
-            snapshot = owner.client.read_pairings()
+            snapshot = owner.client.read_pairings(**({"background": True} if background else {}))
             return snapshot, getattr(owner.client, "access_session_scope", None)
 
         snapshot, scope = await owner.hass.async_add_executor_job(inspect)
@@ -115,9 +115,9 @@ class AccessManagement:
                 "Verified administrator permission is required; refresh paired users"
             )
 
-    async def async_prepare_admin(self):
+    async def async_prepare_admin(self, *, background=False):
         self.stationary_guard()
-        await self.async_refresh()
+        await self.async_refresh(background=background)
         self.require_admin()
         self.stationary_guard()
 

@@ -340,7 +340,7 @@ class FakeClient:
     def access_session_scope(self):
         return ("local", self.reconnect_count)
 
-    def read_pairings(self):
+    def read_pairings(self, *, background=False):
         return PairingsSnapshot((PairedUser("1","user","source",UserRole.ADMIN),))
 
     def read_dmp_info(self, group: int, parameter: int, *, preemptible: bool = False):

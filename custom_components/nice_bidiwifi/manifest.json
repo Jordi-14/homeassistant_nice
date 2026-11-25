@@ -13,7 +13,7 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/Jordi-14/homeassistant_nice/issues",
   "requirements": [],
-  "version": "0.9.0b26",
+  "version": "0.9.0b27",
   "zeroconf": [
     "_nap._tcp.local.",
     {

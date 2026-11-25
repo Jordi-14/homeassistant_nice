@@ -362,7 +362,7 @@ async def test_menu_entity_summary_does_not_repeat_full_table_in_state_history(h
     await owner.async_shutdown()
 
 
-async def test_permission_renewal_starts_with_margin_and_above_background_sweeps(
+async def test_permission_renewal_starts_with_margin_and_background_priority(
     hass, monkeypatch
 ):
     owner = await instance(hass)
@@ -377,7 +377,7 @@ async def test_permission_renewal_starts_with_margin_and_above_background_sweeps
     task = menu._task
     assert task is not None
     await task
-    refresh.assert_awaited_once_with(background=False)
+    refresh.assert_awaited_once_with(background=True)
     assert menu.valid()
     await owner.async_shutdown()
 

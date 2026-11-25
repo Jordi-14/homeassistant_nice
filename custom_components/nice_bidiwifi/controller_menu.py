@@ -86,9 +86,9 @@ class ControllerMenu:
 
     async def _background_refresh(self):
         try:
-            # Permission renewal must not sit behind optional diagnostic sweeps.
-            # READBACK remains below STOP and CONTROL, and paging is preemptible.
-            await self.async_refresh(background=False)
+            # Periodic context shares telemetry priority, so a broad status
+            # scan can complete. User-triggered checks retain READBACK priority.
+            await self.async_refresh(background=True)
         except (NiceBidiError, OSError, HomeAssistantError) as error:
             self.last_error = type(error).__name__
         finally:
@@ -162,7 +162,7 @@ class ControllerMenu:
     async def _async_refresh_locked(self, *, background):
         owner = self._owner
         if self.enabled:
-            await owner.access.async_prepare_admin()
+            await owner.access.async_prepare_admin(background=background)
         owner.access.stationary_guard()
         owner.lifecycle.require_idle()
         self._last_attempt = time.monotonic()

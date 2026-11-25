@@ -802,7 +802,7 @@ class NiceBidiClient:
 
         return self._run_with_reconnect(execute, preemptible=True)
 
-    def read_pairings(self):
+    def read_pairings(self, *, background=False):
         return self._run_with_reconnect(self._read_pairings_locked, preemptible=True)
 
     def _read_pairings_locked(self):

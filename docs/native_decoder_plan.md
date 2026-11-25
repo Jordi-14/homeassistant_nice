@@ -195,3 +195,15 @@ b26 changes read scheduling only, so that hardware write is not repeated.
 
 HA's polling preference is retained: an initial demand read is allowed, and
 periodic value reads stop when polling is disabled for the entry.
+
+### Fair background context reads: v0.9.0b27
+
+The complete live entity audit found legacy telemetry missing while new Pro
+editors were populated. Periodic permission checks could repeatedly preempt
+the broad status scan before its completed snapshot reached the coordinator.
+Periodic paired-user and menu reads now share STATUS priority with telemetry,
+so they queue fairly instead of aborting an in-progress scan. Foreground
+permission checks keep READBACK priority; STOP and movement commands keep
+their existing higher priorities. Optional diagnostics remain lower priority.
+Eight scheduler regressions cover both context reads, foreground/background
+requests, and active telemetry versus optional metadata.
