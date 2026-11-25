@@ -17,6 +17,7 @@ class EcosystemRuntime:
     def __init__(self, owner):
         self.owner = owner
         self.snapshot = None
+        self.core_snapshot = None
         self.last_attempt_at = None
         self.last_error_type = None
         self._task = None
@@ -53,8 +54,15 @@ class EcosystemRuntime:
                         raise HomeAssistantError(
                             "Cloud inspection belongs to an obsolete entry"
                         )
-                    self.snapshot = snapshot
-                    self.last_error_type = None
+                    if snapshot.state != "failed" or self.snapshot is None:
+                        self.snapshot = snapshot
+                    self.last_error_type = (
+                        "CollectionsUnavailable"
+                        if snapshot.state == "failed"
+                        else "IncompleteCollections"
+                        if snapshot.state == "partial"
+                        else None
+                    )
                     return snapshot
                 except asyncio.CancelledError:
                     self.last_error_type = "Cancelled"
@@ -68,6 +76,20 @@ class EcosystemRuntime:
                         self.owner.async_update_listeners()
         finally:
             login.clear()
+
+    async def async_inspect_core(self, *, confirmed=False):
+        from .models.capabilities import ProductFamily
+        if confirmed is not True or self._closed or self.owner.observations.closed:
+            raise HomeAssistantError("Explicit read-only CORE inspection consent is required")
+        if self.owner.capabilities is None or self.owner.capabilities.family is not ProductFamily.CORE:
+            raise HomeAssistantError("This configured endpoint is not CORE; the standalone CORE reader requires its own explicit credentials")
+        generation = self.owner.observations.generation
+        snapshot = await self.owner.hass.async_add_executor_job(self.owner.client.read_core_tables)
+        if self._closed or generation != self.owner.observations.generation:
+            raise HomeAssistantError("CORE inspection belongs to an obsolete entry")
+        self.core_snapshot = snapshot.export()
+        self.owner.async_update_listeners()
+        return self.core_snapshot
 
     def controller_behavior(self):
         records = {}
@@ -99,6 +121,7 @@ class EcosystemRuntime:
     def diagnostics(self):
         return {
             "controller_behavior": self.controller_behavior(),
+            "core_table_inspection": self.core_snapshot,
             "last_inspection": self.snapshot.summary() if self.snapshot else None,
             "last_attempt_at": self.last_attempt_at,
             "last_error_type": self.last_error_type,
@@ -118,3 +141,4 @@ class EcosystemRuntime:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
         self.snapshot = None
+        self.core_snapshot = None

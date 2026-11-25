@@ -244,13 +244,30 @@ def category_report(info):
 
 
 class CoreAutomationInspectionAdapter:
-    """A read-only extension point; no transport exists until the gap is filled."""
+    """Read-only table adapter. Full actuator/session integration stays separate."""
 
     gap = "ecosystem.core_execution"
 
-    async def read(self, target):
-        from .errors import NiceUnsupportedError
+    def __init__(self, reader=None):
+        self.reader = reader
 
-        raise NiceUnsupportedError(
-            "CORE table/runtime readback requires verified targeting, table versions and schedule semantics"
-        )
+    async def read(self, target):
+        if self.reader is None:
+            from .errors import NiceUnsupportedError
+
+            raise NiceUnsupportedError(
+                "A scoped CORE reader is required; use the explicit standalone inspection tool"
+            )
+        from .models.discovery import normalize_device_id
+        from .errors import NiceParameterError
+
+        expected = self.reader.client.credentials.target_mac
+        if not isinstance(target, str) or normalize_device_id(
+            target
+        ) != normalize_device_id(expected):
+            raise NiceParameterError(
+                "The CORE reader does not match the requested target scope"
+            )
+        import asyncio
+
+        return await asyncio.to_thread(self.reader.read)

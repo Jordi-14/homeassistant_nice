@@ -388,6 +388,10 @@ class NiceBidiClient:
         """Read a bounded, redacted summary of local access groups."""
         return self._run_with_reconnect(self._read_groups_locked)
 
+    def read_core_tables(self):
+        from .core_inspection import CoreTableReader
+        return CoreTableReader(self).read()
+
     def read_device_inventory(self):
         from .protocol.nhk.lifecycle import parse_inventory
 

@@ -29,11 +29,8 @@ class AccessContract:
 
     def require(self) -> None:
         if not self.implemented:
-            raise FeatureBlocked(
-                GAPS_BY_KEY[self.gap].summary
-                if self.gap
-                else "Access adapter unavailable"
-            )
+            reason = GAPS_BY_KEY[self.gap].summary if self.gap else "implementation unavailable"
+            raise FeatureBlocked("Blocked access adapter: " + reason)
 
 
 SHARED_WIFI_ACCESS = AccessContract(
@@ -192,13 +189,17 @@ class FeatureRuntime:
             from .ecosystem_catalog import blocks_gate_adapter
             if blocks_gate_adapter(getattr(owner, "device_info", None)):
                 reasons.append("The reported category requires its own device adapter")
+        if binding is not None and binding.handler == "core_inspection":
+            if caps is None or caps.family is not ProductFamily.CORE:
+                support = False
+                reasons.append("An explicitly identified CORE endpoint is required")
         if support is False:
             reasons.append("Device does not advertise this operation")
         if permission is False:
             reasons.append("Account permission does not allow writing this operation")
         if caps is not None:
             for contract in (CORE_ACCESS, PROVIEW_ACCESS):
-                if caps.family in contract.families:
+                if caps.family in contract.families and not (binding is not None and binding.handler == "core_inspection"):
                     reasons.append(GAPS_BY_KEY[contract.gap].summary)
         if binding is not None and binding.handler in {
             "setting",
@@ -249,7 +250,7 @@ class FeatureRuntime:
 
     async def execute(self, key: str, **payload) -> Any:
         binding = self.require(key)
-        allowed = {"installer": {"confirmed"}, "setting": {"value"}, "name": {"name"}, "history": {"max_rows"}}.get(
+        allowed = {"core_inspection": {"confirmed"}, "installer": {"confirmed"}, "setting": {"value"}, "name": {"name"}, "history": {"max_rows"}}.get(
             binding.handler, set()
         )
         if set(payload) - allowed:
@@ -258,6 +259,8 @@ class FeatureRuntime:
         if required is not None and required not in payload:
             raise FeatureBlocked(f"Missing feature argument: {required}")
         owner = self._coordinator
+        if binding.handler == "core_inspection":
+            return await owner.ecosystem.async_inspect_core(confirmed=payload.get("confirmed", False))
         if binding.handler == "options":
             return await owner.hass.config_entries.options.async_init(owner.config_entry.entry_id)
         if binding.handler == "installer":
@@ -265,7 +268,9 @@ class FeatureRuntime:
         if binding.handler == "diagnostic":
             return await owner.diagnostic_runtime.async_read(binding.operation)
         if binding.handler == "snapshot":
+            from .parity import parity_summary
             return {
+                "parity": lambda: parity_summary(),
                 "ecosystem": lambda: owner.ecosystem.diagnostics(),
                 "status": lambda: owner.observations.snapshot(),
                 "incident_timeline": lambda: owner.incidents.export(),

@@ -379,6 +379,21 @@ class NiceAccessOptionsFlow(OptionsFlow):
         return self.async_show_form(step_id="ecosystem_controller",data_schema=vol.Schema({}),description_placeholders={"records":text})
 
     async def async_step_ecosystem_core(self, user_input=None):
-        if self._owner() is None:
+        owner = self._owner()
+        if owner is None:
             return self.async_abort(reason="not_loaded")
-        return self.async_abort(reason="ecosystem_core_unverified")
+        from .models.capabilities import ProductFamily
+        if owner.capabilities is None or owner.capabilities.family is not ProductFamily.CORE:
+            return self.async_abort(reason="ecosystem_core_requires_core")
+        errors = {}
+        if user_input is not None:
+            try:
+                result = await owner.ecosystem.async_inspect_core(confirmed=user_input.get("confirm", False))
+            except Exception:
+                errors["base"] = "ecosystem_core_failed"
+            else:
+                return self.async_show_form(step_id="ecosystem_core_result", data_schema=vol.Schema({}), description_placeholders={key: str(result[key]) for key in ("rules", "scene_inputs", "scene_outputs", "captured_at")})
+        return self.async_show_form(step_id="ecosystem_core", data_schema=vol.Schema({vol.Required("confirm", default=False): selector.BooleanSelector()}), errors=errors)
+
+    async def async_step_ecosystem_core_result(self, user_input=None):
+        return await self.async_step_ecosystem()

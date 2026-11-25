@@ -344,11 +344,11 @@ Indexed source dependencies: 0. Full references are in the source inventory.
 
 ## `transport.core`
 
-CORE access adapter not implemented.
+CORE actuation/domain lifecycle remains unvalidated.
 
-Missing: A validated transport/session/authentication contract for CORE is missing.
+Missing: CORE inherits NHK authentication and source-backed TABLE_READ inspection is implemented. Continuous device discovery, category-specific control/state codecs and complete actuator lifecycle remain unvalidated; the gate adapter cannot substitute for them.
 
-To unblock: Establish framing, authentication, targeting, lifecycle and sanitized fixtures.
+To unblock: Complete CORE device-domain, permissions, state/event and actuation lifecycle with scoped fixtures. Keep the separate count-only table reader read-only.
 
 Indexed source dependencies: 0. Full references are in the source inventory.
 

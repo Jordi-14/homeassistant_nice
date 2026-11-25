@@ -191,9 +191,9 @@ GAPS = (
     ),
     EvidenceGap(
         "transport.core",
-        "CORE access adapter not implemented",
-        "A validated transport/session/authentication contract for CORE is missing.",
-        "Establish framing, authentication, targeting, lifecycle and sanitized fixtures.",
+        "CORE actuation/domain lifecycle remains unvalidated",
+        "CORE inherits NHK authentication and source-backed TABLE_READ inspection is implemented. Continuous device discovery, category-specific control/state codecs and complete actuator lifecycle remain unvalidated; the gate adapter cannot substitute for them.",
+        "Complete CORE device-domain, permissions, state/event and actuation lifecycle with scoped fixtures. Keep the separate count-only table reader read-only.",
     ),
     EvidenceGap(
         "transport.proview",
@@ -374,6 +374,8 @@ def _features() -> tuple[FeatureDefinition, ...]:
                 if key == "installer.lifecycle"
                 else ("ecosystem.core_execution", "ecosystem.device_adapter")
                 if key == "cloud.organization"
+                else tuple(gap.key for gap in GAPS if gap.key.startswith("diagnostics."))
+                if key == "diagnostics.complete"
                 else (),
             )
         )
@@ -396,7 +398,7 @@ def _features() -> tuple[FeatureDefinition, ...]:
             6,
             "fg01h.force_map_learning",
         ),
-        ("transport.core", "CORE access", 5, "transport.core"),
+        ("transport.core", "CORE actuator integration", 5, "transport.core"),
         ("transport.proview", "ProView access", 5, "transport.proview"),
     ):
         rows.append(
@@ -459,6 +461,8 @@ def _features() -> tuple[FeatureDefinition, ...]:
                           gaps=(item.gap,) if item.gap else (), evidence=(item.explanation,))
         for item in DISPOSITIONS if item.key != "inspection"
     )
+    rows.append(FeatureDefinition("core.tables", "Read-only CORE table snapshot", implemented, 8, FeatureBinding("core_inspection", "tables"), evidence=("Welcome CoreProtocol TABLE_READ and version-bracketed count-only reader",)))
+    rows.append(FeatureDefinition("parity.report", "Final capability dispositions and validation summary", implemented, 8, FeatureBinding("snapshot", "parity")))
     return tuple(rows)
 
 

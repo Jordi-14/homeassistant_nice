@@ -243,7 +243,7 @@ def test_empty_valid_collections_only_mean_no_records_reported_in_cloud():
     [
         {},
         {"result": True},
-        {"result": True, "scenes": None},
+        {"result": False, "scenes": None},
         {"result": True, "scenes": [{"id": 31, "accessoryMacAddress": OTHER_MAC}]},
         {"result": True, "scenes": [{"id": 31, "accessoryMacAddress": []}]},
         {"result": True, "scenes": [], "errorCode": []},

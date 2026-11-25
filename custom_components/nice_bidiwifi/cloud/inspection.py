@@ -67,6 +67,65 @@ def successful(payload, *, require_result=True):
     return root
 
 
+def collection_shape(payload):
+    """Retain only fixed field types, never arbitrary keys or payload values."""
+
+    def kind(value):
+        if value is None:
+            return "null"
+        if isinstance(value, list):
+            return "list"
+        if isinstance(value, Mapping):
+            return "object"
+        if isinstance(value, bool):
+            return "boolean"
+        if isinstance(value, str):
+            return "string"
+        if isinstance(value, int | float):
+            return "number"
+        return "other"
+
+    if not isinstance(payload, Mapping):
+        return {"root": kind(payload)}
+    shape = {
+        key: kind(payload[key]) if key in payload else "missing"
+        for key in ("scenes", "rules", "data")
+    }
+    result = payload.get("result")
+    shape["result"] = (
+        "true"
+        if result is True
+        else "false"
+        if result is False
+        else "null"
+        if "result" in payload and result is None
+        else "missing"
+        if "result" not in payload
+        else "other"
+    )
+    shape["error_code_present"] = (
+        payload.get("errorCode") is not None and payload.get("errorCode") != ""
+    )
+    if isinstance(payload.get("rules"), Mapping):
+        shape.update(
+            {
+                "rules." + key: kind(payload["rules"][key])
+                if key in payload["rules"]
+                else "missing"
+                for key in ("rule", "timers")
+            }
+        )
+    return shape
+
+
+def reported_list(root, key):
+    # Welcome SceneRepositoryImpl maps a successful nullable collection to an
+    # empty list. Require explicit success and an explicit null, not omission.
+    if root.get("result") is True and key in root and root[key] is None:
+        return []
+    return root.get(key)
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class InspectionScope:
     account_id: int
@@ -93,12 +152,14 @@ class RecordCollection:
     state: str
     items: tuple[AutomationRecord, ...] = ()
     error_type: str | None = None
+    response_shape: dict | None = None
 
     def summary(self):
         return {
             "state": self.state,
             "count": len(self.items) if self.state == "reported" else None,
             "error_type": self.error_type,
+            "response_shape": self.response_shape,
         }
 
 
@@ -113,6 +174,8 @@ class AutomationInspection:
     @property
     def state(self):
         collections = (self.scenes, self.rules, self.timers)
+        if all(section.state != "reported" for section in collections):
+            return "failed"
         if any(section.state != "reported" for section in collections):
             return "partial"
         return (
@@ -254,40 +317,76 @@ def _scoped_rows(rows, scope, kind):
 
 
 def parse_scenes(payload, scope):
+    shape = collection_shape(payload)
     try:
-        items = _scoped_rows(
-            successful(payload, require_result=False).get("scenes"), scope, "scene"
-        )
-        return RecordCollection("scenes", "reported", items)
+        root = successful(payload, require_result=False)
+        items = _scoped_rows(reported_list(root, "scenes"), scope, "scene")
+        return RecordCollection("scenes", "reported", items, response_shape=shape)
     except NiceCloudSchemaError:
         return RecordCollection(
-            "scenes", "unavailable", error_type="UnsupportedOrUnscopedResponse"
+            "scenes",
+            "unavailable",
+            error_type="UnsupportedOrUnscopedResponse",
+            response_shape=shape,
         )
 
 
 def parse_rules(payload, scope):
+    shape = collection_shape(payload)
     try:
-        groups = _object(successful(payload, require_result=False).get("rules"))
+        root = successful(payload, require_result=False)
+        if root.get("result") is True and "rules" in root and root["rules"] is None:
+            return (
+                RecordCollection("rules", "reported", response_shape=shape),
+                RecordCollection("timers", "reported", response_shape=shape),
+            )
+        groups = _object(root.get("rules"))
     except NiceCloudSchemaError:
         return (
-            RecordCollection("rules", "unavailable", error_type="UnsupportedResponse"),
-            RecordCollection("timers", "unavailable", error_type="UnsupportedResponse"),
+            RecordCollection(
+                "rules",
+                "unavailable",
+                error_type="UnsupportedResponse",
+                response_shape=shape,
+            ),
+            RecordCollection(
+                "timers",
+                "unavailable",
+                error_type="UnsupportedResponse",
+                response_shape=shape,
+            ),
         )
     try:
-        items = _scoped_rows(groups.get("rule"), scope, "rule")
-        rules = RecordCollection("rules", "reported", items)
+        rows = (
+            []
+            if root.get("result") is True
+            and "rule" in groups
+            and groups["rule"] is None
+            else groups.get("rule")
+        )
+        items = _scoped_rows(rows, scope, "rule")
+        rules = RecordCollection("rules", "reported", items, response_shape=shape)
     except NiceCloudSchemaError:
         rules = RecordCollection(
-            "rules", "unavailable", error_type="UnsupportedOrUnscopedResponse"
+            "rules",
+            "unavailable",
+            error_type="UnsupportedOrUnscopedResponse",
+            response_shape=shape,
         )
     try:
         timers, seen = [], set()
-        parent_ids = {item.resource_id for item in rules.items}
         parent_names = {item.resource_id: item.name for item in rules.items}
-        for value in _list(groups.get("timers")):
+        rows = (
+            []
+            if root.get("result") is True
+            and "timers" in groups
+            and groups["timers"] is None
+            else groups.get("timers")
+        )
+        for value in _list(rows):
             row = _object(value)
             resource_id, parent_id = _id(row.get("id")), _id(row.get("ruleId"))
-            if resource_id in seen or parent_id not in parent_ids:
+            if resource_id in seen or parent_id not in parent_names:
                 raise NiceCloudSchemaError("Unbound or duplicate timer")
             seen.add(resource_id)
             timers.append(
@@ -302,10 +401,15 @@ def parse_rules(payload, scope):
                     parent_id,
                 )
             )
-        timer_collection = RecordCollection("timers", "reported", tuple(timers))
+        timer_collection = RecordCollection(
+            "timers", "reported", tuple(timers), response_shape=shape
+        )
     except NiceCloudSchemaError:
         timer_collection = RecordCollection(
-            "timers", "unavailable", error_type="UnsupportedOrUnboundResponse"
+            "timers",
+            "unavailable",
+            error_type="UnsupportedOrUnboundResponse",
+            response_shape=shape,
         )
     return rules, timer_collection
 
