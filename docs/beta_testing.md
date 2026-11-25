@@ -338,3 +338,8 @@ through the GitHub web UI (email attachments may not appear), with the matching
 time/timezone. NHK causeCodeX91 now appears in abnormal-stop evidence as a reported
 diagnostic with unknown physical cause; later generic stops remain unclassified.
 This release does not claim to fix the physical stopping or CONNECT Code 1.
+
+New native evidence: an arm64 Pro library and split APK were supplied on
+2026-11-25 and their library bytes match. Exported JNI names cover menu/INFO,
+hardware diagnostics, maneuver history and receiver codecs. Native contracts and
+exact version association still need audit; no new native binding is enabled in b14.

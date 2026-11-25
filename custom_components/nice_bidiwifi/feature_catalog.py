@@ -161,9 +161,9 @@ GAPS = (
     ),
     EvidenceGap(
         "native.t4_library.pro_2_18",
-        "Pro native encoder/decoder unavailable",
-        "The supplied exports contain JNI declarations but no APK or libnative-lib.so.",
-        "Recover the matching native library, trace the mapping and add captured request/reply fixtures.",
+        "Pro native decoder audit and version association pending",
+        "An arm64 libnative-lib.so and Pro split APK were supplied on 2026-11-25; their library bytes match. Exact app-version association, native contracts and hardware fixtures remain unverified.",
+        "Verify the library against the Pro app version, audit native mappings and add sanitized request/reply fixtures before enabling bindings.",
     ),
     EvidenceGap(
         "apps.unrecovered_methods",

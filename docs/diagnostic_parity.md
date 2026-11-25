@@ -62,7 +62,7 @@ DMP maintenance threshold, maintenance count and total counter are distinct cont
 
 Integration diagnostics include the screen report, profile, incident timeline, observations and gap/capability explanations. No extra export service or credentials are required. Standard HA diagnostics can be downloaded even if setup has failed. Output uses field allowlists, bounded histories/values, unknown-payload suppression, standard key redaction and recursive configured-secret redaction. Radio codes, pairing/password registers, client names and unreviewed receiver payloads are not added to the timeline.
 
-Source basis: MyNice Pro 2.18 T4LogReply, T4InputOutputDiagnostic, T4HardwareDiagnostic, T4AutomationLast8ManeuversStatus, INFO-driven advanced-history rendering, existing sanitized fixtures and the supplied DA/DB/D4 research. The matching native binary remains unavailable in the supplied exports, so unverified native structures stay explicit gaps.
+Source basis: MyNice Pro 2.18 T4LogReply, T4InputOutputDiagnostic, T4HardwareDiagnostic, T4AutomationLast8ManeuversStatus, INFO-driven advanced-history rendering, existing sanitized fixtures and the supplied DA/DB/D4 research. An arm64 native library and matching Pro split-APK library bytes were supplied on 2026-11-25. Version association and native decoder contracts still need audit, so unverified native structures remain explicit gaps.
 
 ## Normal-use beta checks
 
