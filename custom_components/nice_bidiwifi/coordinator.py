@@ -70,6 +70,8 @@ from .configuration import ControllerConfiguration
 from .incidents import IncidentTimeline
 from .access_management import AccessManagement
 from .lifecycle import LifecycleRuntime
+from .ecosystem import EcosystemRuntime
+from .ecosystem_catalog import blocks_gate_adapter, require_gate_adapter
 from .diagnostic_runtime import DiagnosticRuntime
 from .runtime_tasks import RuntimeTasks
 from .scheduler import OperationExpired
@@ -284,6 +286,7 @@ class NiceBidiDataUpdateCoordinator(
         self.diagnostic_runtime = DiagnosticRuntime(self)
         self.access = AccessManagement(self)
         self.lifecycle = LifecycleRuntime(self)
+        self.ecosystem = EcosystemRuntime(self)
         self.event_controller = NiceEventController(self)
         self.administration_controller = NiceAdministrationController(self)
         self.motion_trace = MotionTraceController(self)
@@ -794,6 +797,8 @@ class NiceBidiDataUpdateCoordinator(
 
     def t4_action_supported(self, action: str) -> bool:
         """Return whether a reviewed action is safe to offer and execute."""
+        if blocks_gate_adapter(getattr(self, "device_info", None)):
+            return False
         if action in getattr(self, "_rejected_t4_actions", ()):
             return False
         definition = T4_ACTION_BY_KEY.get(action)
@@ -940,6 +945,7 @@ class NiceBidiDataUpdateCoordinator(
         return result
 
     def _control_dispatch_guard(self, action):
+        require_gate_adapter(self.device_info)
         try:
             if self.observations.closed and action not in {"stop", "stop_remote"}:
                 raise HomeAssistantError("Integration is shutting down")
@@ -1179,6 +1185,7 @@ class NiceBidiDataUpdateCoordinator(
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
         self.observations.invalidate(close=True)
+        await self.ecosystem.async_close()
         await self.lifecycle.async_close()
         self.configuration.invalidate()
         self.diagnostic_runtime.invalidate()

@@ -453,6 +453,16 @@
       },
       "advertised_devices": {
         "name": "Dispositius anunciats"
+      },
+      "nice_automation_inspection": {
+        "name": "Inspecció d’automatitzacions Nice",
+        "state": {
+          "not_inspected": "Sense inspeccionar",
+          "records_found": "Registres trobats",
+          "no_records_reported": "Cap registre informat",
+          "partial": "Parcial",
+          "failed": "Fallada de la inspecció"
+        }
       }
     }
   },
@@ -469,7 +479,8 @@
           "ownership": "Disponibilitat de propietat i eliminació",
           "installer": "Procediments d’instal·lació i dispositius",
           "installer_recovery": "Revisa una operació interrompuda",
-          "installer_cancel": "Sol·licita cancel·lació d’un procediment"
+          "installer_cancel": "Sol·licita cancel·lació d’un procediment",
+          "ecosystem": "HA i automatitzacions Nice existents"
         }
       },
       "inspect_users": {
@@ -530,6 +541,37 @@
       "installer_cancel": {
         "title": "Sol·licita cancel·lació",
         "description": "Només s’atura el procediment en un límit verificat entre passos. No s’envia cap ordre d’avortament suposada. Una ordre irreversible ja enviada no es pot desfer cancel·lant HA."
+      },
+      "ecosystem": {
+        "title": "HA i Nice",
+        "menu_options": {
+          "ecosystem_cloud": "Inspecciona registres Nice al núvol",
+          "ecosystem_report": "Mostra l’última inspecció",
+          "ecosystem_ha": "Què gestiona HA i què gestiona l’app",
+          "ecosystem_controller": "Revisa el tancament automàtic del controlador",
+          "ecosystem_core": "Disponibilitat de lectura CORE real"
+        }
+      },
+      "ecosystem_cloud": {
+        "title": "Inspecció de només lectura",
+        "description": "Opcional: inicia una sessió MyNice temporal per llegir els registres d’escenes, regles i temporitzadors d’aquest accessori. No s’importa, modifica ni executa res. No es conserven credencials, tokens ni galetes del compte. Els noms i horaris només es mostren aquí; els diagnòstics exporten recomptes. Aquesta consulta és independent de la connexió local o de reserva.",
+        "data": {
+          "account": "Compte MyNice",
+          "account_password": "Contrasenya MyNice",
+          "confirm": "Autoritzo aquesta inspecció temporal de només lectura a Nice"
+        }
+      },
+      "ecosystem_report": {
+        "title": "Última inspecció Nice",
+        "description": "Captura: {captured_at}. Estat: {state}. Error de l’últim intent: {last_error}.\n\nSón registres del núvol, no una prova de l’execució actual al CORE. Els codis d’estat, hores i repeticions es mostren tal com els informa Nice; no s’ha verificat la zona horària ni s’han comparat les automatitzacions de HA. Revisa possibles coincidències a l’app abans de crear l’equivalent a HA. No es modifica ni s’executa cap registre.\n\n{records}\n\nL’abast és l’accessori/passarel·la configurat; els registres poden fer referència a altres dispositius connectats. No s’ha verificat la correspondència amb aquesta porta concreta."
+      },
+      "ecosystem_ha": {
+        "title": "HA continua sent el responsable",
+        "description": "Fes servir les àrees, plantes, taulers, grups, escenes/scripts, horaris, automatitzacions, notificacions i usuaris natius de HA. Nice només exposa controls, mesures i esdeveniments verificats. No importa ni sincronitza recursos de MyNice, ni crea un segon planificador. La propietat, les invitacions, l’edició de recursos Nice existents i la vinculació de serveis del fabricant es gestionen a l’app. Els permisos del mòdul, del compte Nice i dels usuaris HA són independents."
+      },
+      "ecosystem_controller": {
+        "title": "Comportament propi del controlador",
+        "description": "Valors que HA ja ha llegit al controlador. No es fa cap consulta nova ni es modifica res. Un valor desconegut no significa desactivat. Aquestes funcions poden actuar sense HA; revisa si tens una automatització HA equivalent abans de canviar res. No s’ha establert cap conflicte.\n\n{records}"
       }
     },
     "error": {
@@ -541,15 +583,19 @@
       "installer_binding_unavailable": "Aquest procediment no està disponible perquè falten les dades indicades. No s’ha enviat cap ordre.",
       "installer_confirmation_required": "Confirma que has revisat els requisits.",
       "installer_operation_failed": "No s’ha confirmat el procediment. Revisa els diagnòstics i la recuperació abans de repetir-lo. Les escriptures incertes no es repeteixen automàticament.",
-      "installer_recovery_failed": "No s’ha pogut confirmar la recuperació. Comprova el dispositiu i els requisits del model; no es repetirà cap escriptura."
+      "installer_recovery_failed": "No s’ha pogut confirmar la recuperació. Comprova el dispositiu i els requisits del model; no es repetirà cap escriptura.",
+      "ecosystem_consent_required": "Confirma la inspecció de només lectura abans de connectar.",
+      "ecosystem_invalid_login": "Introdueix un compte i una contrasenya vàlids.",
+      "ecosystem_inspection_failed": "No s’ha pogut completar la inspecció. Comprova l’accés del compte a aquest accessori. Es conserva la data de qualsevol captura anterior; no es modifica cap recurs ni la connexió de la integració."
     },
     "abort": {
       "not_loaded": "Carrega la integració abans de gestionar l’accés.",
       "no_access_targets": "No s’han trobat registres elegibles. S’exclou l’accés actual de Home Assistant.",
       "network_workflow_unverified": "Els canvis Wi-Fi estan bloquejats fins a verificar l’estat, la identitat i la recuperació. Utilitza l’app del fabricant. No s’ha recollit cap contrasenya de xarxa.",
-      "ownership_workflow_unverified": "L’eliminació física d’usuaris i la transferència de propietat al núvol estan bloquejades fins a verificar les transaccions i la recuperació. Pots promoure un altre usuari del mòdul a administrador per separat.",
+      "ownership_workflow_unverified": "La propietat i la compartició al núvol es gestionen a l’app del fabricant. L’eliminació física de registres vinculats del mòdul continua sense una transacció i recuperació verificades. Promoure un altre usuari a administrador és una operació diferent.",
       "invalid_installer_procedure": "El procediment no és vàlid.",
-      "installer_cancel_unavailable": "El pas actual no admet una cancel·lació segura. No s’ha enviat cap ordre d’avortament."
+      "installer_cancel_unavailable": "El pas actual no admet una cancel·lació segura. No s’ha enviat cap ordre d’avortament.",
+      "ecosystem_core_unverified": "La lectura de taules, versions i execució CORE no té un adaptador verificat. Els registres del núvol poden estar desactualitzats i no demostren execució al dispositiu. No s’ha iniciat cap connexió ni recollit credencials."
     }
   }
 }

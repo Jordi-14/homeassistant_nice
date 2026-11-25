@@ -55779,7 +55779,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -55818,7 +55818,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -56161,7 +56161,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -56262,7 +56262,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -56485,7 +56485,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.service_linking",
       "phase": 7,
       "gaps": []
     },
@@ -56648,7 +56648,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -56720,7 +56720,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -56993,7 +56993,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -57022,7 +57022,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -57340,7 +57340,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -57363,7 +57363,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.service_linking",
       "phase": 7,
       "gaps": []
     },
@@ -57412,7 +57412,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -57438,7 +57438,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -59467,7 +59467,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -59492,7 +59492,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -59760,7 +59760,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -59783,7 +59783,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -59806,7 +59806,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -59830,7 +59830,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -59996,7 +59996,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -60185,7 +60185,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -60254,7 +60254,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -60277,7 +60277,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -60300,7 +60300,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -60505,7 +60505,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.service_linking",
       "phase": 7,
       "gaps": []
     },
@@ -60733,7 +60733,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.inspection",
       "phase": 7,
       "gaps": []
     },
@@ -60897,7 +60897,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.dashboards",
       "phase": 7,
       "gaps": []
     },
@@ -60947,7 +60947,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -61134,7 +61134,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.inspection",
       "phase": 7,
       "gaps": []
     },
@@ -61413,7 +61413,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -61481,7 +61481,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -61527,7 +61527,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.sharing",
       "phase": 7,
       "gaps": []
     },
@@ -61763,7 +61763,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -61786,7 +61786,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -62059,7 +62059,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -62082,7 +62082,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.service_linking",
       "phase": 7,
       "gaps": []
     },
@@ -62135,7 +62135,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -62159,7 +62159,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -62251,7 +62251,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -62274,7 +62274,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -62298,7 +62298,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -65157,7 +65157,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -65182,7 +65182,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -69129,7 +69129,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -69152,7 +69152,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -69188,7 +69188,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -69251,11 +69251,9 @@
         "com.niceforyou.welcome.presentation.view.control.deviceconfiguration.scenarioconfiguration.addscenario.AddScenarioViewModel.buildScene():com.niceforyou.welcome.domain.models.Scene",
         "com.niceforyou.welcome.presentation.view.control.deviceconfiguration.scenarioconfiguration.addscenario.AddScenarioViewModel.enableButton():void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.control.deviceconfiguration.scenarioconfiguration.addscenarioautomationaction.AddScenarioAutomationActionFragment",
@@ -69280,7 +69278,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -69310,7 +69308,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -69334,7 +69332,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -69355,7 +69353,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -70037,7 +70035,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -70072,7 +70070,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -70323,7 +70321,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -70358,7 +70356,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -70388,11 +70386,9 @@
         "com.niceforyou.welcome.presentation.view.rules.RulesMainFragment.toggleHomeListVisibility():void",
         "com.niceforyou.welcome.presentation.view.rules.RulesMainFragment.updateRuleList(java.util.List):void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.RulesMainViewModel",
@@ -70431,7 +70427,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -70467,7 +70463,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -70543,11 +70539,9 @@
         "com.niceforyou.welcome.presentation.view.rules.addrule.AddRuleViewModel.enableSaveButton():void",
         "com.niceforyou.welcome.presentation.view.rules.addrule.AddRuleViewModel.setEffectDeviceAction(kotlin.Pair):void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.alarmeffect.AlarmEffectFragment",
@@ -70569,7 +70563,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -70597,11 +70591,9 @@
       "unrecovered_methods": [
         "com.niceforyou.welcome.presentation.view.rules.alarmeffect.AlarmEffectViewModel.enableAheadButton():void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.devicecondition.DeviceConditionFragment",
@@ -70628,7 +70620,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -70655,7 +70647,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -70681,7 +70673,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -70699,7 +70691,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -70775,7 +70767,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -70813,11 +70805,9 @@
         "com.niceforyou.welcome.presentation.view.rules.deviceconditionparameter.DeviceConditionParameterViewModel$checkIfActivationTimeIsSupported$1$1$2.apply(java.lang.Object):java.lang.Object",
         "com.niceforyou.welcome.presentation.view.rules.deviceconditionparameter.DeviceConditionParameterViewModel.checkIfActivationTimeIsSupported(java.lang.String, java.lang.String):void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.deviceeffect.DeviceEffectFragment",
@@ -70842,7 +70832,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -70870,11 +70860,9 @@
       "unrecovered_methods": [
         "com.niceforyou.welcome.presentation.view.rules.deviceeffect.DeviceEffectViewModel.loadAutomations():void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.locationcondition.LocationConditionFragment",
@@ -70897,7 +70885,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -70929,11 +70917,9 @@
       "unrecovered_methods": [
         "com.niceforyou.welcome.presentation.view.rules.locationcondition.LocationConditionViewModel.enableButton():void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.locationconditionaddress.LocationConditionAddressFragment",
@@ -70964,7 +70950,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71006,11 +70992,9 @@
       "unrecovered_methods": [
         "com.niceforyou.welcome.presentation.view.rules.locationconditionaddress.LocationConditionAddressViewModel.goAhead(com.niceforyou.welcome.presentation.view.MainActivity):void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.locationconditiontime.LocationConditionTimeFragment",
@@ -71034,11 +71018,9 @@
       "unrecovered_methods": [
         "com.niceforyou.welcome.presentation.view.rules.locationconditiontime.LocationConditionTimeFragment.setObserver$lambda$11(com.niceforyou.welcome.presentation.view.rules.locationconditiontime.LocationConditionTimeFragment, kotlin.Pair):kotlin.Unit"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.locationconditiontime.LocationConditionTimeViewModel",
@@ -71069,11 +71051,9 @@
       "unrecovered_methods": [
         "com.niceforyou.welcome.presentation.view.rules.locationconditiontime.LocationConditionTimeViewModel.enableButton():void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.notificationeffect.NotificationEffectFragment",
@@ -71095,7 +71075,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -71120,7 +71100,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -71145,7 +71125,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -71170,7 +71150,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -71198,7 +71178,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71225,11 +71205,9 @@
       "unrecovered_methods": [
         "com.niceforyou.welcome.presentation.view.rules.selectcondition.SelectConditionViewModel.loadConditionList(java.lang.String):void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.selecteffect.RuleEffectAutomationActionFragment",
@@ -71254,7 +71232,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71284,7 +71262,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71312,7 +71290,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71342,7 +71320,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71370,11 +71348,9 @@
       "unrecovered_methods": [
         "com.niceforyou.welcome.presentation.view.rules.selecteffect.RuleEffectFragment.setObservers$lambda$9$lambda$8(com.niceforyou.welcome.presentation.view.rules.selecteffect.RuleEffectFragment, java.util.List):kotlin.Unit"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.selecteffect.RuleEffectScenarioFragment",
@@ -71399,7 +71375,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -71425,7 +71401,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -71454,7 +71430,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71481,7 +71457,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71507,11 +71483,9 @@
       "unrecovered_methods": [
         "com.niceforyou.welcome.presentation.view.rules.selecteffect.SelectEffectViewModel.loadEffectList():void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.screen.com.niceforyou.welcome.presentation.view.rules.selecthouse.SelectHouseFragment",
@@ -71535,7 +71509,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71562,7 +71536,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71589,7 +71563,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71620,7 +71594,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71646,7 +71620,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71668,7 +71642,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71693,7 +71667,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71717,7 +71691,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -71928,7 +71902,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -71974,7 +71948,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -72002,7 +71976,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -72042,7 +72016,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -72066,7 +72040,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -72088,7 +72062,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -72112,7 +72086,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -72136,7 +72110,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -73302,7 +73276,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -73326,7 +73300,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -74721,7 +74695,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -75285,7 +75259,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.inspection",
       "phase": 7,
       "gaps": []
     },
@@ -75312,7 +75286,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -75456,7 +75430,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -75702,7 +75676,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -75753,7 +75727,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.inspection",
       "phase": 7,
       "gaps": []
     },
@@ -75780,7 +75754,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.inspection",
       "phase": 7,
       "gaps": []
     },
@@ -75831,7 +75805,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -75866,7 +75840,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.inspection",
       "phase": 7,
       "gaps": []
     },
@@ -75912,7 +75886,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.inspection",
       "phase": 7,
       "gaps": []
     },
@@ -75937,7 +75911,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -76975,7 +76949,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.inspection",
       "phase": 7,
       "gaps": []
     },
@@ -77000,7 +76974,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.vendor_resources",
       "phase": 7,
       "gaps": []
     },
@@ -94996,7 +94970,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -95215,7 +95189,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -96002,7 +95976,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -96030,7 +96004,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -96056,7 +96030,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -96084,11 +96058,9 @@
       "unrecovered_methods": [
         "com.niceforyou.welcome.presentation.view.control.deviceconfiguration.scenarioconfiguration.addscenarioautomationaction.AddScenarioAutomationActionAdapter.AddScenarioAutomationActionViewHolder.populateLayout(com.niceforyou.welcome.presentation.entity.AutomationAction, int, com.niceforyou.welcome.domain.usecases.automation.GetAutomationTypeUseCase):void"
       ],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
-      "gaps": [
-        "apps.unrecovered_methods"
-      ]
+      "gaps": []
     },
     {
       "id": "welcome.supporting_class.com.niceforyou.welcome.presentation.view.control.deviceconfiguration.sensorconfiguration.sensoravailable.SensorAvailableAdapter",
@@ -96135,7 +96107,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96335,7 +96307,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -96515,7 +96487,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -96543,7 +96515,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -96567,7 +96539,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96594,7 +96566,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96613,7 +96585,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96633,7 +96605,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96652,7 +96624,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.notifications",
       "phase": 7,
       "gaps": []
     },
@@ -96671,7 +96643,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -96699,7 +96671,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96752,7 +96724,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96767,7 +96739,7 @@
       "members": [],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96795,7 +96767,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },
@@ -96823,7 +96795,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96851,7 +96823,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96878,7 +96850,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96906,7 +96878,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.schedules",
       "phase": 7,
       "gaps": []
     },
@@ -96993,7 +96965,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -97008,7 +96980,7 @@
       "members": [],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -97037,7 +97009,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -97060,7 +97032,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -97077,7 +97049,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -97109,7 +97081,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -97132,7 +97104,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.areas",
       "phase": 7,
       "gaps": []
     },
@@ -97249,7 +97221,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "cloud.organization",
+      "destination": "ecosystem.scenes",
       "phase": 7,
       "gaps": []
     },

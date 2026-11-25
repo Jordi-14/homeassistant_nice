@@ -22,6 +22,8 @@ class Implementation(StrEnum):
     PARTIAL = "partial"
     PLANNED = "planned"
     BLOCKED = "blocked"
+    HA_NATIVE = "ha_native"
+    MANUFACTURER_APP = "manufacturer_app"
 
 
 class FeatureBlocked(ValueError):
@@ -37,6 +39,17 @@ class EvidenceGap:
 
 
 GAPS = (
+    EvidenceGap(
+        "ecosystem.core_execution", "Cloud records do not verify CORE execution",
+        "Scene/rule/timer REST records can be cloud copies of CORE tables. Current device tables, runtime activation and schedule timezone are not established by those records.",
+        "Complete a read-only CORE table/runtime adapter with verified identity, table versions and schedule semantics. Never execute or mirror a cloud copy to infer its state.",
+    ),
+    EvidenceGap(
+        "ecosystem.device_adapter", "Additional device categories need their control/state adapters",
+        "Welcome AutomationType identifies lights, relays, electrical locks and screens, but the current gate adapter does not establish their telemetry, commands or transport.",
+        "Implement the category's verified native HA domain adapter with state/command fixtures and required transport. Do not present it as a garage gate or invent actuator state.",
+    ),
+
     EvidenceGap('installer.bus_discovery', 'Full BusT4 discovery needs scoped profile decoding', 'Pro T4DiscoveryProcedure broadcasts profiles then reads controller, radio and power-unit identities; native framing/decoders and endpoint ownership are not complete.', 'Implement profile broadcast, reply addressing/continuation and the required profile decoders together. NHK INFO inventory is a separate supported subset.'),
     EvidenceGap('installer.commissioning', 'Model-specific commissioning and learning sequences are incomplete', 'App InstallationProcedure models/views and InstallationFinder selection are not fully recovered; start-command symbols do not establish motor selection, terminal progress or abort semantics.', 'Recover the complete model sequence, physical prerequisites, progress/abort and endpoint verification. Keep HA animation calibration separate.'),
     EvidenceGap('installer.radio_memory', 'Receiver memory layout and private-code handling are incomplete', 'T4_RADIO_RD Memory fields are recovered, but model-specific rows may contain rolling codes, certificates and identifiers decoded by native code.', 'Complete scoped receiver discovery, paging, row codecs and allowlisted redaction before reading or retaining memory.'),
@@ -57,9 +70,9 @@ GAPS = (
     ),
     EvidenceGap(
         "setup.ownership_removal",
-        "User deletion and cloud ownership transfer are not verified",
+        "Physical pairing deletion is unverified; cloud ownership stays in the app",
         "USER_NEW approval and USER_EDIT permissions are recovered; disabling a paired record is not physical deletion, and module administrator is not cloud ownership.",
-        "Recover dedicated removal/ownership transactions, consent, sole-administrator and completion/recovery rules before enabling these options. Existing access is preserved.",
+        "Recover physical pairing removal, consent, sole-administrator and completion/recovery rules before enabling deletion. Cloud ownership is deliberately managed in the manufacturer app, separate from HA permissions. Existing access is preserved.",
     ),
     EvidenceGap(
         "setup.cloud_registration",
@@ -228,6 +241,9 @@ class FeatureDefinition:
     evidence: tuple[str, ...] = ()
 
     def require_implemented(self) -> FeatureBinding:
+        if self.implementation in {Implementation.HA_NATIVE, Implementation.MANUFACTURER_APP}:
+            owner = "native Home Assistant" if self.implementation is Implementation.HA_NATIVE else "the manufacturer app"
+            raise FeatureBlocked(f"{self.title} is managed by {owner}; no duplicate resource operation is provided")
         if (
             self.implementation is not Implementation.IMPLEMENTED
             or self.binding is None
@@ -336,7 +352,7 @@ def _features() -> tuple[FeatureDefinition, ...]:
         ("diagnostics.complete", "Complete app diagnostics", 4),
         ("setup.access", "Setup, users and network management", 5),
         ("installer.lifecycle", "Installer, radio and firmware procedures", 6),
-        ("cloud.organization", "Cloud, groups, rules and organization", 7),
+        ("cloud.organization", "HA-native boundary and Nice automation visibility", 7),
     ):
         rows.append(
             FeatureDefinition(
@@ -356,6 +372,8 @@ def _features() -> tuple[FeatureDefinition, ...]:
                 if key == "setup.access"
                 else ('installer.bus_discovery', 'installer.commissioning', 'installer.radio_memory', 'installer.radio_mutation', 'installer.backup_restore', 'installer.replacement', 'installer.reset', 'installer.firmware_catalog', 'installer.interface_firmware', 'installer.controller_firmware', 'installer.host_adapter')
                 if key == "installer.lifecycle"
+                else ("ecosystem.core_execution", "ecosystem.device_adapter")
+                if key == "cloud.organization"
                 else (),
             )
         )
@@ -431,6 +449,15 @@ def _features() -> tuple[FeatureDefinition, ...]:
             gaps=procedure.gaps, evidence=procedure.evidence,
         )
         for procedure in PROCEDURES
+    )
+    from .ecosystem_catalog import DISPOSITIONS
+
+    rows.append(FeatureDefinition("ecosystem.inspection", "Read-only Nice cloud inspection", implemented, 7, FeatureBinding("options", "ecosystem"), evidence=("Welcome 1.3.1 NhkApiService GET macro-user/scenes/rules",)))
+    rows.append(FeatureDefinition("ecosystem.report", "HA-native boundary and inspection report", implemented, 7, FeatureBinding("snapshot", "ecosystem")))
+    rows.extend(
+        FeatureDefinition("ecosystem." + item.key, item.title, Implementation(item.disposition), 7,
+                          gaps=(item.gap,) if item.gap else (), evidence=(item.explanation,))
+        for item in DISPOSITIONS if item.key != "inspection"
     )
     return tuple(rows)
 

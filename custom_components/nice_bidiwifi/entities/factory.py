@@ -79,6 +79,9 @@ def entity_support(
     if capability is NiceCapabilityKey.NONE:
         return EntitySupport.UNKNOWN
     if capability is NiceCapabilityKey.OPEN_CLOSE:
+        from ..ecosystem_catalog import blocks_gate_adapter
+        if blocks_gate_adapter(getattr(coordinator, "device_info", None)):
+            return EntitySupport.UNSUPPORTED
         if capabilities is None:
             return EntitySupport.UNKNOWN
         if capabilities.high_level_actions is None:

@@ -453,6 +453,16 @@
       },
       "advertised_devices": {
         "name": "Advertised devices"
+      },
+      "nice_automation_inspection": {
+        "name": "Nice automation inspection",
+        "state": {
+          "not_inspected": "Not inspected",
+          "records_found": "Records found",
+          "no_records_reported": "No records reported",
+          "partial": "Partial",
+          "failed": "Inspection failed"
+        }
       }
     }
   },
@@ -469,7 +479,8 @@
           "ownership": "Ownership and removal availability",
           "installer": "Installer procedures and device lifecycle",
           "installer_recovery": "Review interrupted procedure",
-          "installer_cancel": "Request procedure cancellation"
+          "installer_cancel": "Request procedure cancellation",
+          "ecosystem": "HA and existing Nice automations"
         }
       },
       "inspect_users": {
@@ -530,6 +541,37 @@
       "installer_cancel": {
         "title": "Request cancellation",
         "description": "Stops at a verified boundary between steps only. No guessed abort command is sent. An irreversible submitted request cannot be undone by cancelling HA."
+      },
+      "ecosystem": {
+        "title": "HA and Nice",
+        "menu_options": {
+          "ecosystem_cloud": "Inspect Nice cloud automation records",
+          "ecosystem_report": "View the last inspection",
+          "ecosystem_ha": "What HA and the manufacturer app manage",
+          "ecosystem_controller": "Review controller automatic closing",
+          "ecosystem_core": "Actual CORE readback availability"
+        }
+      },
+      "ecosystem_cloud": {
+        "title": "Read-only Nice cloud inspection",
+        "description": "Optional: use a temporary MyNice login to read scene, rule and timer records for this configured accessory. Nothing is imported, modified or executed. Account credentials, tokens and cookies are discarded. Names and exact schedules appear only in this local screen; diagnostics export counts. This inspection is independent of local/cloud fallback policy.",
+        "data": {
+          "account": "MyNice account",
+          "account_password": "MyNice password",
+          "confirm": "Allow this temporary read-only inspection through Nice’s private cloud service"
+        }
+      },
+      "ecosystem_report": {
+        "title": "Last Nice inspection",
+        "description": "Captured: {captured_at}. State: {state}. Last attempt error: {last_error}.\n\nThese are cloud records, not proof of current CORE execution. Status codes, times and repeats are shown as Nice reports them; timezone has not been verified and HA automations have not been compared. Review possible overlap in the manufacturer app before building an HA equivalent. No record is changed or executed.\n\n{records}\n\nThe scope is the configured accessory/gateway; records may refer to other connected devices. Mapping to this specific gate has not been verified."
+      },
+      "ecosystem_ha": {
+        "title": "HA remains in charge",
+        "description": "Use native HA areas, floors, dashboards, groups, scenes/scripts, schedules, automations, notifications and users. Nice exposes verified device controls, measurements and events. It does not import or synchronize MyNice resources or create a second scheduler. Manage vendor ownership, invitations, existing Nice resources and vendor service linking in the manufacturer app. Module access, Nice account permissions and HA users are separate."
+      },
+      "ecosystem_controller": {
+        "title": "Controller-owned behavior",
+        "description": "Values HA has already read from the controller. No new read or setting change is performed. Unknown does not mean disabled. These functions can operate without HA; review any equivalent HA automation before changing anything. No conflict has been established.\n\n{records}"
       }
     },
     "error": {
@@ -541,15 +583,19 @@
       "installer_binding_unavailable": "This procedure is unavailable because the listed evidence is missing. No request was sent.",
       "installer_confirmation_required": "Confirm that you reviewed the prerequisites.",
       "installer_operation_failed": "The procedure was not confirmed. Check diagnostics and recovery before trying again. Uncertain writes are never replayed automatically.",
-      "installer_recovery_failed": "Recovery could not be acknowledged. Check device health and the model-specific requirements; no write will be replayed."
+      "installer_recovery_failed": "Recovery could not be acknowledged. Check device health and the model-specific requirements; no write will be replayed.",
+      "ecosystem_consent_required": "Confirm the read-only inspection before connecting.",
+      "ecosystem_invalid_login": "Enter a valid account and password.",
+      "ecosystem_inspection_failed": "The inspection could not complete. Check the account’s access to this accessory. Any previous capture keeps its original timestamp; no resource or integration connection policy was changed."
     },
     "abort": {
       "not_loaded": "Load the integration before managing module access.",
       "no_access_targets": "No eligible records were found. Current Home Assistant access is excluded.",
       "network_workflow_unverified": "Wi-Fi changes are unavailable: AP-state, identity and operational rediscovery/recovery are not verified. Use the manufacturer app. No network password has been collected.",
-      "ownership_workflow_unverified": "Physical user deletion and cloud ownership transfer are unavailable until their complete transactions and recovery are verified. Another module user can be promoted to administrator separately.",
+      "ownership_workflow_unverified": "Manage cloud ownership and sharing in the manufacturer app. Physical deletion of module pairing records still lacks a verified transaction and recovery path. Promoting another module user to administrator is a separate operation.",
       "invalid_installer_procedure": "Invalid installer procedure.",
-      "installer_cancel_unavailable": "The current step cannot be safely cancelled. No abort request was sent."
+      "installer_cancel_unavailable": "The current step cannot be safely cancelled. No abort request was sent.",
+      "ecosystem_core_unverified": "CORE table/version/runtime inspection has no verified adapter. Cloud copies can be stale and do not prove device execution. No transport was started and no credentials were collected."
     }
   }
 }

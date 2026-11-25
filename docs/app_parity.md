@@ -6,6 +6,8 @@ Target: the combined capabilities of MyNice Welcome 1.3.1 and MyNice Pro 2.18 r1
 
 The supplied JADX exports contain 3939 indexed primary source items. Alternate decompiler passes are deduplicated by relative Java path, preferring fewer unrecovered methods. Synthetic classes, generated bindings/navigation helpers and build resources are excluded. Supporting classes retain their methods so event paths and repository helpers are not silently omitted.
 
+HA owns areas, dashboards, entity groups, scenes/scripts, schedules, automations, notifications and HA-user permissions. Native HA equivalents and manufacturer-app account operations are intentional dispositions, not incomplete copies of MyNice. See [HA-native integration and Nice automation visibility](ha_native_ecosystem.md).
+
 Phase 6 installer procedures, device observations and recovery contracts are documented in [Installer workflows and device lifecycle](installer_lifecycle.md).
 
 Phase 5 setup and module-access behavior, recovery and blocked workflows are documented in [Onboarding and module access](onboarding_access.md).
@@ -32,9 +34,18 @@ The complete machine-readable index is [app_inventory.json](../custom_components
 
 | Destination | Phase | Indexed items |
 | --- | ---: | ---: |
-| `cloud.organization` | 7 | 390 |
+| `cloud.organization` | 7 | 236 |
 | `controller.configuration` | 3 | 1868 |
 | `diagnostics.complete` | 4 | 202 |
+| `ecosystem.areas` | 7 | 37 |
+| `ecosystem.dashboards` | 7 | 1 |
+| `ecosystem.inspection` | 7 | 8 |
+| `ecosystem.notifications` | 7 | 12 |
+| `ecosystem.scenes` | 7 | 25 |
+| `ecosystem.schedules` | 7 | 50 |
+| `ecosystem.service_linking` | 7 | 4 |
+| `ecosystem.sharing` | 7 | 1 |
+| `ecosystem.vendor_resources` | 7 | 16 |
 | `installer.discover_bus` | 6 | 1 |
 | `installer.firmware_catalog` | 6 | 1 |
 | `installer.inspect_boot` | 6 | 2 |
@@ -141,7 +152,7 @@ Implementation, device support, permissions and current availability are separat
 | `diagnostics.complete` | partial | 4 | none | none |
 | `setup.access` | partial | 5 | none | setup.wnc_recovery, setup.ownership_removal, setup.cloud_registration, runtime.connection.code1 |
 | `installer.lifecycle` | partial | 6 | none | installer.bus_discovery, installer.commissioning, installer.radio_memory, installer.radio_mutation, installer.backup_restore, installer.replacement, installer.reset, installer.firmware_catalog, installer.interface_firmware, installer.controller_firmware, installer.host_adapter |
-| `cloud.organization` | partial | 7 | none | none |
+| `cloud.organization` | partial | 7 | none | ecosystem.core_execution, ecosystem.device_adapter |
 | `controller.mc824h.motor_parameters` | blocked | 3 | None | mc824h.motor_parameter_layout |
 | `controller.mc824h.advanced_history` | blocked | 4 | None | mc824h.advanced_history_layout |
 | `installer.fg01h.force_map` | blocked | 6 | None | fg01h.force_map_learning |
@@ -185,6 +196,20 @@ Implementation, device support, permissions and current availability are separat
 | `installer.firmware_catalog` | blocked | 6 | none | installer.firmware_catalog |
 | `installer.update_interface_firmware` | blocked | 6 | none | installer.interface_firmware |
 | `installer.update_controller_firmware` | blocked | 6 | none | installer.controller_firmware |
+| `ecosystem.inspection` | implemented | 7 | options | none |
+| `ecosystem.report` | implemented | 7 | snapshot | none |
+| `ecosystem.areas` | ha_native | 7 | none | none |
+| `ecosystem.dashboards` | ha_native | 7 | none | none |
+| `ecosystem.groups` | ha_native | 7 | none | none |
+| `ecosystem.scenes` | ha_native | 7 | none | none |
+| `ecosystem.schedules` | ha_native | 7 | none | none |
+| `ecosystem.notifications` | ha_native | 7 | none | none |
+| `ecosystem.permissions` | ha_native | 7 | none | none |
+| `ecosystem.sharing` | manufacturer_app | 7 | none | none |
+| `ecosystem.vendor_resources` | manufacturer_app | 7 | none | none |
+| `ecosystem.service_linking` | manufacturer_app | 7 | none | none |
+| `ecosystem.core_execution` | blocked | 7 | none | ecosystem.core_execution |
+| `ecosystem.device_adapters` | blocked | 7 | none | ecosystem.device_adapter |
 
 ## Controller command evidence
 

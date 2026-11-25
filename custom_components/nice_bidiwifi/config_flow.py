@@ -24,7 +24,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from .cloud.session import ephemeral_cloud_session
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .enrollment import EnrollmentClient, EnrollmentIdentity, ProvisioningClient
@@ -613,8 +613,9 @@ async def _async_fetch_cloud_accessories(
     login: NiceCloudLogin,
 ) -> NiceCloudBootstrapResult:
     """Fetch credentials with Home Assistant's verified-TLS HTTP session."""
-    client = NiceCloudBootstrapClient(async_get_clientsession(hass))
-    return await client.async_fetch_accessories(login)
+    with ephemeral_cloud_session(hass) as session:
+        client = NiceCloudBootstrapClient(session)
+        return await client.async_fetch_accessories(login)
 
 
 def _error_from_exception(err: Exception) -> str:

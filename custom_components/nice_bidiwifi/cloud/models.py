@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
+import time
 from typing import Any
 
 from homeassistant.const import (
@@ -64,11 +65,12 @@ class TransientAccessToken:
     value: str | None
     token_type: str
     expires_in: int
+    issued_at: float = field(default_factory=time.monotonic)
 
     @property
     def authorization(self) -> str:
         """Return the HTTP authorization value while the token is valid."""
-        if self.value is None or self.expires_in <= 0:
+        if self.value is None or self.expires_in <= 0 or time.monotonic() - self.issued_at >= self.expires_in:
             raise NiceCloudSchemaError("The cloud access token is missing or expired")
         return f"{self.token_type} {self.value}"
 

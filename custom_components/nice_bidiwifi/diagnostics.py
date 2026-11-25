@@ -380,6 +380,7 @@ async def async_get_config_entry_diagnostics(
             if capabilities is not None
             else None
         ),
+        "ecosystem": coordinator.ecosystem.diagnostics() if hasattr(coordinator, "ecosystem") else {},
         "installer_lifecycle": coordinator.lifecycle.diagnostics() if hasattr(coordinator, "lifecycle") else {},
         "access": coordinator.access.diagnostics() if hasattr(coordinator, "access") else {},
         "session_authentication": coordinator.client.session_diagnostics if hasattr(coordinator.client, "session_diagnostics") else {},
