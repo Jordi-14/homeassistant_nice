@@ -60,7 +60,7 @@ The optional, disabled-by-default **Module permission** sensor reports `admin`,
 | Disable | Retains the paired record; does not delete it |
 | Change HA's own access | Blocked to preserve the integration's current access |
 | Remove the sole administrator | Blocked |
-| Delete a paired record or transfer cloud ownership | Explicitly unavailable pending verified transactions and recovery |
+| Delete a paired record or transfer cloud ownership | Physical record deletion remains unverified; cloud ownership stays in the manufacturer app by design |
 
 Permission writes require explicit confirmation, a known stationary gate, no
 calibration, a complete fresh user list and current administrator evidence. The

@@ -209,6 +209,19 @@ custom_components/nice_bidiwifi
 
 Then restart Home Assistant.
 
+## HA stays in charge
+
+Use native HA areas, dashboards, groups, scenes/scripts, schedules, automations,
+notifications and users. Nice exposes device capabilities and events without
+creating a second organization system or automation engine.
+
+Configure > HA and existing Nice automations can review already observed controller
+closing modes and optionally inspect existing Nice cloud scene/rule/timer records.
+Inspection is explicit and read-only. It does not import, edit or execute resources,
+and a cloud record does not prove current CORE execution or a conflict with HA.
+Manage vendor sharing, ownership and original Nice resources in the manufacturer
+app. See [HA-native integration and Nice automation visibility](docs/ha_native_ecosystem.md).
+
 ## Installer and device lifecycle
 
 The Configure menu includes advertised-device inspection, read-only BOOT_1

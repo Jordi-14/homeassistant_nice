@@ -47,6 +47,7 @@ from .protocol.t4.enums import (
 from .runtime import get_coordinator
 from .entities.access import access_entities
 from .entities.lifecycle import lifecycle_entities
+from .entities.ecosystem import ecosystem_entities
 from .entities.diagnostics import diagnostic_entities
 from .entities.configuration import setup_configuration_sensors
 
@@ -1426,6 +1427,7 @@ async def async_setup_entry(
     async_add_entities(diagnostic_entities(coordinator, entry))
     async_add_entities(access_entities(coordinator, entry))
     async_add_entities(lifecycle_entities(coordinator, entry))
+    async_add_entities(ecosystem_entities(coordinator, entry))
     setup_configuration_sensors(coordinator, entry, async_add_entities)
     async_add_entities(
         build_described_entities(

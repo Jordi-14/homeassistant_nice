@@ -223,3 +223,30 @@ See [Onboarding and module access](onboarding_access.md) for the complete contra
 
 See [Installer workflows and device lifecycle](installer_lifecycle.md). Existing
 HA animation calibration does not perform controller position/force programming.
+
+## Phase 7: v0.9.0b10
+
+- Existing device entities, IDs, registry choices, movement learning and calibration
+  should remain intact. The optional Nice automation inspection sensor starts
+  disabled; nothing logs into the cloud or creates automations on upgrade.
+- Review controller automatic closing in Configure > HA and existing Nice
+  automations. It must use only existing observations, preserve unknown values and
+  show observation time. No extra read or setting change should occur.
+- Optionally request cloud inspection with explicit consent and a normal MyNice
+  account associated with this configured accessory. Check the scope, source,
+  capture time, reported names/status/timer fields and uncertainty against the app.
+- Missing or unavailable collections must not appear as zero records. A valid
+  empty cloud response is not proof that no local controller/CORE behavior exists.
+- Inspect exported diagnostics: names, addresses, exact schedules, account/home/
+  automation IDs, credentials and tokens must be absent from the new report.
+- A failed or cancelled request must clear account secrets, retain the original
+  timestamp of any previous capture and leave local/cloud/fallback policy intact.
+- No HA/Nice homes, areas, scenes, rules, schedules, groups, notifications or users
+  should be created, changed, imported, synchronized or executed by inspection.
+- Known additional device categories must not acquire gate actions through a
+  generic advertisement. Verified gates keep their controls; explicit door metadata
+  may select the garage cover class without changing its entity ID.
+
+Use native HA for new organization and automation. Review and, if you choose,
+disable original Nice behavior in the manufacturer app before adding an equivalent
+HA action. CORE runtime verification remains explicitly unavailable.

@@ -20,6 +20,8 @@ SENSITIVE_CONFIG_KEYS = frozenset(
         "access_token",
         "cloud_account",
         "cloud_account_password",
+        "account",
+        "account_password",
         "refresh_token",
     }
 )

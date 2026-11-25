@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import json
+import math
 from typing import Any
 
 import aiohttp
@@ -123,6 +124,9 @@ class NiceCloudBootstrapClient:
             or not isinstance(token_type, str)
             or token_type.casefold() != "bearer"
             or not isinstance(expires_in, int | float)
+            or isinstance(expires_in, bool)
+            or not math.isfinite(expires_in)
+            or expires_in > 2**31 - 1
         ):
             raise NiceCloudSchemaError(
                 "The cloud authentication response has an unsupported shape"

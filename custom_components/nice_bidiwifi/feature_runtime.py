@@ -188,6 +188,10 @@ class FeatureRuntime:
         if binding is not None and binding.handler in {"setting", "name", "clock", "reboot"} and hasattr(owner, "lifecycle"):
             if reason := owner.lifecycle.block_reason():
                 reasons.append(reason)
+        if binding is not None and binding.handler in {"action", "t4"}:
+            from .ecosystem_catalog import blocks_gate_adapter
+            if blocks_gate_adapter(getattr(owner, "device_info", None)):
+                reasons.append("The reported category requires its own device adapter")
         if support is False:
             reasons.append("Device does not advertise this operation")
         if permission is False:
@@ -254,12 +258,15 @@ class FeatureRuntime:
         if required is not None and required not in payload:
             raise FeatureBlocked(f"Missing feature argument: {required}")
         owner = self._coordinator
+        if binding.handler == "options":
+            return await owner.hass.config_entries.options.async_init(owner.config_entry.entry_id)
         if binding.handler == "installer":
             return await owner.lifecycle.async_run(binding.operation, confirmed=payload.get("confirmed", False))
         if binding.handler == "diagnostic":
             return await owner.diagnostic_runtime.async_read(binding.operation)
         if binding.handler == "snapshot":
             return {
+                "ecosystem": lambda: owner.ecosystem.diagnostics(),
                 "status": lambda: owner.observations.snapshot(),
                 "incident_timeline": lambda: owner.incidents.export(),
                 "position": lambda: owner.position_controller.position_snapshot,

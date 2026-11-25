@@ -69,6 +69,12 @@ class NiceBidiCover(NiceCoordinatorEntity, CoverEntity):
         )
 
     @property
+    def device_class(self):
+        from .ecosystem_catalog import category_for
+        category = category_for(getattr(getattr(self.coordinator, "device_info", None), "device_type", None))
+        return CoverDeviceClass(category.device_class) if category.gate_adapter else CoverDeviceClass.GATE
+
+    @property
     def supported_features(self) -> CoverEntityFeature:
         """Return supported cover features."""
         features = CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.STOP

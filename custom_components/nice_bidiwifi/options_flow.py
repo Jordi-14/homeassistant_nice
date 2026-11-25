@@ -34,6 +34,7 @@ class NiceAccessOptionsFlow(OptionsFlow):
             step_id="init",
             menu_options=[
                 "inspect_users",
+                "ecosystem",
                 "installer",
                 "installer_recovery",
                 "installer_cancel",
@@ -301,3 +302,83 @@ class NiceAccessOptionsFlow(OptionsFlow):
                 return self.async_abort(reason="installer_cancel_unavailable")
             return await self.async_step_init()
         return self.async_show_form(step_id="installer_cancel", data_schema=vol.Schema({}))
+
+    async def async_step_ecosystem(self, user_input=None):
+        if self._owner() is None:
+            return self.async_abort(reason="not_loaded")
+        return self.async_show_menu(step_id="ecosystem", menu_options=["ecosystem_controller", "ecosystem_cloud", "ecosystem_report", "ecosystem_core", "ecosystem_ha"])
+
+    async def async_step_ecosystem_cloud(self, user_input=None):
+        owner = self._owner()
+        if owner is None:
+            return self.async_abort(reason="not_loaded")
+        errors = {}
+        if user_input is not None:
+            login = None
+            try:
+                if user_input.get("confirm") is not True:
+                    errors["base"] = "ecosystem_consent_required"
+                else:
+                    from .cloud.models import NiceCloudLogin
+                    login = NiceCloudLogin(str(user_input.get("account", "")).strip(), str(user_input.get("account_password", "")))
+                    await owner.ecosystem.async_inspect(login, confirmed=True)
+                    return await self.async_step_ecosystem_report()
+            except ValueError:
+                errors["base"] = "ecosystem_invalid_login"
+            except Exception:
+                errors["base"] = "ecosystem_inspection_failed"
+            finally:
+                if login is not None:
+                    login.clear()
+                for key in ("account", "account_password"):
+                    user_input[key] = ""
+        return self.async_show_form(
+            step_id="ecosystem_cloud",
+            data_schema=vol.Schema({
+                vol.Required("account"): selector.TextSelector(),
+                vol.Required("account_password"): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+                vol.Required("confirm", default=False): selector.BooleanSelector(),
+            }), errors=errors,
+        )
+
+    async def async_step_ecosystem_report(self, user_input=None):
+        owner = self._owner()
+        if owner is None:
+            return self.async_abort(reason="not_loaded")
+        if user_input is not None:
+            return await self.async_step_ecosystem()
+        snapshot = owner.ecosystem.snapshot
+        return self.async_show_form(
+            step_id="ecosystem_report", data_schema=vol.Schema({}),
+            description_placeholders={
+                "captured_at": snapshot.captured_at if snapshot else "not inspected",
+                "state": snapshot.state if snapshot else "not_inspected",
+                "records": snapshot.private_lines() if snapshot else "No cloud inspection has been requested.",
+                "last_error": owner.ecosystem.last_error_type or "none",
+            },
+        )
+
+    async def async_step_ecosystem_ha(self, user_input=None):
+        if self._owner() is None:
+            return self.async_abort(reason="not_loaded")
+        if user_input is not None:
+            return await self.async_step_ecosystem()
+        return self.async_show_form(step_id="ecosystem_ha", data_schema=vol.Schema({}))
+
+    async def async_step_ecosystem_controller(self, user_input=None):
+        owner = self._owner()
+        if owner is None:
+            return self.async_abort(reason="not_loaded")
+        if user_input is not None:
+            return await self.async_step_ecosystem()
+        records = owner.ecosystem.controller_behavior()["settings"]
+        text = "\n\n".join(
+            f"{name.replace('_', ' ')}: {str(row['enabled_reported']) if row['enabled_reported'] is not None else 'unknown'}; observed: {row['observed_at'] or 'not observed'}"
+            for name, row in records.items()
+        )
+        return self.async_show_form(step_id="ecosystem_controller",data_schema=vol.Schema({}),description_placeholders={"records":text})
+
+    async def async_step_ecosystem_core(self, user_input=None):
+        if self._owner() is None:
+            return self.async_abort(reason="not_loaded")
+        return self.async_abort(reason="ecosystem_core_unverified")
