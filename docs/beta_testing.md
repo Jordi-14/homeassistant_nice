@@ -306,3 +306,17 @@ filtered out and timers must link to scoped rules. No home/resource is imported,
 changed or executed, and no account secrets or private records enter diagnostics.
 The read-only live result still needs confirmation rather than assuming that a
 source-correct parser change has resolved every response variant.
+
+## Release candidate: v0.9.0rc1
+
+RC1 uses the same integration code as b13. It remains a prerelease for final
+ordinary-use testing, not an automatic stable promotion. Keep existing credentials,
+connection mode, entity selections and learned profiles. Restart HA after updating.
+No re-pairing or recalibration is required.
+
+Check ordinary controls, position, permissions, restart/reload and recovery with
+existing settings. Report the exact loaded integration/Core versions and hardware,
+and attach sanitized diagnostics if something differs. Keep prototype/blocked
+installer, reset, enrollment, per-motor and firmware procedures blocked; this RC
+does not validate their missing contracts. Existing CONNECT Code 1 and other open
+hardware-specific investigations remain open until confirmed on a clean baseline.
