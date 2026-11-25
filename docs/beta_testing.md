@@ -279,3 +279,19 @@ HA action. CORE runtime verification remains explicitly unavailable.
 Collect normal-use feedback before a separate release-candidate/stable decision.
 No physical safety intervention, unattended movement or installer mutation test is
 required to validate the ordinary integration upgrade.
+
+## Corrective beta: v0.9.0b12
+
+Repeat only the optional read-only cloud inspection after updating/restarting.
+The cloud-returned identifier is now preserved for REST queries while returned
+records are still checked against the normalized accessory scope. No change is
+made to NHK credentials, the configured target or connection policy.
+
+An exact SDK RECORD_NOT_FOUND error with explicit empty lists may report no
+records. Generic NOT_FOUND without that description, ACCESSORY_NOT_FOUND, denied
+access, server failure, missing lists and nonempty contradictory replies remain
+unknown/failed. Sanitized diagnostics include only recognized fixed vendor error
+identifiers, list lengths and identity-format labels; arbitrary messages, raw
+identifiers, credentials and records are not exported. A successful b12 result
+still does not confirm CORE execution or the absence of all local controller
+behavior.

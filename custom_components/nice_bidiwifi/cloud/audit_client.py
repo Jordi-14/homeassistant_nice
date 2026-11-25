@@ -43,7 +43,9 @@ class NiceCloudAutomationInspector(NiceCloudBootstrapClient):
             )
             try:
                 scenes = parse_scenes(
-                    await self._get_records("api/v1/scene", token, scope.target_mac),
+                    await self._get_records(
+                        "api/v1/scene", token, scope.request_identifier
+                    ),
                     scope,
                 )
             except (
@@ -54,7 +56,9 @@ class NiceCloudAutomationInspector(NiceCloudBootstrapClient):
                 pass
             try:
                 rules, timers = parse_rules(
-                    await self._get_records("api/v1/rules", token, scope.target_mac),
+                    await self._get_records(
+                        "api/v1/rules", token, scope.request_identifier
+                    ),
                     scope,
                 )
             except (
