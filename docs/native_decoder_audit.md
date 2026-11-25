@@ -253,3 +253,29 @@ queries descriptions, MACs, PINs, keys or private memory during discovery. It yi
 to higher-priority work and fences the result to the current session. An inspection
 is a partial observation: absent devices and complete inventory are not asserted.
 A profile, bus address or model string never creates write permission.
+
+The controller inventory generator now retains seven individually audited native
+radio bindings, including 04/BE and 0A/08/25/6F/70/71/72. This removes obsolete
+missing-binding placeholders without enabling generic GET/SET access. Structured,
+private and procedure fields still require their dedicated scoped adapters; a
+known map entry is not a runtime transaction or permission grant.
+
+
+## OXIBD BK00E slot-query reply kind
+
+A b22 inspection captured only the safe response envelope: source 00.0A,
+register 0A/25, flags 01, sequence 10, status 00 and total frame size 26. Private
+payload bytes were neither exported nor retained. The earlier GET-operation
+matcher discarded this reply kind before the memory decoder could inspect it.
+
+B23 accepts a FIN-only 01 reply solely for the addressed 0A/25 GET with its exact
+two-byte position query, in addition to an ordinary GET reply. Other operations,
+registers and targets do not receive this exception. The same DNP lengths, both
+checksums, final flag, zero status, record shape and exact position echo still
+apply. A known reply kind does not grant SET access or bypass private-code
+redaction. The native QueryMemoryResult anchor is included in the fingerprinted
+audit. Real slot decoding is a separate subsequent hardware check.
+
+The corrected built-in capability inspection on SLIGHTR10 reports FD at 04/C1.
+That is an explicit unsupported command. It stops before any nonce SET and keeps
+the existing local connection and controller settings available.

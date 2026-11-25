@@ -37,7 +37,7 @@ Bindings below are cross-checked evidence, not universal device support or write
 | Symbol | DMP binding | Read path | Write path / gap |
 | --- | --- | --- | --- |
 | `CONTROLLER_ADV_ABILITATION` | `04/C1` | blocked | controller.parameter_format |
-| `CONTROLLER_CODE_BMASK` | `unresolved` | blocked | controller.binding_map |
+| `CONTROLLER_CODE_BMASK` | `04/BE` | blocked | controller.parameter_format |
 | `CONTROLLER_EDITEDCODE_BMASK` | `04/BF` | blocked | controller.parameter_format |
 | `CONTROLLER_RADIO_ACTIVATION` | `04/BC` | blocked | controller.parameter_format |
 | `CONTROLLER_RADIO_CFG_CODES` | `04/BB` | blocked | controller.parameter_format |
@@ -345,17 +345,17 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `PSU_UNDERVOLTAGE_COUNT` | `unresolved` | blocked | controller.binding_map |
 | `PSU_VOLTAGES` | `unresolved` | blocked | controller.binding_map |
 | `RADIO_ACTIVATION` | `unresolved` | blocked | controller.binding_map |
-| `RADIO_ADV_ABILITATION` | `unresolved` | blocked | controller.binding_map |
+| `RADIO_ADV_ABILITATION` | `0A/6F` | blocked | controller.parameter_format |
 | `RADIO_ALTERA` | `unresolved` | blocked | controller.binding_map |
 | `RADIO_CFG` | `unresolved` | blocked | controller.binding_map |
 | `RADIO_CFG_CODES` | `unresolved` | blocked | controller.binding_map |
 | `RADIO_CLEAN` | `unresolved` | blocked | controller.binding_map |
-| `RADIO_CODEINMEMORY` | `unresolved` | blocked | controller.binding_map |
-| `RADIO_CODE_BMASK` | `unresolved` | blocked | controller.binding_map |
+| `RADIO_CODEINMEMORY` | `0A/25` | blocked | controller.parameter_format |
+| `RADIO_CODE_BMASK` | `0A/71` | blocked | controller.parameter_format |
 | `RADIO_DEVICE` | `unresolved` | blocked | controller.binding_map |
-| `RADIO_EDITEDCODE_BMASK` | `unresolved` | blocked | controller.binding_map |
+| `RADIO_EDITEDCODE_BMASK` | `0A/72` | blocked | controller.parameter_format |
 | `RADIO_ENABLED_RADIO_CODE` | `unresolved` | blocked | controller.binding_map |
-| `RADIO_EXIT_STATE` | `unresolved` | blocked | controller.binding_map |
+| `RADIO_EXIT_STATE` | `0A/08` | blocked | controller.parameter_format |
 | `RADIO_KEY1_DISTRIBUTOR` | `unresolved` | blocked | controller.binding_map |
 | `RADIO_KEY2_INSTALLER` | `unresolved` | blocked | controller.binding_map |
 | `RADIO_KEY3_INSTALLATION` | `unresolved` | blocked | controller.binding_map |
@@ -369,7 +369,7 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `RADIO_SEND_COMMAND` | `unresolved` | blocked | controller.binding_map |
 | `RADIO_TIMER_1` | `unresolved` | blocked | controller.binding_map |
 | `RADIO_TIMER_2` | `unresolved` | blocked | controller.binding_map |
-| `RADIO_TLC_CNT` | `unresolved` | blocked | controller.binding_map |
+| `RADIO_TLC_CNT` | `0A/70` | blocked | controller.parameter_format |
 | `STD_ADDRESS` | `unresolved` | blocked | controller.binding_map |
 | `STD_BUFFER_SIZE` | `unresolved` | blocked | controller.binding_map |
 | `STD_DESCRIPTION` | `00/0C` | blocked | controller.parameter_format |

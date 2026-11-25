@@ -179,24 +179,37 @@ async def test_default_metadata_loader_does_not_probe_pro_settings(hass):
     from custom_components.nice_bidiwifi.protocol.t4.settings import ADDITIONAL_SETTINGS
     from tests.conftest import FakeClient
     from tests.test_coordinator import _coordinator
-    owner=_coordinator(hass)
-    owner.client=FakeClient()
+
+    owner = _coordinator(hass)
+    owner.client = FakeClient()
     await owner._async_load_setting_info()
-    already_reviewed=set(SCALED_REGISTERS+DIAGNOSTIC_INFO_REGISTERS)
-    pro_only={(s.group,s.parameter) for s in ADDITIONAL_SETTINGS}-already_reviewed
-    assert not {(g,p) for g,p,_ in owner.client.dmp_info_reads}&pro_only
+    already_reviewed = set(SCALED_REGISTERS + DIAGNOSTIC_INFO_REGISTERS)
+    pro_only = {(s.group, s.parameter) for s in ADDITIONAL_SETTINGS} - already_reviewed
+    assert not {(g, p) for g, p, _ in owner.client.dmp_info_reads} & pro_only
     await owner.async_shutdown()
 
 
 async def test_binary_enum_is_named_from_complete_range_without_guessing(hass):
-    owner=await instance(hass)
-    install_menu_fixture(owner,bytes.fromhex('70 a2'))
-    info=decode_dmp_info(bytes.fromhex('01 00 01 01 00 01 01'))
-    owner.parameters.record_info(owner.parameters.address(4,0xA2),info)
-    owner.parameters.observe(owner.parameters.address(4,0xA2),b'\x01')
+    owner = await instance(hass)
+    install_menu_fixture(owner, bytes.fromhex("70 a2"))
+    info = decode_dmp_info(bytes.fromhex("01 00 01 01 00 01 01"))
+    owner.parameters.record_info(owner.parameters.address(4, 0xA2), info)
+    owner.parameters.observe(owner.parameters.address(4, 0xA2), b"\x01")
     await owner.controller_menu.async_refresh()
-    view=owner.configuration.view('ctrl_decelerations')
-    assert view.options==(('0: Off',0),('1: On',1))
+    view = owner.configuration.view("ctrl_decelerations")
+    assert view.options == (("0: Off", 0), ("1: On", 1))
     assert view.writable
-    assert owner.client.dmp_writes==[]
+    assert owner.client.dmp_writes == []
     await owner.async_shutdown()
+
+
+def test_audited_radio_bindings_are_known_without_enabling_generic_reads():
+    from custom_components.nice_bidiwifi.controller_catalog import PARAMETERS
+    from scripts.inventory_controller import AUDITED_NATIVE_BINDINGS
+
+    by_symbol = {definition.symbol: definition for definition in PARAMETERS}
+    for symbol, binding in AUDITED_NATIVE_BINDINGS.items():
+        definition = by_symbol[symbol]
+        assert definition.binding == binding
+        assert not definition.safe_read
+        assert definition.setting is None

@@ -56,7 +56,7 @@ def test_inventory_covers_all_symbols_and_table_rows_without_using_app_ids_as_re
     assert len({row.key for row in PARAMETERS}) == 358
     assert (
         sum(row.binding is not None and row.binding[0] == 4 for row in PARAMETERS)
-        == 236
+        == 237
     )
     assert PARAMETERS_BY_KEY["ctrl_pause_time"].binding == (4, 0x81)
     assert PARAMETERS_BY_KEY["std_menu"].binding == (0, 0x10)

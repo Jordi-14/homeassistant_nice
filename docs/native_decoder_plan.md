@@ -157,3 +157,9 @@ identity reads for up to eight observed sources. This closes the basic address /
 profile observation path without claiming complete BusT4 discovery or granting
 peripheral permissions. Profile-specific control, full inventory completeness and
 physical procedures retain their separate contracts and completion points.
+
+
+B23 also handles the OXIBD BK00E FIN-only reply for the specific 0A/25 position
+query. All framing/status/position checks and private-code suppression remain.
+Seven independently audited radio bindings are recorded by the generator without
+enabling generic configuration access to structured or private fields.

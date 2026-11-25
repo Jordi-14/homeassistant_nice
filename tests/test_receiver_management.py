@@ -348,3 +348,42 @@ async def test_transport_wrapping_cannot_erase_sanitized_receiver_failure_detail
     assert data["outer_error_type"] == "NiceBidiConnectionError"
     assert "private text" not in json.dumps(data)
     await owner.async_shutdown()
+
+
+@pytest.mark.parametrize("operation", [0x01, 0x19])
+def test_oxibd_memory_query_accepts_scoped_fin_only_or_normal_get_reply(
+    monkeypatch, operation
+):
+    client = _client()
+    private_record = bytes.fromhex("6745232102016497")
+
+    def exchange(protocol, request, *args):
+        g, p = request[9:11]
+        value = b"\x0a" if g == 0 else request[14:-2] + private_record
+        return b"<Response/>", [
+            reply(g, p, value, operation=0x19 if g == 0 else operation, target=(0, 10))
+        ]
+
+    monkeypatch.setattr(client, "_t4_request_locked", exchange)
+    result = client._read_receiver_memory_page_locked(0, 1)
+    assert result["records"][0]["position"] == 0
+    assert result["records"][0]["button"] == 2
+    assert not result["private_codes_retained"]
+    assert "19088743" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("operation", [0x00, 0x09, 0x29])
+def test_alternate_memory_reply_does_not_accept_unrelated_operation(
+    monkeypatch, operation
+):
+    client = _client()
+    monkeypatch.setattr(
+        client,
+        "_t4_request_locked",
+        lambda *args: (
+            b"<Response/>",
+            [reply(10, 0x25, bytes(10), operation=operation, target=(0, 10))],
+        ),
+    )
+    with pytest.raises(NiceReceiverFormatError):
+        client._receiver_exchange_locked(10, 0x25, bytes(2))

@@ -9,6 +9,18 @@ import hashlib
 import json
 from pathlib import Path
 
+# Independently checked native MapCommand entries and Java consumers. These
+# are bindings, not grants to read/write or evidence of a complete procedure.
+AUDITED_NATIVE_BINDINGS = {
+    "CONTROLLER_CODE_BMASK": (4, 0xBE),
+    "RADIO_ADV_ABILITATION": (10, 0x6F),
+    "RADIO_EXIT_STATE": (10, 0x08),
+    "RADIO_TLC_CNT": (10, 0x70),
+    "RADIO_CODE_BMASK": (10, 0x71),
+    "RADIO_EDITEDCODE_BMASK": (10, 0x72),
+    "RADIO_CODEINMEMORY": (10, 0x25),
+}
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -53,6 +65,7 @@ def main():
         "STD_MENU": 16,
         "STD_INFO_FUNCTION": 17,
     }
+    bindings.update(AUDITED_NATIVE_BINDINGS)
     rows = []
     for source in commands:
         symbol = source["symbol"]
@@ -95,7 +108,7 @@ def main():
     )
     args.output.write_text(content)
     print(
-        f"{len(rows)} definitions; {len(bindings)} cross-checked group-04 bindings; {len(unmatched)} unmatched table rows"
+        f"{len(rows)} definitions; {len(bindings)} cross-checked bindings; {len(unmatched)} unmatched table rows"
     )
 
 

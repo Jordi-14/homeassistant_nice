@@ -98,6 +98,16 @@
       "decoder": "protocol/t4/radio.py",
       "tests": "tests/test_receiver_native.py",
       "runtime_access": "offline_integrity_codec_scoped_context_required"
+    },
+    {
+      "key": "receiver_memory_query",
+      "symbol": "Java_it_buildingapp_appoview_libraryt4_t4_RadioQueryMemoryResult_parseResponse",
+      "address": "0x14dcc",
+      "symbol_bytes": 1088,
+      "binding": "0A/25@00.0A",
+      "decoder": "protocol/t4/radio.py",
+      "tests": "tests/test_receiver_management.py",
+      "runtime_access": "bounded_scoped_queries_private_codes_discarded"
     }
   ]
 }

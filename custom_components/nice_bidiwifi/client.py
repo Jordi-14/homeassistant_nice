@@ -475,25 +475,45 @@ class NiceBidiClient:
                         target=target,
                         group=group,
                         parameter=parameter,
-                        operation=flags & 0x7F,
+                        # OXIBD BK00E returns FIN-only query data for a
+                        # payload-bearing 0A/25 GET. Scope this alternate
+                        # reply kind to that exact read, never ordinary SET.
+                        operation=0x01
+                        if target == (0, 10)
+                        and (group, parameter, flags, len(payload))
+                        == (10, 0x25, 0x99, 2)
+                        and len(plain) >= 16
+                        and plain[11] == 0x01
+                        else flags & 0x7F,
                     )
                 )
                 is not None
             ]
             if len(matches) != 1:
-                error = NiceReceiverFormatError("Receiver query requires one addressed reply", code="receiver_reply_count")
+                error = NiceReceiverFormatError(
+                    "Receiver query requires one addressed reply",
+                    code="receiver_reply_count",
+                )
                 error.inspection_evidence = {
                     "payload_lengths": [len(plain) for plain in plains[:16]],
                     "headers": [
-                        {"source": plain[4:6].hex(), "register": plain[9:11].hex(),
-                         "flags": plain[11], "sequence": plain[12], "status": plain[13]}
-                        for plain in plains[:16] if len(plain) >= 16 and plain[0] == 0x55
+                        {
+                            "source": plain[4:6].hex(),
+                            "register": plain[9:11].hex(),
+                            "flags": plain[11],
+                            "sequence": plain[12],
+                            "status": plain[13],
+                        }
+                        for plain in plains[:16]
+                        if len(plain) >= 16 and plain[0] == 0x55
                     ],
                 }
                 raise error
             return matches[0].value
         except NiceBidiError as error:
-            error.inspection_stage = f"{group:02X}/{parameter:02X}@{target[0]:02X}.{target[1]:02X}"
+            error.inspection_stage = (
+                f"{group:02X}/{parameter:02X}@{target[0]:02X}.{target[1]:02X}"
+            )
             raise
 
     def _read_receiver_memory_page_locked(self, start, count):

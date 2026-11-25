@@ -18,7 +18,7 @@ DMP_ERRORS = {
     0xFF: "controller error",
 }
 UNSUPPORTED_CODES = frozenset({0xF0, 0xF1, 0xF2, 0xFD, 0xFE})
-OPERATIONS = {0x09: "info", 0x19: "get", 0x29: "set"}
+OPERATIONS = {0x01: "query", 0x09: "info", 0x19: "get", 0x29: "set"}
 
 
 def checked_dmp_reply(
