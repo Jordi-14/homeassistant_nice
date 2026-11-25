@@ -67,6 +67,54 @@ def successful(payload, *, require_result=True):
     return root
 
 
+KNOWN_ERROR_IDS = frozenset(
+    {
+        "ERROR_GENERIC",
+        "INVALID_ARGUMENT",
+        "UNAUTHENTICATED",
+        "PERMISSION_DENIED",
+        "NOT_FOUND",
+        "ABORTED",
+        "TARGET_RESOURCE_IS_NO_LONGER_AVAILABLE",
+        "INTERNAL_SERVER_ERROR",
+        "RECORD_NOT_FOUND",
+        "ACCESSORY_NOT_FOUND",
+        "NO_ACCESSORIES_ONLINE",
+        "ERROR_COMMAND_NHK_TIMEOUT",
+        "HOME_PERMISSION_ACCESS_DENY",
+        "COMMAND_ERROR",
+        "OFFLINE",
+        "ACCESSORY_MAC_ADDRESS_BUSY_ACTIVITY",
+        "400",
+        "401",
+        "403",
+        "404",
+        "409",
+        "410",
+        "500",
+    }
+)
+
+
+def recognized_error(value):
+    # These fixed identifiers are declared by the supplied SDK, not arbitrary
+    # response text or a regex accepting user IDs/password-like strings.
+    if isinstance(value, bool):
+        return "unrecognized"
+    if isinstance(value, int):
+        value = str(value)
+    return (
+        value if isinstance(value, str) and value in KNOWN_ERROR_IDS else "unrecognized"
+    )
+
+
+def cloud_identifier(value, target):
+    value = _text(value, 64)
+    if value is None or value.strip() != value or _mac(value) != target:
+        raise NiceCloudSchemaError("Invalid cloud accessory identifier")
+    return value
+
+
 def collection_shape(payload):
     """Retain only fixed field types, never arbitrary keys or payload values."""
 
@@ -106,6 +154,16 @@ def collection_shape(payload):
     shape["error_code_present"] = (
         payload.get("errorCode") is not None and payload.get("errorCode") != ""
     )
+    if shape["error_code_present"]:
+        shape["recognized_error_code"] = recognized_error(payload.get("errorCode"))
+    if payload.get("message") is not None:
+        shape["recognized_error_description"] = recognized_error(payload.get("message"))
+    if isinstance(payload.get("scenes"), list):
+        shape["scenes_length"] = (
+            len(payload["scenes"])
+            if len(payload["scenes"]) <= MAX_RECORDS
+            else "oversized"
+        )
     if isinstance(payload.get("rules"), Mapping):
         shape.update(
             {
@@ -115,7 +173,36 @@ def collection_shape(payload):
                 for key in ("rule", "timers")
             }
         )
+        for key in ("rule", "timers"):
+            value = payload["rules"].get(key)
+            if isinstance(value, list):
+                shape["rules." + key + "_length"] = (
+                    len(value) if len(value) <= MAX_RECORDS else "oversized"
+                )
     return shape
+
+
+def empty_lookup_reply(root, collection):
+    """Only the SDK's specific RECORD_NOT_FOUND plus explicit empty lists."""
+    if not isinstance(root, Mapping) or root.get("result") is not False:
+        return False
+    code = recognized_error(root.get("errorCode"))
+    description = recognized_error(root.get("message"))
+    if description not in {"RECORD_NOT_FOUND", "unrecognized"}:
+        return False
+    if code != "RECORD_NOT_FOUND" and not (
+        code in {"404", "NOT_FOUND", "ERROR_GENERIC"}
+        and description == "RECORD_NOT_FOUND"
+    ):
+        return False
+    if collection == "scenes":
+        return root.get("scenes") == []
+    groups = root.get("rules")
+    return (
+        isinstance(groups, Mapping)
+        and groups.get("rule") == []
+        and groups.get("timers") == []
+    )
 
 
 def reported_list(root, key):
@@ -132,6 +219,28 @@ class InspectionScope:
     home_id: int | None
     target_mac: str
     cloud_role: str
+    cloud_accessory_id: str | None = None
+
+    @property
+    def request_identifier(self):
+        return (
+            self.cloud_accessory_id
+            if self.cloud_accessory_id is not None
+            else self.target_mac
+        )
+
+    @property
+    def identifier_format(self):
+        value = self.request_identifier
+        return (
+            "compact"
+            if len(value) == 12
+            else "colon_separated"
+            if ":" in value
+            else "hyphen_separated"
+            if "-" in value
+            else "other_verified"
+        )
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -192,6 +301,7 @@ class AutomationInspection:
             "account_accessory_scope_verified": True,
             "logical_device_mapping_verified": False,
             "home_scope_reported": self.scope.home_id is not None,
+            "cloud_identifier_format": self.scope.identifier_format,
             "cloud_role_reported": self.scope.cloud_role,
             "scenes": self.scenes.summary(),
             "rules": self.rules.summary(),
@@ -254,17 +364,23 @@ def bind_scope(payload, target_mac):
         accessories = home.get("accessories")
         if accessories is None:
             continue
-        if any(
-            _mac(_object(a).get("accessoryMacAddress")) == target
+        identifiers = {
+            cloud_identifier(_object(a).get("accessoryMacAddress"), target)
             for a in _list(accessories)
-        ):
-            matches.append(home)
+            if _mac(_object(a).get("accessoryMacAddress")) == target
+        }
+        if len(identifiers) > 1:
+            raise NiceCloudSchemaError(
+                "Ambiguous cloud accessory identifier representation"
+            )
+        if identifiers:
+            matches.append((home, next(iter(identifiers))))
     if len(matches) > 1:
         raise NiceCloudSchemaError(
             "Configured accessory has an ambiguous cloud home scope"
         )
     if matches:
-        home = matches[0]
+        home, request_identifier = matches[0]
         roles = [
             u.get("userRoleHome")
             for u in _list(home.get("users") or [])
@@ -281,13 +397,21 @@ def bind_scope(payload, target_mac):
         )
         if role == "DISABLE":
             raise NiceCloudAccessError("The cloud home reports disabled access")
-        return InspectionScope(account_id, _id(home["id"]), target, role)
+        return InspectionScope(
+            account_id, _id(home["id"]), target, role, request_identifier
+        )
     # A per-accessory credential record also proves the account/device binding.
     # Never parse, retain or replace its password or NHK account fields here.
     for smart in _list(data.get("smartDevices") or []):
         for credential in _list(_object(smart).get("accessoryCredentials") or []):
             if _mac(_object(credential).get("accessoryMacAddress")) == target:
-                return InspectionScope(account_id, None, target, "UNKNOWN")
+                return InspectionScope(
+                    account_id,
+                    None,
+                    target,
+                    "UNKNOWN",
+                    cloud_identifier(credential.get("accessoryMacAddress"), target),
+                )
     raise NiceCloudAccessError(
         "The configured accessory is not associated with this cloud account"
     )
@@ -318,6 +442,9 @@ def _scoped_rows(rows, scope, kind):
 
 def parse_scenes(payload, scope):
     shape = collection_shape(payload)
+    if empty_lookup_reply(payload, "scenes"):
+        shape["empty_reply_basis"] = "vendor_record_not_found"
+        return RecordCollection("scenes", "reported", response_shape=shape)
     try:
         root = successful(payload, require_result=False)
         items = _scoped_rows(reported_list(root, "scenes"), scope, "scene")
@@ -333,6 +460,12 @@ def parse_scenes(payload, scope):
 
 def parse_rules(payload, scope):
     shape = collection_shape(payload)
+    if empty_lookup_reply(payload, "rules"):
+        shape["empty_reply_basis"] = "vendor_record_not_found"
+        return (
+            RecordCollection("rules", "reported", response_shape=shape),
+            RecordCollection("timers", "reported", response_shape=shape),
+        )
     try:
         root = successful(payload, require_result=False)
         if root.get("result") is True and "rules" in root and root["rules"] is None:
