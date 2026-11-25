@@ -6,6 +6,8 @@ Target: the combined capabilities of MyNice Welcome 1.3.1 and MyNice Pro 2.18 r1
 
 The supplied JADX exports contain 3939 indexed primary source items. Alternate decompiler passes are deduplicated by relative Java path, preferring fewer unrecovered methods. Synthetic classes, generated bindings/navigation helpers and build resources are excluded. Supporting classes retain their methods so event paths and repository helpers are not silently omitted.
 
+Phase 6 installer procedures, device observations and recovery contracts are documented in [Installer workflows and device lifecycle](installer_lifecycle.md).
+
 Phase 5 setup and module-access behavior, recovery and blocked workflows are documented in [Onboarding and module access](onboarding_access.md).
 
 The complete machine-readable index is [app_inventory.json](../custom_components/nice_bidiwifi/app_inventory.json). Every entry has a stable ID, app version, relative source path, SHA-256, public/native/unrecovered methods, delivery destination, phase and known gap dependencies. Destination assignment is an initial routing by source name; phase implementation must follow the actual call path and refine it. One source item can serve several user features. App IDs and enum constructors are not wire codes.
@@ -31,10 +33,23 @@ The complete machine-readable index is [app_inventory.json](../custom_components
 | Destination | Phase | Indexed items |
 | --- | ---: | ---: |
 | `cloud.organization` | 7 | 390 |
-| `controller.configuration` | 3 | 1878 |
+| `controller.configuration` | 3 | 1868 |
 | `diagnostics.complete` | 4 | 202 |
-| `installer.lifecycle` | 6 | 730 |
-| `setup.access` | 5 | 739 |
+| `installer.discover_bus` | 6 | 1 |
+| `installer.firmware_catalog` | 6 | 1 |
+| `installer.inspect_boot` | 6 | 2 |
+| `installer.learn_positions` | 6 | 6 |
+| `installer.lifecycle` | 6 | 702 |
+| `installer.radio_enroll` | 6 | 2 |
+| `installer.radio_inspect` | 6 | 7 |
+| `installer.radio_reset` | 6 | 1 |
+| `installer.replace_controller` | 6 | 2 |
+| `installer.reset_interface` | 6 | 4 |
+| `installer.search_bluebus` | 6 | 1 |
+| `installer.search_devices` | 6 | 1 |
+| `installer.update_controller_firmware` | 6 | 9 |
+| `installer.update_interface_firmware` | 6 | 2 |
+| `setup.access` | 5 | 738 |
 
 ## Reviewed runtime features
 
@@ -125,7 +140,7 @@ Implementation, device support, permissions and current availability are separat
 | `controller.configuration` | partial | 3 | none | controller.menu_wire, controller.index_identity, controller.binding_map |
 | `diagnostics.complete` | partial | 4 | none | none |
 | `setup.access` | partial | 5 | none | setup.wnc_recovery, setup.ownership_removal, setup.cloud_registration, runtime.connection.code1 |
-| `installer.lifecycle` | planned | 6 | none | none |
+| `installer.lifecycle` | partial | 6 | none | installer.bus_discovery, installer.commissioning, installer.radio_memory, installer.radio_mutation, installer.backup_restore, installer.replacement, installer.reset, installer.firmware_catalog, installer.interface_firmware, installer.controller_firmware, installer.host_adapter |
 | `cloud.organization` | partial | 7 | none | none |
 | `controller.mc824h.motor_parameters` | blocked | 3 | None | mc824h.motor_parameter_layout |
 | `controller.mc824h.advanced_history` | blocked | 4 | None | mc824h.advanced_history_layout |
@@ -148,6 +163,28 @@ Implementation, device support, permissions and current availability are separat
 | `diagnostics.screen.receiver_events` | blocked | 4 | none | diagnostics.receiver_layouts |
 | `diagnostics.screen.power_supply` | blocked | 4 | none | diagnostics.psu_transport |
 | `diagnostics.screen.maintenance_reset` | blocked | 4 | none | diagnostics.maintenance_procedure |
+| `installer.inspect_devices` | implemented | 6 | installer | none |
+| `installer.inspect_boot` | implemented | 6 | installer | none |
+| `installer.snapshot_configuration` | implemented | 6 | installer | none |
+| `installer.restart_interface` | implemented | 6 | installer | none |
+| `installer.discover_bus` | blocked | 6 | none | installer.bus_discovery |
+| `installer.search_devices` | blocked | 6 | none | installer.commissioning |
+| `installer.search_bluebus` | blocked | 6 | none | installer.commissioning |
+| `installer.learn_positions` | blocked | 6 | none | installer.commissioning |
+| `installer.learn_force_map` | blocked | 6 | none | fg01h.force_map_learning |
+| `installer.radio_inspect` | blocked | 6 | none | installer.radio_memory |
+| `installer.radio_enroll` | blocked | 6 | none | installer.radio_mutation |
+| `installer.radio_edit` | blocked | 6 | none | installer.radio_mutation |
+| `installer.radio_remove` | blocked | 6 | none | installer.radio_mutation |
+| `installer.radio_reset` | blocked | 6 | none | installer.radio_mutation |
+| `installer.backup_configuration` | blocked | 6 | none | installer.backup_restore |
+| `installer.restore_configuration` | blocked | 6 | none | installer.backup_restore |
+| `installer.replace_controller` | blocked | 6 | none | installer.replacement |
+| `installer.reset_controller` | blocked | 6 | none | installer.reset |
+| `installer.reset_interface` | blocked | 6 | none | installer.reset |
+| `installer.firmware_catalog` | blocked | 6 | none | installer.firmware_catalog |
+| `installer.update_interface_firmware` | blocked | 6 | none | installer.interface_firmware |
+| `installer.update_controller_firmware` | blocked | 6 | none | installer.controller_firmware |
 
 ## Controller command evidence
 
@@ -369,9 +406,9 @@ These entries include invalid/sentinel and transport-specific enum values. They 
 | `CTRL_RESET` | 7599530 | `installer.lifecycle` | 6 |
 | `CTRL_RESET_ENCODER` | 2844223 | `installer.lifecycle` | 6 |
 | `CTRL_SBA_SENSOR` | 7599794 | `controller.configuration` | 3 |
-| `CTRL_SEARCH_BLUEBUS_DEVICES` | 3593564 | `controller.configuration` | 3 |
-| `CTRL_SEARCH_DEVICES` | 5566779 | `controller.configuration` | 3 |
-| `CTRL_SEARCH_POSITIONS` | 5532936 | `controller.configuration` | 3 |
+| `CTRL_SEARCH_BLUEBUS_DEVICES` | 3593564 | `installer.search_bluebus` | 6 |
+| `CTRL_SEARCH_DEVICES` | 5566779 | `installer.search_devices` | 6 |
+| `CTRL_SEARCH_POSITIONS` | 5532936 | `installer.learn_positions` | 6 |
 | `CTRL_SENSITIVITY_CLOSING` | 7143072 | `controller.configuration` | 3 |
 | `CTRL_SENSITIVITY_DECELERATION` | 8203958 | `controller.configuration` | 3 |
 | `CTRL_SENSITIVITY_DECELERATION_CLOSING` | 4784952 | `controller.configuration` | 3 |

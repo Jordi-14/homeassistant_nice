@@ -363,6 +363,8 @@ class ControllerConfiguration:
             )
         if reason is None and hasattr(owner,"access") and str(owner.access.role)!="admin":
             reason="Verified administrator permission is required"
+        if reason is None and hasattr(owner, "lifecycle"):
+            reason = owner.lifecycle.block_reason()
         if owner.reported_moving:
             reason = "Configuration writes are blocked while moving"
         elif owner.calibration_controller.calibration_state == "running":

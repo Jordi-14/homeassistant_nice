@@ -141,6 +141,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = NiceBidiDataUpdateCoordinator(hass, entry)
     entry.runtime_data = NiceRuntimeData(coordinator=coordinator, config=coordinator.entry_config)
     try:
+        if hasattr(coordinator, "lifecycle"):
+            await coordinator.lifecycle.async_load()
         await coordinator.async_load_calibration()
         await coordinator.async_load_movement_profile()
         await coordinator.async_load_limits_baseline()

@@ -388,6 +388,27 @@ class NiceBidiClient:
         """Read a bounded, redacted summary of local access groups."""
         return self._run_with_reconnect(self._read_groups_locked)
 
+    def read_device_inventory(self):
+        from .protocol.nhk.lifecycle import parse_inventory
+
+        return self._run_with_reconnect(
+            lambda: parse_inventory(self._read_info_xml_locked().encode()),
+            preemptible=True,
+        )
+
+    def read_boot_state(self, operation, interface_id, *, before_dispatch=None):
+        from .protocol.nhk.lifecycle import boot_read_body, parse_boot_read
+
+        body = boot_read_body(operation, interface_id)
+
+        def execute():
+            if before_dispatch is not None:
+                before_dispatch()
+            response = self._signed_exchange_locked("T4_UPDATE", body)
+            return parse_boot_read(response, operation, interface_id)
+
+        return self._run_with_reconnect(execute, preemptible=True)
+
     def read_pairings(self):
         return self._run_with_reconnect(self._read_pairings_locked, preemptible=True)
 

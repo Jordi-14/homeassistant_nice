@@ -435,6 +435,24 @@
           "wait": "Waiting for approval",
           "unverified": "Unverified"
         }
+      },
+      "installer_procedure_state": {
+        "name": "Installer procedure",
+        "state": {
+          "idle": "Idle",
+          "preparing": "Preparing",
+          "running": "Running",
+          "completed": "Completed",
+          "acknowledged": "Acknowledged",
+          "cancelled": "Cancelled",
+          "failed": "Failed",
+          "interrupted": "Interrupted",
+          "needs_recovery": "Recovery required",
+          "recovery_acknowledged": "Recovery acknowledged"
+        }
+      },
+      "advertised_devices": {
+        "name": "Advertised devices"
       }
     }
   },
@@ -448,7 +466,10 @@
           "edit_user": "Change another user permission",
           "identify": "Identify the interface",
           "network_setup": "Wi-Fi setup availability",
-          "ownership": "Ownership and removal availability"
+          "ownership": "Ownership and removal availability",
+          "installer": "Installer procedures and device lifecycle",
+          "installer_recovery": "Review interrupted procedure",
+          "installer_cancel": "Request procedure cancellation"
         }
       },
       "inspect_users": {
@@ -480,6 +501,35 @@
       "identify": {
         "title": "Identify the module",
         "description": "Submit sends one IDENTIFY request while the gate is confirmed stationary. Its visible effect depends on the module. This does not command gate movement."
+      },
+      "installer": {
+        "title": "Installer and lifecycle procedures",
+        "description": "Choose an inspection or procedure. Workflows without verified transactions and recovery show the missing evidence before any device access. Controller position learning is separate from HA animation calibration.",
+        "data": {
+          "procedure": "Procedure"
+        }
+      },
+      "installer_action": {
+        "title": "{operation}",
+        "description": "{details}",
+        "data": {
+          "confirm": "I reviewed the prerequisites and want to run this operation"
+        }
+      },
+      "installer_result": {
+        "title": "{operation}",
+        "description": "{summary}"
+      },
+      "installer_recovery": {
+        "title": "Review interrupted procedure",
+        "description": "First check the module in the manufacturer app. This acknowledgement can only clear an interface-restart hold after fresh inspection and administrator verification. It does not resend the command or claim the earlier physical restart succeeded. Other procedures need their model-specific recovery adapter.",
+        "data": {
+          "confirm": "I checked the module and acknowledge the unresolved outcome"
+        }
+      },
+      "installer_cancel": {
+        "title": "Request cancellation",
+        "description": "Stops at a verified boundary between steps only. No guessed abort command is sent. An irreversible submitted request cannot be undone by cancelling HA."
       }
     },
     "error": {
@@ -487,13 +537,19 @@
       "invalid_access_target": "Select a valid user and permission.",
       "access_confirmation_required": "Confirm this permission change.",
       "access_operation_failed": "The permission change was not confirmed. Inspect the current users before retrying; an uncertain change is never replayed automatically.",
-      "identify_failed": "The identify request could not be confirmed. Check connectivity and that the gate is stationary."
+      "identify_failed": "The identify request could not be confirmed. Check connectivity and that the gate is stationary.",
+      "installer_binding_unavailable": "This procedure is unavailable because the listed evidence is missing. No request was sent.",
+      "installer_confirmation_required": "Confirm that you reviewed the prerequisites.",
+      "installer_operation_failed": "The procedure was not confirmed. Check diagnostics and recovery before trying again. Uncertain writes are never replayed automatically.",
+      "installer_recovery_failed": "Recovery could not be acknowledged. Check device health and the model-specific requirements; no write will be replayed."
     },
     "abort": {
       "not_loaded": "Load the integration before managing module access.",
       "no_access_targets": "No eligible records were found. Current Home Assistant access is excluded.",
       "network_workflow_unverified": "Wi-Fi changes are unavailable: AP-state, identity and operational rediscovery/recovery are not verified. Use the manufacturer app. No network password has been collected.",
-      "ownership_workflow_unverified": "Physical user deletion and cloud ownership transfer are unavailable until their complete transactions and recovery are verified. Another module user can be promoted to administrator separately."
+      "ownership_workflow_unverified": "Physical user deletion and cloud ownership transfer are unavailable until their complete transactions and recovery are verified. Another module user can be promoted to administrator separately.",
+      "invalid_installer_procedure": "Invalid installer procedure.",
+      "installer_cancel_unavailable": "The current step cannot be safely cancelled. No abort request was sent."
     }
   }
 }

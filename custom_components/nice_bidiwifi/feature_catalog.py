@@ -37,6 +37,18 @@ class EvidenceGap:
 
 
 GAPS = (
+    EvidenceGap('installer.bus_discovery', 'Full BusT4 discovery needs scoped profile decoding', 'Pro T4DiscoveryProcedure broadcasts profiles then reads controller, radio and power-unit identities; native framing/decoders and endpoint ownership are not complete.', 'Implement profile broadcast, reply addressing/continuation and the required profile decoders together. NHK INFO inventory is a separate supported subset.'),
+    EvidenceGap('installer.commissioning', 'Model-specific commissioning and learning sequences are incomplete', 'App InstallationProcedure models/views and InstallationFinder selection are not fully recovered; start-command symbols do not establish motor selection, terminal progress or abort semantics.', 'Recover the complete model sequence, physical prerequisites, progress/abort and endpoint verification. Keep HA animation calibration separate.'),
+    EvidenceGap('installer.radio_memory', 'Receiver memory layout and private-code handling are incomplete', 'T4_RADIO_RD Memory fields are recovered, but model-specific rows may contain rolling codes, certificates and identifiers decoded by native code.', 'Complete scoped receiver discovery, paging, row codecs and allowlisted redaction before reading or retaining memory.'),
+    EvidenceGap('installer.radio_mutation', 'Remote and receiver mutations need complete receiver-specific contracts', 'RadioSetCodeProcedure, RadioCodesReadingProcedureObject and certificate/reset procedures depend on receiver modes, exact targets and native payloads.', 'Validate physical consent, credentials/certificates, one-send writes, readback and interruption/recovery before enabling enrollment, edit, removal or receiver reset.'),
+    EvidenceGap('installer.backup_restore', 'App-compatible backup and restore are not verified', 'Read-only parameter observations omit receiver memory, indexed/native structures and ordered restoration/ownership rules.', 'Recover complete app manifests, integrity checks, model/hardware/ownership compatibility and ordered restore/recovery. Never restore by replaying cached values.'),
+    EvidenceGap('installer.replacement', 'Controller board replacement needs verified motor/logic state', 'The recovered spare-parts sequence resets motor then logic modules and may change T4Source. Native automation-state decoding and ownership transitions are missing.', 'Complete model-specific state checks, rebinding and interrupted-transfer recovery; do not infer force-adaptation reset from position search.'),
+    EvidenceGap('installer.reset', 'Reset effects and re-provisioning are not fully verified', 'NHK factory/configuration/Wi-Fi resets differ; CTRL_RESET can simply clear a prior command. Their names are not interchangeable reset opcodes.', 'Recover each exact scope, ownership, data-loss effects, completion and re-provisioning/re-pairing path before enabling it.'),
+    EvidenceGap('installer.firmware_catalog', 'Compatible vendor firmware discovery requires validated vendor access', 'Pro ControlUnitFirmwareApi records include model/board, published/test/deleted and file metadata, but authorized catalog and image provenance are not established.', 'Complete authenticated catalog binding, eligibility, exact hardware matching and authenticated artifact provenance. Do not invent latest-version availability.'),
+    EvidenceGap('installer.interface_firmware', 'Module firmware image authentication and interrupted OTA recovery are unresolved', 'The app uploads 1024-byte chunks via /wiced_ota_server/upgrade_chunk.html, distinct from NHK BOOT_1. Vendor image verification, target binding and ambiguous-offset reconciliation are incomplete.', 'Verify image provenance and compatibility, local target/power, acknowledged chunk offsets and post-update/recovery behavior. Do not copy blind chunk retry logic.'),
+    EvidenceGap('installer.controller_firmware', 'Controller programming needs authenticated images and complete recovery', 'NHK T4_UPDATE BOOT_1 read requests are recovered. FILE_WRITE/START_BOOT/START_PROGRAMMING do not establish authenticated image compatibility or safe resume/abort for each controller.', 'Validate vendor images, exact controller/board targeting, staged CRC/status, power/session exclusivity, interruption recovery and final firmware verification before enabling writes.'),
+    EvidenceGap('installer.host_adapter', 'Phone/installer host access has no validated HA adapter', 'The exports contain phone NFC, ProView and native installer paths whose host/hardware/session contracts are not available to this NHK integration.', 'Supply a supported HA host/hardware transport with verified framing, permissions, lifecycle and fixtures. Do not silently send these operations over the NHK socket.'),
+
     EvidenceGap(
         "setup.wnc_recovery",
         "Wi-Fi configuration needs verified AP state and recovery",
@@ -331,7 +343,7 @@ def _features() -> tuple[FeatureDefinition, ...]:
                 key,
                 title,
                 Implementation.PARTIAL
-                if phase in (3, 4, 5, 7)
+                if phase in (3, 4, 5, 6, 7)
                 else Implementation.PLANNED,
                 phase,
                 gaps=(
@@ -342,6 +354,8 @@ def _features() -> tuple[FeatureDefinition, ...]:
                 if key == "controller.configuration"
                 else ("setup.wnc_recovery", "setup.ownership_removal", "setup.cloud_registration", "runtime.connection.code1")
                 if key == "setup.access"
+                else ('installer.bus_discovery', 'installer.commissioning', 'installer.radio_memory', 'installer.radio_mutation', 'installer.backup_restore', 'installer.replacement', 'installer.reset', 'installer.firmware_catalog', 'installer.interface_firmware', 'installer.controller_firmware', 'installer.host_adapter')
+                if key == "installer.lifecycle"
                 else (),
             )
         )
@@ -407,6 +421,17 @@ def _features() -> tuple[FeatureDefinition, ...]:
                 ),
             )
         )
+    from .installer_catalog import PROCEDURES
+
+    rows.extend(
+        FeatureDefinition(
+            "installer." + procedure.key, procedure.title,
+            implemented if procedure.state_machine_verified and not procedure.gaps else Implementation.BLOCKED,
+            6, FeatureBinding("installer", procedure.key) if procedure.state_machine_verified else None,
+            gaps=procedure.gaps, evidence=procedure.evidence,
+        )
+        for procedure in PROCEDURES
+    )
     return tuple(rows)
 
 
