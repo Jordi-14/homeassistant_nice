@@ -183,6 +183,11 @@ class FeatureRuntime:
                 permission = True if role == "admin" else None if role == "unknown" else False
             if role!="admin":
                 reasons.append("Administrator permission has not been verified" if role=="unknown" else "Module role does not allow administration")
+        if binding is not None and binding.handler == "installer":
+            reasons.extend(owner.lifecycle.availability(binding.operation))
+        if binding is not None and binding.handler in {"setting", "name", "clock", "reboot"} and hasattr(owner, "lifecycle"):
+            if reason := owner.lifecycle.block_reason():
+                reasons.append(reason)
         if support is False:
             reasons.append("Device does not advertise this operation")
         if permission is False:
@@ -240,7 +245,7 @@ class FeatureRuntime:
 
     async def execute(self, key: str, **payload) -> Any:
         binding = self.require(key)
-        allowed = {"setting": {"value"}, "name": {"name"}, "history": {"max_rows"}}.get(
+        allowed = {"installer": {"confirmed"}, "setting": {"value"}, "name": {"name"}, "history": {"max_rows"}}.get(
             binding.handler, set()
         )
         if set(payload) - allowed:
@@ -249,6 +254,8 @@ class FeatureRuntime:
         if required is not None and required not in payload:
             raise FeatureBlocked(f"Missing feature argument: {required}")
         owner = self._coordinator
+        if binding.handler == "installer":
+            return await owner.lifecycle.async_run(binding.operation, confirmed=payload.get("confirmed", False))
         if binding.handler == "diagnostic":
             return await owner.diagnostic_runtime.async_read(binding.operation)
         if binding.handler == "snapshot":

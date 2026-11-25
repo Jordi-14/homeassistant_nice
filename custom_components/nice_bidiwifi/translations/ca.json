@@ -435,6 +435,24 @@
           "wait": "Pendent d’aprovació",
           "unverified": "Sense verificar"
         }
+      },
+      "installer_procedure_state": {
+        "name": "Procediment d’instal·lació",
+        "state": {
+          "idle": "Inactiu",
+          "preparing": "Preparant",
+          "running": "En curs",
+          "completed": "Completat",
+          "acknowledged": "Ordre acceptada",
+          "cancelled": "Cancel·lat",
+          "failed": "Fallat",
+          "interrupted": "Interromput",
+          "needs_recovery": "Cal revisar la recuperació",
+          "recovery_acknowledged": "Recuperació reconeguda"
+        }
+      },
+      "advertised_devices": {
+        "name": "Dispositius anunciats"
       }
     }
   },
@@ -448,7 +466,10 @@
           "edit_user": "Canvia el permís d’un altre usuari",
           "identify": "Identifica la interfície",
           "network_setup": "Disponibilitat de configuració Wi-Fi",
-          "ownership": "Disponibilitat de propietat i eliminació"
+          "ownership": "Disponibilitat de propietat i eliminació",
+          "installer": "Procediments d’instal·lació i dispositius",
+          "installer_recovery": "Revisa una operació interrompuda",
+          "installer_cancel": "Sol·licita cancel·lació d’un procediment"
         }
       },
       "inspect_users": {
@@ -480,6 +501,35 @@
       "identify": {
         "title": "Identifica el mòdul",
         "description": "Prem Envia per enviar una petició IDENTIFY amb la porta confirmada com a aturada. L’efecte visible depèn del mòdul. No s’ordena cap moviment de la porta."
+      },
+      "installer": {
+        "title": "Procediments d’instal·lació",
+        "description": "Tria una inspecció o un procediment. Les operacions sense transaccions i recuperació verificades mostren els detalls que falten abans de qualsevol accés al dispositiu. Aprendre posicions al controlador és diferent de calibrar l’animació de HA.",
+        "data": {
+          "procedure": "Procediment"
+        }
+      },
+      "installer_action": {
+        "title": "{operation}",
+        "description": "{details}",
+        "data": {
+          "confirm": "He revisat els requisits i vull executar aquesta operació"
+        }
+      },
+      "installer_result": {
+        "title": "{operation}",
+        "description": "{summary}"
+      },
+      "installer_recovery": {
+        "title": "Revisa una operació interrompuda",
+        "description": "Comprova primer l’estat del mòdul amb l’app del fabricant. Aquesta confirmació només pot retirar el bloqueig d’un reinici d’interfície després d’una inspecció i verificació d’administrador noves. No es repeteix l’ordre i no s’afirma que el reinici anterior s’hagi produït. Les altres operacions requereixen la recuperació específica del model.",
+        "data": {
+          "confirm": "He comprovat el mòdul i vull reconèixer l’estat pendent"
+        }
+      },
+      "installer_cancel": {
+        "title": "Sol·licita cancel·lació",
+        "description": "Només s’atura el procediment en un límit verificat entre passos. No s’envia cap ordre d’avortament suposada. Una ordre irreversible ja enviada no es pot desfer cancel·lant HA."
       }
     },
     "error": {
@@ -487,13 +537,19 @@
       "invalid_access_target": "Tria un usuari i un permís vàlids.",
       "access_confirmation_required": "Confirma el canvi de permís.",
       "access_operation_failed": "No s’ha confirmat el canvi. Inspecciona els usuaris abans de repetir-lo; els canvis incerts no es repeteixen automàticament.",
-      "identify_failed": "No s’ha pogut confirmar la identificació. Comprova la connexió i que la porta estigui aturada."
+      "identify_failed": "No s’ha pogut confirmar la identificació. Comprova la connexió i que la porta estigui aturada.",
+      "installer_binding_unavailable": "Aquest procediment no està disponible perquè falten les dades indicades. No s’ha enviat cap ordre.",
+      "installer_confirmation_required": "Confirma que has revisat els requisits.",
+      "installer_operation_failed": "No s’ha confirmat el procediment. Revisa els diagnòstics i la recuperació abans de repetir-lo. Les escriptures incertes no es repeteixen automàticament.",
+      "installer_recovery_failed": "No s’ha pogut confirmar la recuperació. Comprova el dispositiu i els requisits del model; no es repetirà cap escriptura."
     },
     "abort": {
       "not_loaded": "Carrega la integració abans de gestionar l’accés.",
       "no_access_targets": "No s’han trobat registres elegibles. S’exclou l’accés actual de Home Assistant.",
       "network_workflow_unverified": "Els canvis Wi-Fi estan bloquejats fins a verificar l’estat, la identitat i la recuperació. Utilitza l’app del fabricant. No s’ha recollit cap contrasenya de xarxa.",
-      "ownership_workflow_unverified": "L’eliminació física d’usuaris i la transferència de propietat al núvol estan bloquejades fins a verificar les transaccions i la recuperació. Pots promoure un altre usuari del mòdul a administrador per separat."
+      "ownership_workflow_unverified": "L’eliminació física d’usuaris i la transferència de propietat al núvol estan bloquejades fins a verificar les transaccions i la recuperació. Pots promoure un altre usuari del mòdul a administrador per separat.",
+      "invalid_installer_procedure": "El procediment no és vàlid.",
+      "installer_cancel_unavailable": "El pas actual no admet una cancel·lació segura. No s’ha enviat cap ordre d’avortament."
     }
   }
 }

@@ -438,6 +438,13 @@ class NiceConnectionRouter:
     def session_diagnostics(self):
         return {name:client.session_state.diagnostics() for name,client in (("local",self._local),("cloud",self._cloud)) if client is not None}
 
+    def read_device_inventory(self):
+        return self._read("read_device_inventory", operation_priority=OperationPriority.METADATA)
+
+    def read_boot_state(self, operation, interface_id, *, before_dispatch=None):
+        return self._read("read_boot_state", operation, interface_id,
+                          before_dispatch=before_dispatch, operation_priority=OperationPriority.DIAGNOSTIC)
+
     def read_pairings(self):
         return self._read("read_pairings",operation_priority=OperationPriority.METADATA)
 

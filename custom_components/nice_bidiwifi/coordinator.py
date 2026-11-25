@@ -69,6 +69,7 @@ from .feature_runtime import FeatureRuntime
 from .configuration import ControllerConfiguration
 from .incidents import IncidentTimeline
 from .access_management import AccessManagement
+from .lifecycle import LifecycleRuntime
 from .diagnostic_runtime import DiagnosticRuntime
 from .runtime_tasks import RuntimeTasks
 from .scheduler import OperationExpired
@@ -282,6 +283,7 @@ class NiceBidiDataUpdateCoordinator(
         self.incidents = IncidentTimeline(entry.data)
         self.diagnostic_runtime = DiagnosticRuntime(self)
         self.access = AccessManagement(self)
+        self.lifecycle = LifecycleRuntime(self)
         self.event_controller = NiceEventController(self)
         self.administration_controller = NiceAdministrationController(self)
         self.motion_trace = MotionTraceController(self)
@@ -760,6 +762,7 @@ class NiceBidiDataUpdateCoordinator(
     async def async_send_action(self, action: str) -> None:
         """Send an open, close, or stop command."""
         self.access.control_guard()
+        self.lifecycle.control_guard(action)
         await self.position_controller._async_cancel_position_target()
         await self.calibration_controller._async_cancel_calibration(
             reason=f"cover_action:{action}",
@@ -774,6 +777,7 @@ class NiceBidiDataUpdateCoordinator(
                 f"Nice T4 action {action!r} is not advertised by this device"
             )
         self.access.control_guard()
+        self.lifecycle.control_guard(action)
         await self.position_controller._async_cancel_position_target()
         await self.calibration_controller._async_cancel_calibration(reason=f"dep_action:{action}")
         await self._async_send_dep_action(action)
@@ -832,6 +836,7 @@ class NiceBidiDataUpdateCoordinator(
             self._prepare_parameter_write(setting, value)
         except NiceParameterError as err:
             raise HomeAssistantError(f"Nice setting {setting.key} cannot be written: {err}") from err
+        self.lifecycle.require_idle()
         try:
             await self.access.async_prepare_admin()
         except NiceBidiError as err:
@@ -934,6 +939,17 @@ class NiceBidiDataUpdateCoordinator(
         self.position_controller._extend_post_command_fast_poll_window()
         return result
 
+    def _control_dispatch_guard(self, action):
+        try:
+            if self.observations.closed and action not in {"stop", "stop_remote"}:
+                raise HomeAssistantError("Integration is shutting down")
+            self.access.control_guard()
+            self.lifecycle.control_guard(action)
+        except HomeAssistantError as error:
+            rejection = NiceParameterError(str(error))
+            rejection.delivery = "not_sent"
+            raise rejection from error
+
     async def _async_send_action(
         self,
         action: str,
@@ -944,13 +960,14 @@ class NiceBidiDataUpdateCoordinator(
     ) -> None:
         """Send an open, close, or stop command without touching target watchers."""
         self.access.control_guard()
+        self.lifecycle.control_guard(action)
         command = NiceCommand(key=action, kind=CommandKind.DOOR_ACTION)
         stop_started_from_motion = action == "stop" and (
             self.position_controller.animation.action is not None
             or (self.data is not None and self.data.is_moving)
         )
         stop_display_position = self.position_controller.display_position if stop_started_from_motion else None
-        await self._async_execute_command(command, partial(self.client.send_action, action))
+        await self._async_execute_command(command, partial(self.client.send_action, action, before_dispatch=partial(self._control_dispatch_guard, action)))
         if action == "stop":
             self.position_controller.control.recent_stop = time.monotonic()
             self.position_controller.control.stop_started_moving = stop_started_from_motion
@@ -976,7 +993,7 @@ class NiceBidiDataUpdateCoordinator(
             )
         command = NiceCommand(key=action, kind=CommandKind.T4_ACTION)
         send = self.client.send_t4_action if self.t4_actions_via_nhk else self.client.send_dep_action
-        await self._async_execute_command(command, partial(send, action))
+        await self._async_execute_command(command, partial(send, action, before_dispatch=partial(self._control_dispatch_guard, action)))
         if action in DEP_MOVEMENT_ACTIONS:
             self.position_controller.control.recent_stop = None
             self.position_controller.control.stop_started_moving = False
@@ -1034,6 +1051,7 @@ class NiceBidiDataUpdateCoordinator(
             prepared = self._prepare_parameter_write(setting, value)
         except NiceParameterError as err:
             raise HomeAssistantError(f"Nice setting {setting.key} cannot be written: {err}") from err
+        self.lifecycle.require_idle()
         try:
             await self.access.async_ensure_admin()
         except NiceBidiError as error:
@@ -1051,6 +1069,7 @@ class NiceBidiDataUpdateCoordinator(
             ),
         )
         def before_dispatch():
+            self.lifecycle.require_idle_at_dispatch()
             self.access.require_admin()
             self.access.stationary_guard()
             current = self._prepare_parameter_write(setting, value)
@@ -1160,6 +1179,7 @@ class NiceBidiDataUpdateCoordinator(
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
         self.observations.invalidate(close=True)
+        await self.lifecycle.async_close()
         self.configuration.invalidate()
         self.diagnostic_runtime.invalidate()
         self.access.invalidate()

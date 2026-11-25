@@ -209,6 +209,19 @@ custom_components/nice_bidiwifi
 
 Then restart Home Assistant.
 
+## Installer and device lifecycle
+
+The Configure menu includes advertised-device inspection, read-only BOOT_1
+inspection, configuration observation snapshots and explicit installer workflows.
+The existing module restart uses a durable procedure journal and never replays an
+uncertain request. Optional installer-state/device-count sensors start disabled.
+
+Controller learning, receiver-memory changes, backup restoration, factory resets
+and firmware installation stay blocked wherever required model, image or recovery
+contracts are missing. See [Installer workflows and device lifecycle](docs/installer_lifecycle.md)
+for the supported surface, prerequisites and exact gaps. HA animation calibration
+remains separate from programming the controller.
+
 ## Direct pairing and module permissions
 
 New entries can pair directly with a local module, either as its first user or as

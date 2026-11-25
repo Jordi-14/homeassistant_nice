@@ -16,7 +16,6 @@ from ..connection import (
     CONNECTION_STATE_AUTH_FAILED,
     CONNECTION_STATE_CONNECTED,
     CONNECTION_STATE_FAILED,
-    CONNECTION_STATE_RECONNECTING,
 )
 from ..errors import (
     NiceBidiAuthError,
@@ -75,6 +74,7 @@ class NiceAdministrationController(RuntimeController):
             )
 
     async def _async_prepare_mutation(self, action: str) -> None:
+        self._coordinator.lifecycle.require_idle()
         if self._coordinator.reported_moving:
             raise HomeAssistantError(
                 f"Nice {action} is blocked while the gate is moving"
@@ -397,14 +397,12 @@ class NiceAdministrationController(RuntimeController):
         """Request an interface reboot after enforcing physical-state safety."""
         self._require_capability("reboot", "interface reboot")
         await self._async_prepare_mutation("interface reboot")
-        await self._async_execute(
-            "reboot_interface",
-            partial(self._coordinator.client.reboot_interface,before_dispatch=self._coordinator.access.mutation_guard()),
-            read_only=False,
-            verification="change_acknowledgement",
-        )
-        await self._coordinator.hass.async_add_executor_job(
-            self._coordinator.client.close
-        )
-        self._coordinator._set_connection_state(CONNECTION_STATE_RECONNECTING)
-        self._coordinator.event_controller.mark_reconnecting()
+        started = time.monotonic()
+        try:
+            await self._coordinator.lifecycle.async_run("restart_interface", confirmed=True)
+        except Exception as error:
+            self._record_operation(action="reboot_interface", read_only=False, started=started,
+                                   status="failed", verification="unverified", error=error)
+            raise HomeAssistantError("Interface restart was not confirmed; inspect procedure recovery") from error
+        self._record_operation(action="reboot_interface", read_only=False, started=started,
+                               status="completed", verification="change_acknowledgement")

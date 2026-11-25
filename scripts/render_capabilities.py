@@ -20,6 +20,9 @@ from custom_components.nice_bidiwifi.feature_catalog import (  # noqa: E402
     GAPS_BY_KEY,
     app_inventory,
 )
+from custom_components.nice_bidiwifi.installer_catalog import (  # noqa: E402
+    PROCEDURES,
+)
 from custom_components.nice_bidiwifi.protocol.t4.settings import (  # noqa: E402
     ADDITIONAL_SETTINGS,
 )
@@ -42,6 +45,8 @@ def documents() -> dict[str, str]:
         "Target: the combined capabilities of MyNice Welcome 1.3.1 and MyNice Pro 2.18 r188. This is an evidence and delivery inventory, not a claim of completed parity or universal hardware support.",
         "",
         f"The supplied JADX exports contain {len(entries)} indexed primary source items. Alternate decompiler passes are deduplicated by relative Java path, preferring fewer unrecovered methods. Synthetic classes, generated bindings/navigation helpers and build resources are excluded. Supporting classes retain their methods so event paths and repository helpers are not silently omitted.",
+        "",
+        "Phase 6 installer procedures, device observations and recovery contracts are documented in [Installer workflows and device lifecycle](installer_lifecycle.md).",
         "",
         "Phase 5 setup and module-access behavior, recovery and blocked workflows are documented in [Onboarding and module access](onboarding_access.md).",
         "",
@@ -250,11 +255,65 @@ def documents() -> dict[str, str]:
         "Install the phase beta and restart HA. No controller relearning, force/safety parameter change, counter reset or deliberate obstruction is needed. Compare ordinary open/Stop/close/reversal evidence and app logs. Optionally enable a diagnostic card, compare values and ages, then download sanitized diagnostics. An all-zero maneuver history may now correctly show unknown instead of zero failures. Check that module clock offsets remain explicit and that all existing entities retain their IDs.",
         "",
     ]
+    installer_lines = [
+        "# Installer workflows and device lifecycle",
+        "",
+        "Phase 6 provides the procedure runner and the source-backed shared-NHK surface below. A documented blocked procedure is not a claim that the app function works in HA. No new installer operation runs automatically after upgrade.",
+        "",
+        "## Available operations",
+        "",
+        "Configure > Installer procedures and device lifecycle opens the explicit workflow selector. Inspect advertised devices reads NHK INFO, preserving reported interface/device IDs and bounded model/hardware/firmware fields. It does not claim a complete BusT4 or BlueBus scan and retains no serials, remote codes or personal names.",
+        "",
+        "Inspect existing bootloader state requires a local, stationary shared-Wi-Fi interface and verified administrator access. It reads FILE_INFO, DEV_ON_BOOT and STATUS_PROGRAMMING using T4_UPDATE/BOOT_1 and the interface ID advertised in fresh INFO. It never calls START_BOOT, FILE_ERASE, FILE_WRITE, START_PROGRAMMING or STOP_PROGRAMMING. Unsupported queries remain errors, not empty successful inventories. Observed progress keeps its reported integer and an unverified unit; it is not presented as a percentage. CRC information does not authenticate a firmware image. Partial observations have individual capture times and are cleared before a new attempt.",
+        "",
+        "Snapshot observed configuration captures only already observed, allowlisted scalar configuration values and their source/time. It performs no extra scan and omits password, radio-memory, unknown and indexed-motor payloads. Diagnostics include the snapshot and comparison with the previous same-profile snapshot. This is incomplete, non-restorable evidence, not an app backup or authorization for controller transfer. There is no endpoint that replays it into the controller.",
+        "",
+        "The existing module-reboot button and new explicit workflow share one restart procedure. Its result establishes CHANGE acknowledgement only; a new connection cannot independently prove that the physical module rebooted. It preserves the existing post-request session release and reconnect behavior. Restart is distinct from factory, Wi-Fi, controller and receiver reset.",
+        "",
+        "Optional disabled-by-default Installer procedure and Advertised devices sensors expose procedure state and the last observed device count. Enabling them does not start a scan, learning or update. The manufacturer app remains required for blocked workflows.",
+        "",
+        "## Ownership, cancellation and recovery",
+        "",
+        "All mandatory handlers, prerequisites, completion and recovery are validated before any preparation, storage or network work. Mutations additionally require explicit intent, fresh module administrator evidence, a stationary gate, model/capability checks and an unchanged device session at dispatch. Module administrator is not installer-menu permission. Controller programming is separate from HA animation calibration; position learning is not assumed to reset force adaptation.",
+        "",
+        "Only one procedure owns the runtime at a time. A submitted installer mutation blocks other configuration/access writes and new gate movement; Stop remains allowed. An explicitly observed BOOT_1 RUN status also blocks administration/new movement in the current runtime until a definitive fresh status; a failed or unknown inspection cannot clear that observation. No firmware probe runs automatically. Deadlines are per step. Cancellation of an await does not stop a network worker: the runner drains it before releasing ownership, records uncertain delivery and never replays a mutation. User cancellation is a request at a supported boundary; no guessed abort command is sent for an irreversible submitted step.",
+        "",
+        "Before dispatch, mutation intent is saved in HA storage under an entry-scoped procedure journal. No credentials, images or raw radio memory are stored. A restarted HA sees an interrupted dispatched step as needs_recovery, never as instructions to resume it. Corrupt/unreadable journals also block further installer mutations. Ordinary gate monitoring/control remains available after an interrupted restart once connectivity works; the pending installer mutation hold is not silently discarded.",
+        "",
+        "The recovery screen only clears an interface-restart hold after explicit operator confirmation, fresh administrator inspection and device metadata. It records acknowledgement of an unresolved outcome, not fake success, and persists before releasing the hold. Other procedures require their complete model-specific recovery adapter. Read-only inspection cannot erase a pending mutation journal.",
+        "",
+        "## Procedure and gap matrix",
+        "",
+        "| Procedure | Status | Mandatory steps | Prerequisites | Gaps |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    installer_lines.extend(
+        f"| `{p.key}` | {'implemented' if p.state_machine_verified and not p.gaps else 'blocked'} | {', '.join(s.key for s in p.steps)} | {', '.join(p.prerequisites) or 'configured access'} | {', '.join(p.gaps) or 'none'} |"
+        for p in PROCEDURES
+    )
+    installer_lines += [
+        "",
+        "## Firmware, receiver and installer adapter boundaries",
+        "",
+        "Module HTTP OTA and controller BOOT_1 programming are different protocols. The recovered module helper uses 1024-byte HTTP chunks at /wiced_ota_server/upgrade_chunk.html. Copying its chunk retries would not establish safe reconciliation after uncertain delivery. Controller programming requires separate staging, exact board/motor ownership, boot transitions and final verification. FirmwareArtifact checks model/hardware/protocol and byte length/hash; the firmware adapter still rejects installation until vendor authenticity, compatibility and full recovery are verified. A correct SHA-256 or device-reported CRC is not proof of vendor authenticity. No image URL/password is collected and no firmware download, erase or upload occurs in this beta.",
+        "",
+        "Receiver T4_RADIO_RD/WR envelopes alone do not establish native memory rows, certificates, rolling codes, receiver identity or channel authorization. Their raw data is never probed or retained. NHK paired-user approval is a separate feature from physical remote enrollment. Existing BlueBus diagnostic readings are separate from programming a new device search.",
+        "",
+        "Additional BusT4 installer, receiver, CORE, ProView and phone NFC paths have explicit adapter/gap boundaries. A phone-only API is not automatically available through the existing NHK transport. Controller replacement needs the recovered motor-then-logic sequence plus native status decoding and T4Source rebinding. CTRL_RESET in the recovered ListDeviceCommand may clear a previous command; its name cannot authorize a factory reset.",
+        "",
+        "Source basis: Pro 2.18 FirmwareManagerImpl, T4UpdateBoot1Requests, FwInterfaceRequest/Response, FwDevice, T4UpdateStatus, T4DiscoveryProcedure, InstallationProcedure/InstallationFinder, receiver procedures and InterfaceFirmwareUpgradeHelper. The source index refines reviewed roots to these semantic destinations without treating app enum ordinals as wire codes. Matching native libraries, complete installation model assets, authenticated firmware images and the missing recovery captures are absent from the supplied exports. Other screen/domain entries retain their initial inventory routing for phase 8 closure.",
+        "",
+        "## Beta checks",
+        "",
+        "Update and restart HA; preserve current calibration and controller programming. Check ordinary controls, position, parameters and connection recovery. Use advertised-device inspection and configuration snapshots, compare their fields/counts with the app and download sanitized diagnostics. Bootloader inspection is optional on a suitable stationary test installation with other apps closed; an unsupported response is useful evidence and must not trigger writes. Do not use a production gate to test blocked learning, reset, enrollment, restore or firmware operations. No physical mutation was performed during implementation; active workflows still need appropriate hardware validation.",
+        "",
+    ]
     return {
         "docs/app_parity.md": "\n".join(lines) + "\n",
         "docs/protocol_gaps.md": "\n".join(gaps),
         "docs/controller_configuration.md": "\n".join(configuration),
         "docs/diagnostic_parity.md": "\n".join(diagnostic_lines),
+        "docs/installer_lifecycle.md": "\n".join(installer_lines),
     }
 
 

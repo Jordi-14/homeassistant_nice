@@ -132,6 +132,7 @@ class AccessManagement:
         scope = self.scope
 
         def guard():
+            self._owner.lifecycle.require_idle_at_dispatch()
             self.stationary_guard()
             if generation != self._owner.observations.generation or scope != getattr(
                 self._owner.client, "access_session_scope", None
@@ -149,6 +150,7 @@ class AccessManagement:
             raise HomeAssistantError(
                 "Ownership transfer and record deletion are unresolved"
             )
+        self._owner.lifecycle.require_idle()
         self.stationary_guard()
         await self.async_refresh()
         credentials = self._owner.entry_config.credentials

@@ -8,6 +8,7 @@ from homeassistant.config_entries import OptionsFlow
 from homeassistant.helpers import selector
 
 from .protocol.nhk.access import UserRole
+from .installer_catalog import PROCEDURES, PROCEDURES_BY_KEY
 from .runtime import get_coordinator
 
 
@@ -19,6 +20,7 @@ class NiceAccessOptionsFlow(OptionsFlow):
         self._operation = None
         self._role = None
         self._targets = []
+        self._installer_key = None
 
     def _owner(self):
         if getattr(self._entry, "runtime_data", None) is None:
@@ -32,6 +34,9 @@ class NiceAccessOptionsFlow(OptionsFlow):
             step_id="init",
             menu_options=[
                 "inspect_users",
+                "installer",
+                "installer_recovery",
+                "installer_cancel",
                 "approve_user",
                 "edit_user",
                 "identify",
@@ -210,3 +215,89 @@ class NiceAccessOptionsFlow(OptionsFlow):
 
     async def async_step_ownership(self, user_input=None):
         return self.async_abort(reason="ownership_workflow_unverified")
+
+    async def async_step_installer(self, user_input=None):
+        if self._owner() is None:
+            return self.async_abort(reason="not_loaded")
+        if user_input is not None:
+            key = user_input.get("procedure")
+            if key not in PROCEDURES_BY_KEY:
+                return self.async_abort(reason="invalid_installer_procedure")
+            self._installer_key = key
+            return await self.async_step_installer_action()
+        return self.async_show_form(
+            step_id="installer",
+            data_schema=vol.Schema({vol.Required("procedure"): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=[selector.SelectOptionDict(value=p.key, label=p.title) for p in PROCEDURES], mode=selector.SelectSelectorMode.DROPDOWN)
+            )}),
+        )
+
+    async def async_step_installer_action(self, user_input=None):
+        owner = self._owner()
+        if owner is None:
+            return self.async_abort(reason="not_loaded")
+        spec = PROCEDURES_BY_KEY.get(self._installer_key)
+        if spec is None:
+            return await self.async_step_installer()
+        if spec.gaps:
+            from .feature_catalog import GAPS_BY_KEY
+            if user_input is not None:
+                return await self.async_step_installer()
+            return self.async_show_form(
+                step_id="installer_action", data_schema=vol.Schema({}),
+                description_placeholders={"operation": spec.title, "details": "\n\n".join(GAPS_BY_KEY[g].missing + " " + GAPS_BY_KEY[g].completion for g in spec.gaps)},
+                errors={"base": "installer_binding_unavailable"},
+            )
+        errors = {}
+        if user_input is not None:
+            if not user_input.get("confirm"):
+                errors["base"] = "installer_confirmation_required"
+            else:
+                try:
+                    await owner.lifecycle.async_run(spec.key, confirmed=True)
+                except Exception:
+                    errors["base"] = "installer_operation_failed"
+                else:
+                    return self.async_show_form(
+                        step_id="installer_result", data_schema=vol.Schema({}),
+                        description_placeholders={"operation": spec.title, "summary": owner.lifecycle.summary()},
+                    )
+        return self.async_show_form(
+            step_id="installer_action",
+            data_schema=vol.Schema({vol.Required("confirm", default=False): selector.BooleanSelector()}),
+            description_placeholders={"operation": spec.title, "details": f"Prerequisites: {', '.join(spec.prerequisites) or 'configured access'}. {spec.completion}. Recovery: {spec.recovery}."},
+            errors=errors,
+        )
+
+    async def async_step_installer_result(self, user_input=None):
+        return await self.async_step_init()
+
+    async def async_step_installer_recovery(self, user_input=None):
+        owner = self._owner()
+        if owner is None:
+            return self.async_abort(reason="not_loaded")
+        errors = {}
+        if user_input is not None:
+            try:
+                await owner.lifecycle.async_acknowledge_recovery(confirmed=user_input.get("confirm", False))
+            except Exception:
+                errors["base"] = "installer_recovery_failed"
+            else:
+                return await self.async_step_init()
+        return self.async_show_form(
+            step_id="installer_recovery",
+            data_schema=vol.Schema({vol.Required("confirm", default=False): selector.BooleanSelector()}),
+            errors=errors,
+        )
+
+    async def async_step_installer_cancel(self, user_input=None):
+        owner = self._owner()
+        if owner is None:
+            return self.async_abort(reason="not_loaded")
+        if user_input is not None:
+            try:
+                owner.lifecycle.runner.request_cancel()
+            except Exception:
+                return self.async_abort(reason="installer_cancel_unavailable")
+            return await self.async_step_init()
+        return self.async_show_form(step_id="installer_cancel", data_schema=vol.Schema({}))

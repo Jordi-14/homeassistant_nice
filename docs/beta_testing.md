@@ -193,3 +193,33 @@ See [diagnostic contracts and gaps](diagnostic_parity.md) for retention, redacti
   controller identifiers, device passwords, setup codes, SSIDs or keys.
 
 See [Onboarding and module access](onboarding_access.md) for the complete contract.
+
+## Phase 6: v0.9.0b9
+
+- Existing entries and enabled entity selections should stay intact. The two new
+  diagnostic sensors start disabled. No installer procedure starts on upgrade.
+- Check normal open/Stop/close, position animation, parameters, local connection
+  and recovery. No new calibration or controller relearning is needed.
+- Open Configure > Installer procedures and device lifecycle. Inspect advertised
+  devices and compare their model/hardware/firmware with MyNice. The count is only
+  the NHK INFO list; it is not a full BusT4, receiver-memory or BlueBus scan.
+- Capture a configuration observation snapshot and download diagnostics. Its
+  partial status, capture time, per-value observation time and non-restorable
+  status must be clear. No extra parameter reads or writes should occur.
+- Check unavailable learning/reset/enrollment/restore/update entries. They should
+  explain the missing evidence and return without sending a device request.
+- Optional bootloader inspection needs a local, stationary supported interface,
+  verified administrator access and a suitable test setup with other apps closed.
+  Unsupported read responses remain errors. No controller should enter boot mode,
+  stage an image, erase flash or start programming. Reported progress has no assumed
+  percent unit. A known RUN observation holds new movement/admin actions in the
+  current runtime until a definitive fresh status; Stop remains allowed.
+- Restart and interrupted-restart recovery need a suitable visible test device.
+  The result proves command acknowledgement, not an independently measured reboot.
+  Never repeat an uncertain restart to test whether it might have been delivered.
+  Use inspection and explicit recovery acknowledgement instead.
+- Check that diagnostics contain no serial numbers from the new inventory, remote
+  identifiers/certificates/codes, firmware bytes, vendor signatures or raw frames.
+
+See [Installer workflows and device lifecycle](installer_lifecycle.md). Existing
+HA animation calibration does not perform controller position/force programming.

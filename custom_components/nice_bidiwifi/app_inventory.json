@@ -31,9 +31,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "controller.configuration",
-      "phase": 3,
-      "gaps": []
+      "destination": "installer.update_controller_firmware",
+      "phase": 6,
+      "gaps": [
+        "installer.controller_firmware"
+      ]
     },
     {
       "id": "pro.codec_or_menu.it.buildingapp.appoview.libraryt4.msg.T4Flags",
@@ -208,9 +210,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.radio_inspect",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.radio_memory"
+      ]
     },
     {
       "id": "pro.codec_or_menu.it.buildingapp.appoview.libraryt4.msg.T4RadioRead",
@@ -229,9 +233,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.radio_inspect",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.radio_memory"
+      ]
     },
     {
       "id": "pro.codec_or_menu.it.buildingapp.appoview.libraryt4.msg.T4RadioWRInterface",
@@ -476,9 +482,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.radio_inspect",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.radio_memory"
+      ]
     },
     {
       "id": "pro.codec_or_menu.it.buildingapp.appoview.libraryt4.msg.event.EvtT4RadioRead",
@@ -494,9 +502,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.radio_inspect",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.radio_memory"
+      ]
     },
     {
       "id": "pro.codec_or_menu.it.buildingapp.appoview.libraryt4.msg.event.EvtT4RadioWRInterface",
@@ -904,9 +914,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.update_interface_firmware",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.interface_firmware"
+      ]
     },
     {
       "id": "pro.codec_or_menu.it.twospecials.connection.wifi_interfaces.InterfaceFirmwareUpgradeHelper",
@@ -959,9 +971,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.update_interface_firmware",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.interface_firmware"
+      ]
     },
     {
       "id": "pro.codec_or_menu.it.twospecials.connection.wifi_interfaces.InterfaceManager",
@@ -1542,9 +1556,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.learn_positions",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.commissioning"
+      ]
     },
     {
       "id": "pro.codec_or_menu.it.twospecials.json_views.installation.InstallationRoot",
@@ -1600,9 +1616,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.learn_positions",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.commissioning"
+      ]
     },
     {
       "id": "pro.codec_or_menu.it.twospecials.json_views.installation.utils.InstallationFinder",
@@ -1619,10 +1637,11 @@
       "unrecovered_methods": [
         "it.twospecials.json_views.installation.utils.InstallationFinder.Companion.filterProcedures(long):java.util.List"
       ],
-      "destination": "installer.lifecycle",
+      "destination": "installer.learn_positions",
       "phase": 6,
       "gaps": [
-        "apps.unrecovered_methods"
+        "apps.unrecovered_methods",
+        "installer.commissioning"
       ]
     },
     {
@@ -5551,9 +5570,11 @@
       "members": [],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "controller.configuration",
-      "phase": 3,
-      "gaps": []
+      "destination": "installer.search_bluebus",
+      "phase": 6,
+      "gaps": [
+        "installer.commissioning"
+      ]
     },
     {
       "id": "pro.command.ctrl_search_devices",
@@ -5569,9 +5590,11 @@
       "members": [],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "controller.configuration",
-      "phase": 3,
-      "gaps": []
+      "destination": "installer.search_devices",
+      "phase": 6,
+      "gaps": [
+        "installer.commissioning"
+      ]
     },
     {
       "id": "pro.command.ctrl_search_positions",
@@ -5587,9 +5610,11 @@
       "members": [],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "controller.configuration",
-      "phase": 3,
-      "gaps": []
+      "destination": "installer.learn_positions",
+      "phase": 6,
+      "gaps": [
+        "installer.commissioning"
+      ]
     },
     {
       "id": "pro.command.ctrl_sensitivity_closing",
@@ -8239,8 +8264,8 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "controller.configuration",
-      "phase": 3,
+      "destination": "installer.inspect_boot",
+      "phase": 6,
       "gaps": []
     },
     {
@@ -9081,9 +9106,11 @@
       "members": [],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.radio_inspect",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.radio_memory"
+      ]
     },
     {
       "id": "pro.event_handler.it.buildingapp.appoview.libraryt4.listeners.T4RadioWriteEventListener",
@@ -10148,9 +10175,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.replace_controller",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.replacement"
+      ]
     },
     {
       "id": "pro.procedure.it.twospecials.connection.t4procedures.control_units.T4ResetToSparePartsProcedure",
@@ -10177,9 +10206,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.replace_controller",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.replacement"
+      ]
     },
     {
       "id": "pro.procedure.it.twospecials.connection.t4procedures.control_units.T4SetListValueProcedure",
@@ -10278,9 +10309,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.radio_inspect",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.radio_memory"
+      ]
     },
     {
       "id": "pro.procedure.it.twospecials.connection.t4procedures.radio.RadioReceiverResetProcedure",
@@ -10301,9 +10334,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.radio_reset",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.radio_mutation"
+      ]
     },
     {
       "id": "pro.procedure.it.twospecials.connection.t4procedures.radio.RadioReceiverSetCertificatesProcedure",
@@ -10318,9 +10353,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.radio_enroll",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.radio_mutation"
+      ]
     },
     {
       "id": "pro.procedure.it.twospecials.connection.t4procedures.radio.RadioSetCodeProcedure",
@@ -10340,9 +10377,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.radio_enroll",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.radio_mutation"
+      ]
     },
     {
       "id": "pro.procedure.it.twospecials.connection.t4procedures.scan.BroadcastFoundDevice",
@@ -10486,9 +10525,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "controller.configuration",
-      "phase": 3,
-      "gaps": []
+      "destination": "installer.update_controller_firmware",
+      "phase": 6,
+      "gaps": [
+        "installer.controller_firmware"
+      ]
     },
     {
       "id": "pro.request.it.buildingapp.nice.nhkconnectionlibrary.xml.element.ConfigRequest",
@@ -10557,9 +10598,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.reset_interface",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.reset"
+      ]
     },
     {
       "id": "pro.request.it.buildingapp.nice.nhkconnectionlibrary.xml.requests.NHKFactoryResetRequest",
@@ -10577,9 +10620,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.reset_interface",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.reset"
+      ]
     },
     {
       "id": "pro.request.it.buildingapp.nice.nhkconnectionlibrary.xml.requests.NHKFtpPutRequest",
@@ -10674,9 +10719,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.reset_interface",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.reset"
+      ]
     },
     {
       "id": "pro.request.it.buildingapp.nice.nhkconnectionlibrary.xml.requests.WNCBaseRequest",
@@ -11612,9 +11659,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.learn_positions",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.commissioning"
+      ]
     },
     {
       "id": "pro.request.it.twospecials.networking.requests.configurations.GetConfigurationPrivacyRequest",
@@ -12810,9 +12859,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.radio_inspect",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.radio_memory"
+      ]
     },
     {
       "id": "pro.response.it.buildingapp.appoview.libraryt4.msg.T4RadioWriteResponse",
@@ -12983,9 +13034,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "controller.configuration",
-      "phase": 3,
-      "gaps": []
+      "destination": "installer.update_controller_firmware",
+      "phase": 6,
+      "gaps": [
+        "installer.controller_firmware"
+      ]
     },
     {
       "id": "pro.response.it.buildingapp.appoview.libraryt4.xml.responses.T4UpdateBoot1Response",
@@ -13001,9 +13054,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "controller.configuration",
-      "phase": 3,
-      "gaps": []
+      "destination": "installer.update_controller_firmware",
+      "phase": 6,
+      "gaps": [
+        "installer.controller_firmware"
+      ]
     },
     {
       "id": "pro.response.it.buildingapp.nice.nhkconnectionlibrary.xml.element.ConfigResponse",
@@ -13075,9 +13130,11 @@
       "members": [],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.reset_interface",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.reset"
+      ]
     },
     {
       "id": "pro.response.it.buildingapp.nice.nhkconnectionlibrary.xml.responses.NHKConnectResponse",
@@ -14449,9 +14506,11 @@
       "members": [],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.learn_positions",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.commissioning"
+      ]
     },
     {
       "id": "pro.response.it.twospecials.networking.responses.configurations.GetConfigurationPrivacyResponse",
@@ -30376,9 +30435,11 @@
       "members": [],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.update_controller_firmware",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.controller_firmware"
+      ]
     },
     {
       "id": "pro.supporting_class.it.buildingapp.appoview.libraryt4.FirmwareManagerImpl",
@@ -30400,9 +30461,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.update_controller_firmware",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.controller_firmware"
+      ]
     },
     {
       "id": "pro.supporting_class.it.buildingapp.appoview.libraryt4.LibraryManager",
@@ -31750,9 +31813,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "controller.configuration",
-      "phase": 3,
-      "gaps": []
+      "destination": "installer.update_controller_firmware",
+      "phase": 6,
+      "gaps": [
+        "installer.controller_firmware"
+      ]
     },
     {
       "id": "pro.supporting_class.it.buildingapp.appoview.libraryt4.xml.requests.T4UpdateBoot1Requests",
@@ -31774,9 +31839,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "controller.configuration",
-      "phase": 3,
-      "gaps": []
+      "destination": "installer.update_controller_firmware",
+      "phase": 6,
+      "gaps": [
+        "installer.controller_firmware"
+      ]
     },
     {
       "id": "pro.supporting_class.it.buildingapp.nfcmodule.nfc.Credits",
@@ -42316,7 +42383,7 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.inspect_boot",
       "phase": 6,
       "gaps": []
     },
@@ -42370,9 +42437,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.update_controller_firmware",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.controller_firmware"
+      ]
     },
     {
       "id": "pro.supporting_class.it.twospecials.connection.helpers.radio_receivers.ProviewReceiverCacheManager",
@@ -43852,10 +43921,11 @@
         "it.twospecials.connection.t4_discovery.T4DiscoveryProcedure.C01672.apply(java.util.List):java.util.Map",
         "it.twospecials.connection.t4_discovery.T4DiscoveryProcedure.buildControlUnit(it.buildingapp.appoview.libraryt4.msg.T4Source, it.twospecials.connection.t4_discovery.T4DiscoveryProcedure$BroadcastControlUnit):it.twospecials.data.tables.control_units.ControlUnit"
       ],
-      "destination": "setup.access",
-      "phase": 5,
+      "destination": "installer.discover_bus",
+      "phase": 6,
       "gaps": [
-        "apps.unrecovered_methods"
+        "apps.unrecovered_methods",
+        "installer.bus_discovery"
       ]
     },
     {
@@ -44860,9 +44930,11 @@
       ],
       "native_methods": [],
       "unrecovered_methods": [],
-      "destination": "installer.lifecycle",
+      "destination": "installer.firmware_catalog",
       "phase": 6,
-      "gaps": []
+      "gaps": [
+        "installer.firmware_catalog"
+      ]
     },
     {
       "id": "pro.supporting_class.it.twospecials.data.api.firmware.Firmware",
