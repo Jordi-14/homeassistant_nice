@@ -194,11 +194,11 @@ Indexed source dependencies: 0. Full references are in the source inventory.
 
 ## `diagnostics.automation_structure`
 
-Automation state structure layout is unverified.
+Automation status extended field semantics need hardware validation.
 
-Missing: The native T4AutomationState layout and format mapping are incomplete in the supplied evidence.
+Missing: The 04/01 native byte layout is decoded read-only; all-one flags, unknown codes and future layouts remain unverified. D3 is other diagnostics, not automation state.
 
-To unblock: Recover the exact structure, per-motor fields and app rendering with sanitized fixtures.
+To unblock: Compare reported flags and optional masks with app readouts on each controller; do not use unverified diagnostic fields as control guards.
 
 Indexed source dependencies: 0. Full references are in the source inventory.
 
@@ -206,7 +206,7 @@ Indexed source dependencies: 0. Full references are in the source inventory.
 
 Other/visual diagnostic layouts are unresolved.
 
-Missing: 04/D5 and 04/D6 names do not establish their complete structure or field semantics.
+Missing: 04/D3 other, 04/D5 visual and 04/D6 modular advanced-log names do not establish their complete structure or field semantics.
 
 To unblock: Recover native decoding or matching app INFO/value fixtures before enabling a reader.
 
@@ -246,7 +246,7 @@ Indexed source dependencies: 0. Full references are in the source inventory.
 
 Controller menu permissions need a verified wire decoder.
 
-Missing: The Java T4MenuEntry permission fields are recovered, but the binary STD_MENU decoder is native. Installer and ordinary-user rights cannot be inferred from INFO ranges.
+Missing: Native two-byte menu records are decoded for offline audit, but live framing/continuation and authenticated controller-role selection remain unverified. Record flags alone grant no writes.
 
 To unblock: Recover menu framing/continuation, native record decoding and account-role selection; test explicit denial before enabling additional writes.
 
@@ -294,9 +294,9 @@ Indexed source dependencies: 0. Full references are in the source inventory.
 
 ## `native.t4_library.pro_2_18`
 
-Pro native decoder audit and version association pending.
+Remaining native contracts and app-version association need audit.
 
-Missing: An arm64 libnative-lib.so and Pro split APK were supplied on 2026-11-25; their library bytes match. Exact app-version association, native contracts and hardware fixtures remain unverified.
+Missing: The supplied arm64 library matches its Pro split APK. Automation-state, raw menu-record and maneuver-slot contracts have static audits; other codecs, exact app-version association and model-specific hardware fixtures remain incomplete.
 
 To unblock: Verify the library against the Pro app version, audit native mappings and add sanitized request/reply fixtures before enabling bindings.
 

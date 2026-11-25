@@ -463,6 +463,18 @@
           "partial": "Partial",
           "failed": "Inspection failed"
         }
+      },
+      "diagnostic_automation_state": {
+        "name": "Controller automation state",
+        "state": {
+          "available": "Available",
+          "not_read": "Not read or no value",
+          "unsupported": "Unsupported operation",
+          "blocked": "Unverified format",
+          "stale": "Stale history",
+          "all_zero_unverified": "All-zero history, validity unknown",
+          "reported_slots": "Reported history slots"
+        }
       }
     }
   },

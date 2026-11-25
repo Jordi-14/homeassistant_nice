@@ -34,6 +34,7 @@ def maneuver_evidence(data: bytes | None, *, stale=False) -> dict:
         if all_zero or stale
         else sum(name not in {"ok", "undefined"} for name in names),
         "slot_order": "vendor_index_order_newest_unknown",
+        "decoder_basis": "native_0x1609c_and_Java_consumer_static_audit",
         "confidence": "reported_codes_firmware_validity_unverified",
         "physical_cause": "unknown",
     }

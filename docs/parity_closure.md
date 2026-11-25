@@ -69,6 +69,7 @@ An already loaded CORE entry can request the same reader from Configure. Non-COR
 
 | Matrix case | Evidence level | Scope | Remaining limit |
 | --- | --- | --- | --- |
+| native_phase1_readonly | static_native_and_software_fixture | 04/01 byte decoding, raw menu records without role grants, maneuver slot bounds, optional diagnostic observation ownership | No physical flag semantics, app-version association, live menu permissions, receiver operations or installer writes are established. |
 | upgrade_identity | software_fixture | Legacy/current entry migration, credential and entity-ID preservation, unload/reload fences | No registry migration is introduced by b11; fixtures do not establish every historical custom entity name. |
 | shared_wifi_routes | software_fixture | BiDi-WiFi, IT4WIFI, CU_WIFI and local/cloud/fallback serialization, no automatic write replay | All firmware/network variants have not been physically tested. |
 | position_and_motion | software_fixture | Sparse/live position, directional learned bands, 90% animation, stop/reversal and queued commands | Normal-use hardware confirmation remains part of the beta campaign; no unattended movement test is run. |
@@ -78,7 +79,7 @@ An already loaded CORE entry can request the same reader from Configure. Non-COR
 | ha_native_boundary | software_fixture | No duplicate organization/scheduler, fixed read-only cloud paths, correct category guard and secret cleanup | Cloud copies are not proof of device execution, timezone or an actual HA conflict. |
 | live_cloud_empty_account | live_scope_verified_content_pending | b10 beta feedback verified account/accessory binding and reported no configured records, but collection shapes were unrecognized | Raw replies were deliberately not retained. b11 supports explicit successful null collections and safe shape evidence; live content needs rechecking on b11. |
 | core_readonly | source_and_software_fixture | Recovered shared NHK session/TABLE_READ and version-bracketed rule/scene counts | No physical CORE target was supplied. Actuation, schedule interpretation and actual execution remain unverified. |
-| proview_nfc_native | source_only_blocked | ProView/NFC/receiver and model-specific native dependencies | No matching Pro native library/host adapter or new hardware fixture authorizes activation. |
+| proview_nfc_native | source_only_blocked | ProView/NFC/receiver and model-specific native dependencies | The supplied native library enables the audited read-only subset only; host adapters, receiver contracts and model-specific fixtures remain incomplete. |
 
 The matrix is machine-readable in [validation_matrix.json](../custom_components/nice_bidiwifi/validation_matrix.json); CI checks its regression references. Fixture/software success does not establish universal firmware compatibility. Installer mutations, full CORE/ProView control, missing native decoders and model-specific writes remain blocked with exact missing/completion records in the gap register. No live gate movement, relearning, reset, receiver enrollment, firmware write, cloud-resource change or HA-automation mutation was performed for closure.
 

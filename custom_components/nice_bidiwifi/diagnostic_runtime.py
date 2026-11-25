@@ -12,6 +12,7 @@ from .configuration import scalar_info_valid
 from .controller_catalog import ENUM_FUNCTIONS
 from .errors import NiceBidiError, NiceParameterError, NiceReadPreemptedError
 from .parameters import SupportState
+from .protocol.t4.automation import decode_automation_state
 from .protocol.t4.bluebus import decode_bluebus_devices
 from .protocol.t4.counters import decode_counter
 from .protocol.t4.io import decode_hardware_diagnostic, decode_io_diagnostic
@@ -53,21 +54,21 @@ DIAGNOSTICS = (
     DiagnosticDefinition(
         "automation_state",
         "Automation diagnostic structure",
-        (4, 0xD3),
-        None,
+        (4, 0x01),
+        "automation",
         "diagnostics.automation_structure",
     ),
     DiagnosticDefinition(
         "other",
         "Other controller diagnostics",
-        (4, 0xD5),
+        (4, 0xD3),
         None,
         "diagnostics.other_layouts",
     ),
     DiagnosticDefinition(
         "visual",
         "Visual controller diagnostics",
-        (4, 0xD6),
+        (4, 0xD5),
         None,
         "diagnostics.other_layouts",
     ),
@@ -139,6 +140,7 @@ class DiagnosticRuntime:
             ("hardware", "04/D2"),
             ("io", "04/D1"),
             ("inverter", "04/D4"),
+            ("automation_state", "04/01"),
         ):
             if (
                 status.fresh_registers is not None
@@ -165,7 +167,7 @@ class DiagnosticRuntime:
             observation = self._owner.parameters.observation_for(address)
             captured = observation.monotonic if observation else time.monotonic()
             result.update(
-                observed_monotonic=captured, received_at=datetime.now(UTC).isoformat()
+                observed_monotonic=captured, received_at=datetime.now(UTC).isoformat(), source="poll"
             )
             self._samples[key] = result
             self._attempts[key] = captured
@@ -305,7 +307,7 @@ class DiagnosticRuntime:
             owner.async_update_listeners()
             return
         info = owner.parameters.info_for(address)
-        if key not in {"bluebus", "maneuvers"}:
+        if key not in {"bluebus", "maneuvers", "automation_state"}:
             info = await owner.hass.async_add_executor_job(
                 partial(
                     owner.client.read_dmp_info, *definition.register, preemptible=True
@@ -425,6 +427,18 @@ class DiagnosticRuntime:
         owner.async_update_listeners()
 
     def _decode(self, definition, raw, info):
+        if definition.decoder == "automation":
+            values = decode_automation_state(raw)
+            return {
+                "state": "available" if values is not None else "unavailable",
+                "values": values or {},
+                "confidence": "native_and_Java_static_audit_hardware_validation_pending",
+                "layout": "CTRL_AUTOMATION_STATUS_byte_fields",
+                "field_semantics": "app_reported_interpretation_not_verified_procedure_state",
+                "flag_validity": "unverified_all_ones" if raw and len(raw) > 1 and raw[1] == 255 else "reported_when_present",
+                "physical_cause": "unknown",
+                "affects_control_or_permissions": False,
+            }
         if definition.decoder == "maneuvers":
             return maneuver_evidence(
                 raw,
@@ -557,7 +571,7 @@ class DiagnosticRuntime:
             captured = self._samples[key].get("observed_monotonic")
             result = {
                 **sample,
-                "source": "selective_get",
+                "source": sample.get("source", "selective_get"),
                 "age_seconds": max(0, round(time.monotonic() - captured, 3))
                 if captured is not None
                 else None,

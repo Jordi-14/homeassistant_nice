@@ -1,7 +1,7 @@
-"""Recovered app menu records and a blocked native wire-decoder contract.
+"""Decoded app menu fields, audited raw records and a blocked live role contract.
 
-The Java constructor consumes decoded fields, not raw DMP bytes. Parsing these
-fields must never be mistaken for having recovered the native STD_MENU codec.
+Raw records do not establish paging, command-ID mappings or an authenticated
+controller role. They cannot become session permissions without those contracts.
 """
 
 from __future__ import annotations
@@ -83,5 +83,41 @@ class MenuWireDecoder:
 
     def decode(self, payload: bytes) -> tuple[MenuEntry, ...]:
         raise NiceParameterError(
-            "STD_MENU wire decoder is unresolved; controller.menu_wire"
+            "Live STD_MENU framing and authenticated role are unresolved; controller.menu_wire"
         )
+
+
+@dataclass(frozen=True, slots=True)
+class NativeMenuRecord:
+    """One native two-byte record, with no authenticated role or app-ID guess."""
+
+    group: int
+    parameter: int
+    user_set: bool
+    user_get: bool
+    installer_set: bool
+    installer_get: bool
+    is_group: bool
+    indentation: int
+
+    @property
+    def binding(self) -> tuple[int, int]:
+        return self.group, self.parameter
+
+
+def decode_menu_records(payload: bytes, *, group: int) -> tuple[NativeMenuRecord, ...]:
+    """Audit-only decode of decompileMenu @0x226a4; it grants no permissions.
+
+    Native consumes flags/parameter pairs with the profile/group passed separately.
+    Mapping to obfuscated Java IDs, continuation and authenticated role selection
+    remain separate contracts. Reject odd/truncated input instead of the native
+    decoder's unchecked final-byte read.
+    """
+    if isinstance(group, bool) or not isinstance(group, int) or not 0 <= group <= 255:
+        raise NiceParameterError("Invalid menu group")
+    if len(payload) > 1024 or len(payload) % 2:
+        raise NiceParameterError("Truncated or oversized menu records")
+    return tuple(
+        NativeMenuRecord(group, payload[index + 1], *(bool(payload[index] & bit) for bit in (0x80, 0x40, 0x20, 0x10, 8)), payload[index] & 7)
+        for index in range(0, len(payload), 2)
+    )

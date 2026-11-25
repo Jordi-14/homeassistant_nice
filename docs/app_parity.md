@@ -166,7 +166,7 @@ Implementation, device support, permissions and current availability are separat
 | `diagnostics.screen.maneuvers` | implemented | 4 | diagnostic | none |
 | `diagnostics.screen.inverter` | implemented | 4 | diagnostic | none |
 | `diagnostics.screen.advanced_history` | implemented | 4 | diagnostic | diagnostics.advanced_history |
-| `diagnostics.screen.automation_state` | blocked | 4 | none | diagnostics.automation_structure |
+| `diagnostics.screen.automation_state` | implemented | 4 | diagnostic | diagnostics.automation_structure |
 | `diagnostics.screen.other` | blocked | 4 | none | diagnostics.other_layouts |
 | `diagnostics.screen.visual` | blocked | 4 | none | diagnostics.other_layouts |
 | `diagnostics.screen.test_history` | blocked | 4 | none | diagnostics.test_history |

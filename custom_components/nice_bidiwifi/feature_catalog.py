@@ -101,14 +101,14 @@ GAPS = (
     ),
     EvidenceGap(
         "diagnostics.automation_structure",
-        "Automation state structure layout is unverified",
-        "The native T4AutomationState layout and format mapping are incomplete in the supplied evidence.",
-        "Recover the exact structure, per-motor fields and app rendering with sanitized fixtures.",
+        "Automation status extended field semantics need hardware validation",
+        "The 04/01 native byte layout is decoded read-only; all-one flags, unknown codes and future layouts remain unverified. D3 is other diagnostics, not automation state.",
+        "Compare reported flags and optional masks with app readouts on each controller; do not use unverified diagnostic fields as control guards.",
     ),
     EvidenceGap(
         "diagnostics.other_layouts",
         "Other/visual diagnostic layouts are unresolved",
-        "04/D5 and 04/D6 names do not establish their complete structure or field semantics.",
+        "04/D3 other, 04/D5 visual and 04/D6 modular advanced-log names do not establish their complete structure or field semantics.",
         "Recover native decoding or matching app INFO/value fixtures before enabling a reader.",
     ),
     EvidenceGap(
@@ -132,7 +132,7 @@ GAPS = (
     EvidenceGap(
         "controller.menu_wire",
         "Controller menu permissions need a verified wire decoder",
-        "The Java T4MenuEntry permission fields are recovered, but the binary STD_MENU decoder is native. Installer and ordinary-user rights cannot be inferred from INFO ranges.",
+        "Native two-byte menu records are decoded for offline audit, but live framing/continuation and authenticated controller-role selection remain unverified. Record flags alone grant no writes.",
         "Recover menu framing/continuation, native record decoding and account-role selection; test explicit denial before enabling additional writes.",
     ),
     EvidenceGap(
@@ -161,8 +161,8 @@ GAPS = (
     ),
     EvidenceGap(
         "native.t4_library.pro_2_18",
-        "Pro native decoder audit and version association pending",
-        "An arm64 libnative-lib.so and Pro split APK were supplied on 2026-11-25; their library bytes match. Exact app-version association, native contracts and hardware fixtures remain unverified.",
+        "Remaining native contracts and app-version association need audit",
+        "The supplied arm64 library matches its Pro split APK. Automation-state, raw menu-record and maneuver-slot contracts have static audits; other codecs, exact app-version association and model-specific hardware fixtures remain incomplete.",
         "Verify the library against the Pro app version, audit native mappings and add sanitized request/reply fixtures before enabling bindings.",
     ),
     EvidenceGap(

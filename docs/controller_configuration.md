@@ -16,7 +16,7 @@ Additional configuration sensors are disabled by default. Enabling one requests 
 
 Indexed replies use exact target/index echoes and separate element entities. A generic element index is never labelled M1/M2 or converted to a combined gate percentage. Indexed writes stay blocked until the identity and write layout are verified. Arrays larger than the bounded element limit are not scanned.
 
-22 additional scalar/enum SET codecs are prepared behind mandatory session-scoped menu permissions, complete INFO and existing movement/calibration guards. The native menu wire decoder and role mapping are missing, so these additional writes remain read-only in shipped installations. They are not counted as writable app parity and no unavailable placeholder controls are added for them.
+22 additional scalar/enum SET codecs are prepared behind mandatory session-scoped menu permissions, complete INFO and existing movement/calibration guards. Raw native menu records can now be decoded offline, but live menu framing and authenticated role mapping remain unverified, so these additional writes remain read-only in shipped installations. They are not counted as writable app parity and no unavailable placeholder controls are added for them.
 
 ## Completing the missing permissions
 

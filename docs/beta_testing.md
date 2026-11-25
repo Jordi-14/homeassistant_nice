@@ -343,3 +343,26 @@ New native evidence: an arm64 Pro library and split APK were supplied on
 2026-11-25 and their library bytes match. Exported JNI names cover menu/INFO,
 hardware diagnostics, maneuver history and receiver codecs. Native contracts and
 exact version association still need audit; no new native binding is enabled in b14.
+
+## Native decoder phase 1: v0.9.0b15
+
+The [three-phase follow-up plan](native_decoder_plan.md) starts with read-only
+native decoders. See [audit scope and evidence](native_decoder_audit.md).
+
+Install b15 and restart HA. Optionally enable the disabled diagnostic entity
+**Controller automation state**. Its attributes show the reported status,
+diagnostic codes and only those optional fields present in the response. It uses
+04/01, not the old blocked D3 placeholder. Existing status polls can supply the
+snapshot; enabling the entity adds bounded, preemptible reads while stationary.
+Compare its information with the app during ordinary use and attach sanitized
+integration diagnostics if values differ. Preserve the raw values and the capture
+time; optional module masks are numbers, not guessed names for physical modules.
+
+Missing fields and unknown codes remain unknown. All-one flag bytes stay raw,
+without boolean conclusions. Readout freshness and source are explicit. These
+fields never change the cover, animation, permissions or programming interlocks.
+No controller setting, calibration, pairing or network change is required.
+
+Menu-record decoding is audit-only in this beta. It does not add menu reads,
+authenticate an installer role or unlock additional writes. Maneuver-slot decoding
+has a native audit but still cannot establish freshness or newest-slot order.

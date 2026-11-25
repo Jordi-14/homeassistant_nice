@@ -463,6 +463,18 @@
           "partial": "Parcial",
           "failed": "Fallada de la inspecció"
         }
+      },
+      "diagnostic_automation_state": {
+        "name": "Estat del controlador",
+        "state": {
+          "available": "Disponible",
+          "not_read": "Sense lectura o valor",
+          "unsupported": "Operació no compatible",
+          "blocked": "Format no verificat",
+          "stale": "Historial antic",
+          "all_zero_unverified": "Historial de zeros, validesa desconeguda",
+          "reported_slots": "Entrades d’historial reportades"
+        }
       }
     }
   },

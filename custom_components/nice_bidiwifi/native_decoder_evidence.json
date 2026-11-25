@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "artifact": {
+    "sha256": "874d0e1d0ff486a1297b465568f49d73bf55ec411e50589e4ccecec1536a88e0",
+    "bytes": 170472,
+    "architecture": "aarch64",
+    "build_id": "769d74ad8578a129c0450b6b754db9d4a107920c",
+    "exact_app_version_verified": false
+  },
+  "evidence_level": "static_native_and_Java_consumers_with_synthetic_regressions",
+  "universal_hardware_validation": false,
+  "contracts": [
+    {
+      "key": "automation_status",
+      "symbol": "Java_it_buildingapp_appoview_libraryt4_msg_info_Value_T4AutomationState_init",
+      "address": "0x141a8",
+      "symbol_bytes": 1492,
+      "binding": "04/01",
+      "decoder": "protocol/t4/automation.py",
+      "tests": "tests/test_native_decoders.py",
+      "runtime_access": "read_only_optional_diagnostic"
+    },
+    {
+      "key": "menu_records",
+      "symbol": "_Z13decompileMenuPhRih",
+      "address": "0x226a4",
+      "symbol_bytes": 928,
+      "decoder": "protocol/t4/menu.py",
+      "tests": "tests/test_native_decoders.py",
+      "runtime_access": "offline_only_no_role_or_write_grant"
+    },
+    {
+      "key": "maneuver_slots",
+      "symbol": "Java_it_buildingapp_appoview_libraryt4_msg_info_Value_T4AutomationLast8ManeuversStatus_init",
+      "address": "0x1609c",
+      "symbol_bytes": 1180,
+      "binding": "04/DA",
+      "decoder": "protocol/t4/maneuvers.py",
+      "tests": "tests/test_native_decoders.py",
+      "runtime_access": "existing_read_only_history_validity_unknown"
+    }
+  ]
+}
