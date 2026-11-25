@@ -293,3 +293,22 @@ while generation, identity, session and expiry remain valid. It does not extend
 permission lifetime. Explicit rejections, invalid replacements, expiry or resets
 still revoke grants. Tests cover retained fresh grants, expiry and reset during
 preemption, and diagnostics avoiding a duplicate menu poll.
+
+## Deferred task creation and startup recovery
+
+HA's create-task API defaults to eager execution, including at the declared
+2024.11 minimum version. A coroutine can finish before create() returns. Several
+runtime owners store the returned handle and clear it in the worker's finally
+block. With eager execution, an immediate startup guard failure can clear the
+field first, then overwrite it with the already-finished task, suppressing every
+later renewal. Empty metadata workers have the same ownership risk.
+
+RuntimeTasks now explicitly defers execution until the next loop turn. The caller
+can store its handle and the task owner can track it before the worker runs.
+Tests reproduce the old handle race and a menu renewal permanently blocked by an
+early stationary-state guard failure. The fix permits the later valid renewal.
+A separate test registers the Pro number through HA's entity component and calls
+the real number.set_value service wrapper with an unchanged value, verifying one
+mock device write and matching readback. That is software validation, not a claim
+of a confirmed live write. Gate command dispatch priorities and one-send rules
+remain unchanged.

@@ -172,3 +172,14 @@ rejections, changed scope, expired data and invalid replacement still revoke it.
 This addresses a transient unavailable-editor window encountered while checking
 an unchanged courtesy-light setting. The HA service skipped that attempt, so it
 was not counted as a confirmed hardware write.
+
+### Startup task ownership: v0.9.0b25
+
+The live b24 audit found the Pro editors enabled in the registry but unavailable
+in the websocket state/source maps. Its menu had no completed snapshot, a startup
+permission error and no active task. Two failing regressions reproduced HA eager
+task completion poisoning the stored handle. RuntimeTasks now defers background
+execution so owners record their handle before the worker can clear it. The
+software HA entity/service test also verifies that an unchanged Pro number value
+reaches exactly one mock device write and a verified readback. Live registration
+and delivery are checked separately after deployment.

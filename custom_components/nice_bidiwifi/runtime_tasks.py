@@ -15,7 +15,10 @@ class RuntimeTasks:
         if self.closed:
             coroutine.close()
             return None
-        task = self._hass.async_create_task(coroutine, name=name)
+        # A caller often stores this handle in its own _task field. Inline
+        # completion under HA's eager default can clear that field before
+        # the assignment and leave a finished task blocking future work.
+        task = self._hass.async_create_task(coroutine, name=name, eager_start=False)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return task

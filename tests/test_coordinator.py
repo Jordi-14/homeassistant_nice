@@ -669,6 +669,8 @@ async def test_command_returns_before_post_command_refresh_finishes(
     await asyncio.wait_for(instance.async_send_action("open"), timeout=1.0)
 
     assert client.actions == ["open"]
+    # The owned refresh starts on the next loop turn, after handle storage.
+    await asyncio.sleep(0)
     assert refresh_started is True
     release_refresh.set()
     await hass.async_block_till_done()
@@ -961,6 +963,7 @@ async def test_set_position_uses_display_position_when_status_position_is_sparse
     await instance.async_set_position(100)
 
     assert client.actions == ["open"]
+    await asyncio.sleep(0)
     assert refreshes == 1
     assert instance.position_simulation_action == "open"
 

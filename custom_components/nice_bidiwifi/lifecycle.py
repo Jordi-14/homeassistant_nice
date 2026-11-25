@@ -408,9 +408,16 @@ class LifecycleRuntime:
     def summary(self):
         record = self.runner.record
         state = record.state if record else "idle"
-        devices = len(self.inventory.devices) if self.inventory else 0
-        values = len(self.snapshot["parameters"]) if self.snapshot else 0
-        return f"Procedure state: {state}. Advertised devices: {devices}. Observed configuration values: {values}. Read-only details and missing bindings are included in integration diagnostics."
+        parts = [f"Procedure state: {state}."]
+        if record and record.key == "discover_bus" and self.bus_inventory is not None:
+            count = len(self.bus_inventory["devices"])
+            parts.append(f"BusT4 sources observed: {count} (partial inventory).")
+        elif self.inventory is not None:
+            parts.append(f"Advertised devices: {len(self.inventory.devices)}.")
+        if self.snapshot is not None:
+            parts.append(f"Observed configuration values: {len(self.snapshot['parameters'])}.")
+        parts.append("Read-only details and missing bindings are included in integration diagnostics.")
+        return " ".join(parts)
 
     def diagnostics(self):
         return {

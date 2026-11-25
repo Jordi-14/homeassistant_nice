@@ -56,3 +56,13 @@ binding also requires its layout, target, completion and interruption fixtures.
 Neither a native symbol nor a menu entry on its own establishes a complete physical
 procedure. No reset, learning, enrollment, removal, restore or firmware operation
 is performed automatically during upgrade, discovery or an inspection test.
+
+## Checked vendor-resource access
+
+The signed app's firmware-search, installation-procedure and category-list GET
+endpoints all returned HTTP 401 without an authorized Pro session. The public
+[Nice firmware page](https://www.niceforyou.com/uk/professional-area/software-firmware)
+offers a request form rather than a compatible image download. No request was
+submitted. A valid Pro catalog session, supplied matching export or compatible
+vendor image remains a concrete input needed for firmware/model eligibility work;
+the integration must not substitute a guessed SLIGHT alias or arbitrary image.
