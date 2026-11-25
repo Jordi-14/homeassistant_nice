@@ -348,33 +348,50 @@ class NiceBidiClient:
             preemptible=True,
         )
 
-    def _receiver_exchange_locked(self, group, parameter, payload=b"", *, flags=0x99):
+    def _receiver_exchange_locked(
+        self, group, parameter, payload=b"", *, flags=0x99, target=(0, 10)
+    ):
         from .protocol.t4.radio import build_receiver_request
 
         if self._should_yield is not None and self._should_yield():
             raise NiceReadPreemptedError("Receiver query yielded to queued work")
-        request = build_receiver_request(group, parameter, payload, flags=flags)
-        response, plains = self._t4_request_locked(
-            "DMP", request, 0, 10, self.t4_timeout_ms
+        request = build_receiver_request(
+            group, parameter, payload, flags=flags, target=target
         )
-        self._raise_response_error(response, "T4_REQUEST")
-        matches = [
-            reply
-            for plain in plains
-            if (
-                reply := checked_dmp_reply(
-                    plain,
-                    target=(0, 10),
-                    group=group,
-                    parameter=parameter,
-                    operation=flags & 0x7F,
-                )
+        try:
+            response, plains = self._t4_request_locked(
+                "DMP", request, *target, self.t4_timeout_ms
             )
-            is not None
-        ]
-        if len(matches) != 1:
-            raise NiceProtocolError("Receiver query requires one addressed reply")
-        return matches[0].value
+            self._raise_response_error(response, "T4_REQUEST")
+            matches = [
+                reply
+                for plain in plains
+                if (
+                    reply := checked_dmp_reply(
+                        plain,
+                        target=target,
+                        group=group,
+                        parameter=parameter,
+                        operation=flags & 0x7F,
+                    )
+                )
+                is not None
+            ]
+            if len(matches) != 1:
+                error = NiceProtocolError("Receiver query requires one addressed reply", code="receiver_reply_count")
+                error.inspection_evidence = {
+                    "payload_lengths": [len(plain) for plain in plains[:16]],
+                    "headers": [
+                        {"source": plain[4:6].hex(), "register": plain[9:11].hex(),
+                         "flags": plain[11], "sequence": plain[12], "status": plain[13]}
+                        for plain in plains[:16] if len(plain) >= 16 and plain[0] == 0x55
+                    ],
+                }
+                raise error
+            return matches[0].value
+        except NiceBidiError as error:
+            error.inspection_stage = f"{group:02X}/{parameter:02X}@{target[0]:02X}.{target[1]:02X}"
+            raise
 
     def _read_receiver_memory_page_locked(self, start, count):
         from .protocol.t4.radio import decode_memory_reply
@@ -385,7 +402,12 @@ class NiceBidiClient:
         records = []
         for position in range(start, start + count):
             raw = self._receiver_exchange_locked(10, 0x25, position.to_bytes(2, "big"))
-            record = decode_memory_reply(raw, expected_position=position)
+            try:
+                record = decode_memory_reply(raw, expected_position=position)
+            except NiceBidiError as error:
+                error.inspection_stage = "memory_record_decode"
+                error.inspection_evidence = {"response_size": len(raw), "requested_slot": position}
+                raise
             records.append(record.public_summary())
         if scope != (self._route_name, self.session_state.generation):
             raise NiceProtocolError("Receiver memory session changed")
@@ -410,39 +432,79 @@ class NiceBidiClient:
         from .protocol.t4.radio import RadioAuthContext, decode_radio_protocols
 
         scope = (self._route_name, self.session_state.generation)
-        if self._receiver_exchange_locked(0, 4) != b"\x0a":
-            raise NiceProtocolError("Receiver profile is not verified")
-        mac = self._receiver_exchange_locked(0, 7)
-        if len(mac) != 4:
-            raise NiceProtocolError(
-                "Receiver authentication identity has an unverified shape"
+        # CuProtocolsHandler uses the controller proxy, C1/BE/BF in group 04.
+        # External radio map symbols 6F/71/72 do not establish the same recipe.
+        target = (0, 3)
+
+        def exchange(group, parameter, payload=b"", *, flags=0x99):
+            try:
+                return self._receiver_exchange_locked(
+                    group, parameter, payload, flags=flags, target=target
+                )
+            except NiceBidiError as error:
+                error.inspection_stage = f"{group:02X}/{parameter:02X}@00.03"
+                raise
+
+        if exchange(0, 4) != b"\x04":
+            raise NiceUnsupportedError(
+                "Controller radio profile is not verified", code="controller_profile"
+            )
+        # Check advertised formats where available. INFO-not-implemented is
+        # distinct from a missing command: the native app supplies these layouts.
+        for parameter, size in ((0xC1, 4), (0xBE, 12), (0xBF, 12)):
+            try:
+                raw_info = exchange(4, parameter, flags=0x89)
+            except NiceResponseError as error:
+                if error.layer is ProtocolLayer.DMP and error.code == "F0":
+                    continue
+                raise
+            info = decode_dmp_info(raw_info)
+            if info is None or info.size != size or info.indexed:
+                raise NiceUnsupportedError(
+                    "Built-in radio metadata is unavailable",
+                    code=f"controller_radio_info_{parameter:02X}",
+                )
+        # A successful read confirms the challenge operation before any SET.
+        if len(exchange(4, 0xC1)) != 4:
+            raise NiceUnsupportedError(
+                "Controller challenge shape is unsupported", code="radio_nonce_shape"
+            )
+        mac = exchange(0, 7)
+        # The manufacturer's getDeviceT4MAC consumes the first four bytes,
+        # not necessarily the whole STD_MAC reply. Tail bytes stay private.
+        if not 4 <= len(mac) <= 32:
+            raise NiceUnsupportedError(
+                "Controller authentication identity shape is unsupported",
+                code="radio_identity_shape",
             )
         result = {}
-        for parameter, key in ((0x71, "supported"), (0x72, "enabled")):
+        for parameter, key in ((0xBE, "supported"), (0xBF, "enabled")):
             if before_dispatch is not None:
                 before_dispatch()
             nonce = secrets.randbits(32)
-            self._receiver_exchange_locked(
-                10, 0x6F, nonce.to_bytes(4, "little"), flags=0xA9
-            )
-            receiver_nonce = self._receiver_exchange_locked(10, 0x6F)
+            exchange(4, 0xC1, nonce.to_bytes(4, "little"), flags=0xA9)
+            receiver_nonce = exchange(4, 0xC1)
             if len(receiver_nonce) != 4:
-                raise NiceProtocolError("Receiver challenge has an unverified shape")
+                raise NiceUnsupportedError(
+                    "Controller challenge shape is unsupported",
+                    code="radio_nonce_shape",
+                )
             context = RadioAuthContext(
-                int.from_bytes(mac, "little"),
+                int.from_bytes(mac[:4], "little"),
                 0,
                 nonce,
                 int.from_bytes(receiver_nonce, "little"),
                 parameter,
             )
             signature = context.signature(b"").to_bytes(4, "little")
-            encrypted = self._receiver_exchange_locked(10, parameter, signature)
+            encrypted = exchange(4, parameter, signature)
             result[key] = decode_radio_protocols(encrypted, context)
         if scope != (self._route_name, self.session_state.generation):
-            raise NiceProtocolError("Receiver authentication session changed")
+            raise NiceParameterError("Receiver authentication session changed")
         return {
             "session_scope": scope,
-            "target": "00.0A",
+            "target": "00.03",
+            "receiver_kind": "controller_builtin",
             "state": "available",
             **result,
             "gate_configuration_changed": False,

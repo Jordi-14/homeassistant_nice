@@ -230,8 +230,8 @@ class LifecycleRuntime:
                 self.owner.client.read_receiver_memory_page, 0, 8
             )
             self._guard(self.runner._spec)
-            receiver.memory_page = receiver._accept_operator_result(
-                result, generation, observation_generation
+            receiver._store_operator_result(
+                "memory_page", result, generation, observation_generation
             )
             return {"observed_slots": 8, "complete_inventory": False}
 

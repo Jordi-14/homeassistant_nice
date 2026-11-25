@@ -7,10 +7,19 @@ from functools import partial
 from homeassistant.config_entries import OptionsFlow
 from homeassistant.helpers import selector
 
+from .errors import NiceResponseError, NiceReadPreemptedError, NiceUnsupportedError
 from .protocol.nhk.access import UserRole
 from .installer_catalog import PROCEDURES, PROCEDURES_BY_KEY
 from .runtime import get_coordinator
 from .controller_menu import CONF_PRO_CONTROLS
+
+
+def receiver_inspection_error(error):
+    if isinstance(error, NiceUnsupportedError) or isinstance(error, NiceResponseError) and error.unsupported:
+        return "receiver_inspection_unsupported"
+    if isinstance(error, NiceReadPreemptedError):
+        return "receiver_inspection_interrupted"
+    return "receiver_inspection_failed"
 
 
 class NiceAccessOptionsFlow(OptionsFlow):
@@ -67,8 +76,8 @@ class NiceAccessOptionsFlow(OptionsFlow):
             try:
                 value = await owner.receiver.async_inspect(background=False)
                 summary = str(value)
-            except Exception:
-                errors["base"] = "receiver_inspection_failed"
+            except Exception as error:
+                errors["base"] = receiver_inspection_error(error)
         return self.async_show_form(
             step_id="receiver_status",
             data_schema=vol.Schema({}),
@@ -88,8 +97,8 @@ class NiceAccessOptionsFlow(OptionsFlow):
                     user_input["start"], user_input["count"]
                 )
                 summary = "\n".join(str(row) for row in value["records"])
-            except Exception:
-                errors["base"] = "receiver_inspection_failed"
+            except Exception as error:
+                errors["base"] = receiver_inspection_error(error)
         return self.async_show_form(
             step_id="receiver_memory",
             errors=errors,
@@ -127,8 +136,8 @@ class NiceAccessOptionsFlow(OptionsFlow):
                     )
                     for name in ("supported", "enabled")
                 )
-            except Exception:
-                errors["base"] = "receiver_inspection_failed"
+            except Exception as error:
+                errors["base"] = receiver_inspection_error(error)
         return self.async_show_form(
             step_id="receiver_protocols",
             data_schema=vol.Schema({vol.Required("confirm", default=False): bool}),

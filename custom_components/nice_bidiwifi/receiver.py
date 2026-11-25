@@ -5,7 +5,12 @@ import asyncio
 from functools import partial
 import time
 
-from .errors import NiceParameterError
+from .errors import (
+    NiceParameterError,
+    NiceResponseError,
+    NicePermissionError,
+    NiceUnsupportedError,
+)
 from .models.capabilities import ProductFamily
 
 
@@ -21,6 +26,8 @@ class ReceiverRuntime:
         self._lock = asyncio.Lock()
         self.memory_page = None
         self.protocols = None
+        self.operator_errors = {}
+        self._operator_scopes = {}
 
     def invalidate(self):
         self.generation += 1
@@ -29,6 +36,8 @@ class ReceiverRuntime:
         self.scope = None
         self.memory_page = None
         self.protocols = None
+        self.operator_errors = {}
+        self._operator_scopes = {}
 
     async def async_inspect(self, *, background=True):
         async with self._lock:
@@ -55,6 +64,7 @@ class ReceiverRuntime:
                 owner.observations.closed
                 or generation != self.generation
                 or observation_generation != owner.observations.generation
+                or result.get("session_scope") is None
                 or result["session_scope"]
                 != getattr(owner.client, "access_session_scope", None)
             ):
@@ -84,6 +94,7 @@ class ReceiverRuntime:
             self.owner.observations.closed
             or generation != self.generation
             or observation_generation != self.owner.observations.generation
+            or result.get("session_scope") is None
             or result.get("session_scope")
             != getattr(self.owner.client, "access_session_scope", None)
         ):
@@ -93,45 +104,96 @@ class ReceiverRuntime:
         value["received_at"] = datetime.now(UTC).isoformat()
         return value
 
-    async def async_memory_page(self, start=0, count=8):
+    def _operator_context(self):
+        return (
+            self.generation,
+            self.owner.observations.generation,
+            getattr(self.owner.client, "access_session_scope", None),
+        )
+
+    def _store_operator_result(self, key, result, generation, observation_generation):
+        value = self._accept_operator_result(result, generation, observation_generation)
+        setattr(self, key, value)
+        self._operator_scopes[key] = self._operator_context()
+        self.operator_errors.pop(key, None)
+        return dict(value)
+
+    def _record_operator_error(self, key, error):
+        # Device exception text can contain request details. Keep only safe fields.
+        register = error.register if isinstance(error, NiceResponseError) else None
+        self.operator_errors[key] = {
+            "state": "unsupported"
+            if isinstance(error, NiceUnsupportedError)
+            or isinstance(error, NiceResponseError)
+            and error.unsupported
+            else "denied"
+            if isinstance(error, NicePermissionError)
+            else "unavailable",
+            "error_type": type(error).__name__,
+            "code": getattr(error, "code", None),
+            "stage": getattr(error, "inspection_stage", None),
+            "shape": getattr(error, "inspection_evidence", None),
+            "layer": getattr(error, "layer", None),
+            "register": "/".join(f"{part:02X}" for part in register)
+            if register is not None
+            else None,
+            "received_at": datetime.now(UTC).isoformat(),
+        }
+
+    async def _operator_read(self, key, operation):
         async with self._lock:
-            self.memory_page = None
-            await self._prepare_operator_read()
-            generation = self.generation
-            observation_generation = self.owner.observations.generation
-            result = await self.owner.hass.async_add_executor_job(
+            setattr(self, key, None)
+            self._operator_scopes.pop(key, None)
+            try:
+                await self._prepare_operator_read()
+                generation = self.generation
+                observation_generation = self.owner.observations.generation
+                guard = self.owner.access.mutation_guard()
+
+                def before_dispatch():
+                    if not self.owner.controller_menu.enabled:
+                        raise NiceParameterError("Pro controls were disabled")
+                    guard()
+
+                result = await self.owner.hass.async_add_executor_job(
+                    operation(before_dispatch)
+                )
+                return self._store_operator_result(
+                    key, result, generation, observation_generation
+                )
+            except Exception as error:
+                self._record_operator_error(key, error)
+                raise
+            finally:
+                self.owner.async_update_listeners()
+
+    async def async_memory_page(self, start=0, count=8):
+        return await self._operator_read(
+            "memory_page",
+            lambda guard: partial(
                 self.owner.client.read_receiver_memory_page, start, count
-            )
-            self.memory_page = self._accept_operator_result(
-                result, generation, observation_generation
-            )
-            return dict(self.memory_page)
+            ),
+        )
 
     async def async_protocols(self, *, confirmed=False):
         if not confirmed:
             raise NiceParameterError("Confirm the receiver authentication inspection")
-        async with self._lock:
-            self.protocols = None
-            await self._prepare_operator_read()
-            generation = self.generation
-            observation_generation = self.owner.observations.generation
-            guard = self.owner.access.mutation_guard()
+        return await self._operator_read(
+            "protocols",
+            lambda guard: partial(
+                self.owner.client.inspect_receiver_protocols, before_dispatch=guard
+            ),
+        )
 
-            def before_dispatch():
-                if not self.owner.controller_menu.enabled:
-                    raise NiceParameterError("Pro controls were disabled")
-                guard()
-
-            result = await self.owner.hass.async_add_executor_job(
-                partial(
-                    self.owner.client.inspect_receiver_protocols,
-                    before_dispatch=before_dispatch,
-                )
-            )
-            self.protocols = self._accept_operator_result(
-                result, generation, observation_generation
-            )
-            return dict(self.protocols)
+    def _operator_report(self):
+        current = self._operator_context()
+        return {
+            key: getattr(self, key)
+            if self._operator_scopes.get(key) == current
+            and not self.owner.observations.closed
+            else None
+            for key in ("memory_page", "protocols")
+        } | {"operator_errors": dict(self.operator_errors)}
 
     def report(self, *, include_memory=False):
         if self.snapshot is None:
@@ -141,7 +203,7 @@ class ReceiverRuntime:
                 "last_error": self.last_error,
             }
             if include_memory:
-                result.update(memory_page=self.memory_page, protocols=self.protocols)
+                result.update(self._operator_report())
             return result
         result = dict(self.snapshot)
         stale = (
@@ -160,5 +222,5 @@ class ReceiverRuntime:
         if stale:
             result["state"] = "stale"
         if include_memory:
-            result.update(memory_page=self.memory_page, protocols=self.protocols)
+            result.update(self._operator_report())
         return result

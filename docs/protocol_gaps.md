@@ -34,9 +34,9 @@ Indexed source dependencies: 1. Full references are in the source inventory.
 
 ## `installer.commissioning`
 
-Model-specific commissioning and learning sequences are incomplete.
+Model-specific commissioning still needs validated target mapping and physical completion.
 
-Missing: App InstallationProcedure models/views and InstallationFinder selection are not fully recovered; start-command symbols do not establish motor selection, terminal progress or abort semantics.
+Missing: The signed Pro APK recovered InstallationFinder and 15 bundled model groups. SLIGHTR10 is absent from the table; updated catalog/model mapping and supervised endpoint/motor validation remain missing.
 
 To unblock: Recover the complete model sequence, physical prerequisites, progress/abort and endpoint verification. Keep HA animation calibration separate.
 
@@ -44,11 +44,11 @@ Indexed source dependencies: 8. Full references are in the source inventory.
 
 ## `installer.radio_memory`
 
-Receiver memory layout and private-code handling are incomplete.
+Bulk and bidirectional receiver memory still need their own contracts.
 
-Missing: T4_RADIO_RD Memory fields are recovered, but model-specific rows may contain rolling codes, certificates and identifiers decoded by native code.
+Missing: Addressed OXI 0A/25 slot inspection now validates position/length and discards private identity/rolling codes. Bulk T4_RADIO_RD and PLN2+ records, inventory completeness and other receiver targets remain unverified.
 
-To unblock: Complete scoped receiver discovery, paging, row codecs and allowlisted redaction before reading or retaining memory.
+To unblock: Retain bounded inspection; add separately validated bulk/PLN2+ framing, target selection and redaction fixtures before expanding memory access.
 
 Indexed source dependencies: 7. Full references are in the source inventory.
 
@@ -66,7 +66,7 @@ Indexed source dependencies: 3. Full references are in the source inventory.
 
 App-compatible backup and restore are not verified.
 
-Missing: Read-only parameter observations omit receiver memory, indexed/native structures and ordered restoration/ownership rules.
+Missing: The complete Pro APK recovers receiver Backup.restoreFromBackup, including reset, PIN/settings, keys, certificates, remotes, bidirectional bindings and alias. Complete compatible sample archives, per-target layouts and recovery validation are still absent.
 
 To unblock: Recover complete app manifests, integrity checks, model/hardware/ownership compatibility and ordered restore/recovery. Never restore by replaying cached values.
 
@@ -76,7 +76,7 @@ Indexed source dependencies: 0. Full references are in the source inventory.
 
 Controller board replacement needs verified motor/logic state.
 
-Missing: The recovered spare-parts sequence resets motor then logic modules and may change T4Source. Native automation-state decoding and ownership transitions are missing.
+Missing: The recovered spare-parts sequence resets motor then logic modules and may change T4Source. Automation-state bytes are decoded, but motor/logic ownership transitions and recovery are not physically validated.
 
 To unblock: Complete model-specific state checks, rebinding and interrupted-transfer recovery; do not infer force-adaptation reset from position search.
 
@@ -96,7 +96,7 @@ Indexed source dependencies: 4. Full references are in the source inventory.
 
 Compatible vendor firmware discovery requires validated vendor access.
 
-Missing: Pro ControlUnitFirmwareApi records include model/board, published/test/deleted and file metadata, but authorized catalog and image provenance are not established.
+Missing: The signed Pro app identifies authenticated NiceApi firmware endpoints and metadata. The firmware search endpoint returns HTTP 401 without a Pro NiceAuthorization session; no compatible vendor image was supplied.
 
 To unblock: Complete authenticated catalog binding, eligibility, exact hardware matching and authenticated artifact provenance. Do not invent latest-version availability.
 
@@ -294,11 +294,11 @@ Indexed source dependencies: 0. Full references are in the source inventory.
 
 ## `native.t4_library.pro_2_18`
 
-Remaining native contracts and app-version association need audit.
+Remaining native/model contracts need individual validation.
 
-Missing: The supplied arm64 library matches its Pro split APK. Automation-state, raw menu-record and maneuver-slot contracts have static audits; other codecs, exact app-version association and model-specific hardware fixtures remain incomplete.
+Missing: The complete Pro 2.18 base and both arm64 splits have verified matching v2/v3 signer certificates, and the native bytes match. Audited read-only contracts are implemented; additional native procedures still require individual layout and model-specific hardware validation.
 
-To unblock: Verify the library against the Pro app version, audit native mappings and add sanitized request/reply fixtures before enabling bindings.
+To unblock: Extend the fingerprinted native audit and add sanitized request/reply and model-specific fixtures before enabling additional bindings.
 
 Indexed source dependencies: 30. Full references are in the source inventory.
 

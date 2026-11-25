@@ -5,7 +5,11 @@
     "bytes": 170472,
     "architecture": "aarch64",
     "build_id": "769d74ad8578a129c0450b6b754db9d4a107920c",
-    "exact_app_version_verified": false
+    "exact_app_version_verified": true,
+    "app_version": "v2.18 r188 - de23d200f-release",
+    "app_version_code": 20261008,
+    "apk_signer_sha256": "4d3ee4c411e18c709d66b456ddabd685bd0a847485d748f61d04c7571f1ad753",
+    "base_apk_sha256": "665e97f261db3904a990c5d22397d8fb99a73ca520234dd3b8df9daa14d5ebec"
   },
   "evidence_level": "static_native_and_Java_consumers_with_synthetic_regressions",
   "universal_hardware_validation": false,

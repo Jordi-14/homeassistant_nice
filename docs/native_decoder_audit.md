@@ -199,3 +199,29 @@ expiry. Permission renewal uses READBACK priority above optional diagnostics;
 STOP and CONTROL still take precedence and paging remains preemptible. A failed
 replacement still revokes the permission snapshot. Bounded memory inspection is
 also available through the existing installer lifecycle with shared redaction.
+
+
+## B21 correction: controller radio and external receiver are distinct
+
+The b20 runtime incorrectly applied external map symbols 0A/6F/71/72 to the
+reviewed challenge recipe. A deeper caller review establishes that
+Configuration.ProtocolSettingKey uses CuProtocolsHandler, whose supported/enabled
+queries are CONTROLLER_CODE_BMASK and CONTROLLER_EDITEDCODE_BMASK. ReceiverManager
+uses CONTROLLER_ADV_ABILITATION. These bind to 04/C1, 04/BE and 04/BF on the
+controller proxy, not 0A/6F/71/72 on the external OXI target.
+
+B21 removes those external authentication request bindings from the runtime
+allowlist. Built-in-radio inspection addresses controller 00.03, verifies profile
+04, checks C1/BE/BF INFO when implemented and requires a successful four-byte
+challenge GET before any nonce SET. Explicit INFO-not-implemented F0 can use the
+fingerprinted app's fixed layouts; command-not-found FD cannot. Nonces and MAC
+remain private, each query has its own challenge, and no uncertain SET is replayed.
+The app's getDeviceT4MAC consumes the first four STD_MAC bytes; b20's exact-length
+requirement was also unnecessarily restrictive and is corrected with bounds.
+
+The b20 live slot and capability attempts returned generic UI failures. Ordinary
+local gate control and all 35 Pro editors remained healthy afterward, with no
+controller setting or stored remote changed. B21 records sanitized error type,
+code/register and stage while excluding arbitrary exception text, and never
+exports an old-generation operator result as a current inspection. These changes
+allow the subsequent hardware attempts to establish actual supported scope.

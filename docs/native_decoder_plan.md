@@ -124,3 +124,20 @@ configuration writes, but are explicit, single-send and not silently replayed or
 moved to a second route after failure. Actual remote programming remains a separate
 supervised procedure. Slot summaries do not expose identity codes or rolling
 counters, and a page is never claimed as a complete backup.
+
+
+### Final-phase verification and completion points: v0.9.0b21
+
+B21 corrects signed capability inspection to the controller built-in radio
+04/C1/BE/BF path; b20 incorrectly targeted the external receiver using map symbols.
+Receiver inspection now retains only sanitized failure evidence, differentiates
+explicit unsupported replies from generic failures, and suppresses old-session
+operator results even before a passive snapshot exists. This makes hardware
+trial results diagnosable without exporting private codes or exception text.
+
+The complete signed Pro APK recovers InstallationFinder, bundled model groups,
+FirmwareManagerImpl and receiver backup/restore bodies. Their absence is no longer
+a blocker. The remaining contracts and exact inputs required to enable them are
+listed in [Phase 3 completion audit](phase3_completion.md). A feature still lacking
+its model/data/recovery contract stays unavailable. Publication does not mark
+physical learning, reset, restore, remote programming or firmware as validated.
