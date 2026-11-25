@@ -5,10 +5,13 @@ from __future__ import annotations
 import asyncio
 from collections import Counter
 from dataclasses import dataclass
+from datetime import timedelta
 from fractions import Fraction
 from functools import partial
 import time
 
+from homeassistant.core import callback
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.exceptions import HomeAssistantError
 
 from .controller_catalog import ENUM_FUNCTIONS, PARAMETERS_BY_KEY, ControllerParameter
@@ -19,6 +22,7 @@ from .protocol.t4.settings import ADDITIONAL_SETTINGS
 
 MAX_INDEXED_ELEMENTS = 16
 CONFIGURATION_REFRESH_SECONDS = 300
+CONFIGURATION_TICK_SECONDS = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +88,7 @@ class ControllerConfiguration:
         self._client_epoch = None
         self._pro_metadata_task = None
         self._pro_attempts = {}
+        self._remove_tick = None
 
     def sync_session(self):
         epoch = getattr(self._coordinator.client, "reconnect_count", None)
@@ -152,18 +157,56 @@ class ControllerConfiguration:
             self.definition(key)
         )  # preflight before task or bookkeeping changes
         self._watched[key] += 1
+        if self._remove_tick is None and not self._coordinator.observations.closed:
+            self._remove_tick = async_track_time_interval(
+                self._coordinator.hass,
+                self._tick,
+                timedelta(seconds=CONFIGURATION_TICK_SECONDS),
+            )
         self.schedule_refresh()
 
         def remove():
             self._watched[key] -= 1
             if self._watched[key] <= 0:
                 del self._watched[key]
+            if not self._watched:
+                self.close()
 
         return remove
 
+    def close(self):
+        if self._remove_tick is not None:
+            self._remove_tick()
+            self._remove_tick = None
+
+    @callback
+    def _tick(self, now):
+        if self._coordinator.observations.closed or not self._watched:
+            self.close()
+            return
+        self.schedule_refresh()
+
+    def _due_keys(self):
+        now = time.monotonic()
+        polling_disabled = self._coordinator.config_entry.pref_disable_polling
+        return sorted(
+            (
+                key
+                for key in self._watched
+                if key not in self._last_attempt
+                or not polling_disabled
+                and now - self._last_attempt[key] >= CONFIGURATION_REFRESH_SECONDS
+            ),
+            key=lambda key: self._last_attempt.get(key, float("-inf")),
+        )
+
     @property
     def menu_watched(self):
-        return any(self.definition(key).setting is not None and self.definition(key).setting.requires_menu_permission for key in self._watched)
+        return any(
+            self.definition(key).setting is not None
+            and self.definition(key).setting.requires_menu_permission
+            for key in self._watched
+        )
 
     def schedule_refresh(self):
         owner = self._coordinator
@@ -172,6 +215,8 @@ class ControllerConfiguration:
             or owner.observations.closed
             or owner.reported_moving
             or owner.calibration_controller.calibration_state == "running"
+            or owner.lifecycle.block_reason() is not None
+            or not self._due_keys()
         ):
             return
         if self._task is None or self._task.done():
@@ -181,19 +226,15 @@ class ControllerConfiguration:
 
     async def _refresh_watched(self):
         try:
-            # A small batch bounds background work; the session scheduler can
-            # yield before each INFO/GET. Later status polls continue the scan.
-            due = [
-                key
-                for key in self._watched
-                if time.monotonic() - self._last_attempt.get(key, float("-inf"))
-                >= CONFIGURATION_REFRESH_SECONDS
-            ]
-            # Unread first, then least recently attempted. Insertion order can
-            # starve later entities when a full sweep exceeds the refresh period.
-            due.sort(key=lambda key: self._last_attempt.get(key, float("-inf")))
-            for key in due[:3]:
-                if self._coordinator.reported_moving:
+            # Demand-owned ticks continue small batches even while ordinary
+            # gate status polling is idle. Fresh fields keep their 300s cadence.
+            for key in self._due_keys()[:3]:
+                if key not in self._watched:
+                    continue
+                if (
+                    self._coordinator.reported_moving
+                    or self._coordinator.lifecycle.block_reason() is not None
+                ):
                     break
                 try:
                     await self.async_refresh_parameter(key)

@@ -312,3 +312,22 @@ the real number.set_value service wrapper with an unchanged value, verifying one
 mock device write and matching readback. That is software validation, not a claim
 of a confirmed live write. Gate command dispatch priorities and one-send rules
 remain unchanged.
+
+## Watched parameter values have their own refresh driver
+
+The reload audit found INFO present but GET still unknown for the last watched
+settings: value loading was continued only by the gate's 25-second idle poll and
+could be delayed when that poll yielded. ControllerConfiguration now owns a
+five-second timer only while fields are watched. Each batch remains limited to
+three due fields, and successful fields keep the existing 300-second cadence.
+An empty due queue creates no task or network request.
+
+The timer pauses reads during movement, calibration or installer work. It closes
+when the last subscriber leaves and during coordinator shutdown. Unsubscribed
+fields are skipped before dispatch. Tests cover completion of a four-field queue
+without a gate poll, no repeat reads for fresh values, shutdown/subscriber cleanup,
+installer exclusion and waiting for movement to finish. This changes parameter
+read scheduling, not setting writes or movement command priority.
+
+The value reader honors HA's disabled-polling preference after its initial
+subscription read. This preference is checked without changing the config entry.

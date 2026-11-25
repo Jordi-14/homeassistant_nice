@@ -183,3 +183,15 @@ execution so owners record their handle before the worker can clear it. The
 software HA entity/service test also verifies that an unchanged Pro number value
 reaches exactly one mock device write and a verified readback. Live registration
 and delivery are checked separately after deployment.
+
+### Independent value loading: v0.9.0b26
+
+ControllerConfiguration owns a demand-driven refresh timer for watched fields,
+so pending current values no longer wait for successful idle gate polling. Batches,
+read priorities, per-field 300-second cadence and movement/calibration/installer
+exclusion remain. The timer stops with its subscribers or the config-entry owner.
+The live b25 courtesy-light transaction was acknowledged and read back as 60;
+b26 changes read scheduling only, so that hardware write is not repeated.
+
+HA's polling preference is retained: an initial demand read is allowed, and
+periodic value reads stop when polling is disabled for the entry.

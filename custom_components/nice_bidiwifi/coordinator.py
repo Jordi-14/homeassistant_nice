@@ -1209,6 +1209,7 @@ class NiceBidiDataUpdateCoordinator(
     async def async_shutdown(self) -> None:
         """Close the persistent connection."""
         self.observations.invalidate(close=True)
+        self.configuration.close()
         await self.ecosystem.async_close()
         await self.lifecycle.async_close()
         self.configuration.invalidate()
