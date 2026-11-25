@@ -209,6 +209,19 @@ custom_components/nice_bidiwifi
 
 Then restart Home Assistant.
 
+## Final parity report and compatibility
+
+The [parity closure report](docs/parity_closure.md) reconciles the supplied app
+inventory to implemented subsets, native HA equivalents, manufacturer-app
+workflows and explicit gaps. It distinguishes source/fixture evidence from live
+hardware validation and links the completion contract for each remaining gap.
+
+B11 also handles explicitly successful empty cloud replies, reports unavailable
+collections as a failed inspection, and retains only safe response-shape evidence.
+A separate count-only CORE table reader is available for an explicitly identified
+CORE endpoint; it does not activate generic CORE control or verify execution.
+The phase beta does not authorize a stable release or unknown device operations.
+
 ## HA stays in charge
 
 Use native HA areas, dashboards, groups, scenes/scripts, schedules, automations,

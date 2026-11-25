@@ -27,6 +27,11 @@ from custom_components.nice_bidiwifi.feature_catalog import (  # noqa: E402
 from custom_components.nice_bidiwifi.installer_catalog import (  # noqa: E402
     PROCEDURES,
 )
+from custom_components.nice_bidiwifi.parity import (  # noqa: E402
+    FAMILIES,
+    parity_summary,
+    validation_matrix,
+)
 from custom_components.nice_bidiwifi.protocol.t4.settings import (  # noqa: E402
     ADDITIONAL_SETTINGS,
 )
@@ -48,7 +53,7 @@ def documents() -> dict[str, str]:
         "",
         "Target: the combined capabilities of MyNice Welcome 1.3.1 and MyNice Pro 2.18 r188. This is an evidence and delivery inventory, not a claim of completed parity or universal hardware support.",
         "",
-        f"The supplied JADX exports contain {len(entries)} indexed primary source items. Alternate decompiler passes are deduplicated by relative Java path, preferring fewer unrecovered methods. Synthetic classes, generated bindings/navigation helpers and build resources are excluded. Supporting classes retain their methods so event paths and repository helpers are not silently omitted.",
+        f"The supplied JADX exports contain {len(entries)} indexed primary source items. Alternate decompiler passes are deduplicated by relative Java path, preferring fewer unrecovered methods. Synthetic classes, generated bindings/navigation helpers and build resources are excluded. Supporting classes retain their methods so event paths and repository helpers are not silently omitted. Two resource/build constants retained by the initial scan are explicitly marked generated references in the closure, not app capabilities.",
         "",
         "HA owns areas, dashboards, entity groups, scenes/scripts, schedules, automations, notifications and HA-user permissions. Native HA equivalents and manufacturer-app account operations are intentional dispositions, not incomplete copies of MyNice. See [HA-native integration and Nice automation visibility](ha_native_ecosystem.md).",
         "",
@@ -56,7 +61,7 @@ def documents() -> dict[str, str]:
         "",
         "Phase 5 setup and module-access behavior, recovery and blocked workflows are documented in [Onboarding and module access](onboarding_access.md).",
         "",
-        "The complete machine-readable index is [app_inventory.json](../custom_components/nice_bidiwifi/app_inventory.json). Every entry has a stable ID, app version, relative source path, SHA-256, public/native/unrecovered methods, delivery destination, phase and known gap dependencies. Destination assignment is an initial routing by source name; phase implementation must follow the actual call path and refine it. One source item can serve several user features. App IDs and enum constructors are not wire codes.",
+        "The complete machine-readable index is [app_inventory.json](../custom_components/nice_bidiwifi/app_inventory.json). Every entry has a stable ID, app version, relative source path, SHA-256, public/native/unrecovered methods, delivery destination, phase and known gap dependencies. The original destination is retained for provenance. The final per-source disposition, evidence limits, feature links and blockers are reconciled in [parity_inventory.json](../custom_components/nice_bidiwifi/parity_inventory.json); see [Parity closure](parity_closure.md). One source item can serve several user features. App IDs and enum constructors are not wire codes.",
         "",
         "## Source coverage",
         "",
@@ -363,7 +368,7 @@ def documents() -> dict[str, str]:
         "",
         "## Missing evidence and source basis",
         "",
-        "The read-only CORE adapter remains blocked before transport until targeting, current table versions/runtime state and schedule semantics are verified. Additional device adapters need category-specific control/state fixtures and transport. These are genuine gaps; HA-owned software and manufacturer-app account operations are deliberate boundaries. The source inventory routes reviewed home/scene/rule/account UI/API families to the corresponding dispositions; other entries retain their initial routing for phase 8 closure.",
+        "B11 provides an explicit count-only CORE table reader using the shared NHK session and source-backed TABLE_READ. It brackets snapshots with versions and retains no rows. Actual execution and schedule semantics remain unverified; this does not activate generic CORE gate/control adapters. See the parity closure guide for the standalone tool. Additional device adapters need category-specific control/state fixtures and transport. These are genuine gaps; HA-owned software and manufacturer-app account operations are deliberate boundaries. The source inventory routes reviewed home/scene/rule/account UI/API families to the corresponding dispositions; other entries retain their initial routing for phase 8 closure.",
         "",
         "Source basis: Welcome 1.3.1 NhkApiService, UserMacroDataResponse/Data/Home/Accessory/User, GetScenariosResponse, GetAllRulesResponse/RulesWithTimers, Rule/RuleTimer/Scenario and AutomationType, plus Scene/Rule/ScheduleRepositoryImpl device/cloud synchronization paths. No live account resources or gate settings were changed during implementation. New vendor inspection needs real read-only beta validation with an account associated with the configured accessory.",
         "",
@@ -372,6 +377,54 @@ def documents() -> dict[str, str]:
         "Update/restart HA without re-pairing or recalibrating. Check existing controls, IDs, position, registry choices and local recovery. Review already-observed controller modes with no cloud account. Optional cloud inspection should require consent, display source/age/uncertainty, clear secrets and leave all existing HA/Nice resources and connection policy unchanged. Compare record names/times privately with MyNice; diagnostics should contain only the safe summary. Blocked CORE readback must not open a connection. The new sensor starts disabled and does not initiate inspection.",
         "",
     ]
+    closure_summary = parity_summary()
+    closure_lines = [
+        "# Parity closure and compatibility limits",
+        "",
+        "Phase 8 reconciles the supplied Welcome 1.3.1 and Pro 2.18 r188 evidence to the approved integration boundary. It closes the software/inventory plan with explicit supported subsets and tested blockers; it does not assert universal hardware support or enable every app feature.",
+        "",
+        f"There are {closure_summary['source_items']} indexed evidence items, including models/utilities and generated references that are not standalone capabilities. The final machine-readable record for every source is [parity_inventory.json](../custom_components/nice_bidiwifi/parity_inventory.json). Original IDs, relative paths and SHA-256 are preserved. The source-backed build verifies all indexed file hashes. Static package/family and known-entry-point reconciliation is distinguished from runtime and physical validation; a source class can serve several operations and its entire method set is not claimed implemented.",
+        "",
+        "No generic planned or review_required source disposition is accepted by the closure generator. The index is documentation only and never drives device dispatch. Supported subsets still obey model, INFO format, role, field ownership, session and procedure checks. App enum ordinals are not wire addresses. HA-native software and manufacturer-app ownership/service functions remain deliberate boundaries, not missing duplicate implementations.",
+        "",
+        "## Evidence dispositions",
+        "",
+        "| Disposition | Source items | Meaning |",
+        "| --- | ---: | --- |",
+    ]
+    meanings = {"implemented":"Named reviewed action/setting path exists; device support/permissions remain separate", "implemented_read_only":"Scoped inspection path; no resource execution", "supported_subset":"Named runtime family exists with explicit additional gaps", "supported_read_only":"Read only with complete validated metadata", "supported_read_blocked_write":"Installer/menu permission evidence is missing", "blocked":"Named gap and negative execution boundary", "external_dependency":"A host/hardware/transport dependency remains unavailable", "ha_native":"Use native HA/Companion UI or software; no duplicate engine", "manufacturer_app":"Use the manufacturer app for vendor-only workflows/resources", "app_prototype":"App dummy/demo flow, not a verified operational protocol", "supporting_evidence":"Shared model/utility/container, not a standalone capability", "privacy_protected":"Secret/security material deliberately excluded from generic probe/export", "non_capability":"Sentinel or undefined enum item", "generated_reference":"Resource/build constant retained only for provenance"}
+    closure_lines.extend(f"| {key} | {count} | {meanings[key]} |" for key,count in sorted(closure_summary['dispositions'].items()))
+    closure_lines += ["", "## Capability families and extension boundaries", "", "| Family | Disposition | Existing feature links | Blocking evidence | Boundary |", "| --- | --- | --- | --- | --- |"]
+    closure_lines.extend(f"| {f.key} | {f.disposition} | {', '.join(f.features)} | {', '.join(f.gaps) or 'none by design'} | {f.boundary} |" for f in FAMILIES)
+    closure_lines += [
+        "", "## Source audit corrections", "",
+        "CORE protocol classes had been indexed as supporting classes. Their Java bodies show CoreProtocol inheriting NHKProtocolImpl and fixed TABLE_READ requests. The new reader implements rule/scene counts with table-version bracketing, rejects other endpoints/table names, and never sends table writes, execution, binding or gate-status probes. Private rows, names, RF codes, action lists and version strings are not exported. The generic CORE actuator profile remains unavailable; table content does not establish active execution, timezone, per-device mapping or all category-specific control/state semantics.",
+        "",
+        "Some Welcome alarm/configuration screens explicitly use DummyFlowsManager, DummyAlarmStatus and dummy initialization lists. They are recorded as app prototypes rather than fabricated alarm entities or claims that an operational alarm protocol is missing from this integration. Model/DTO support rows inherit the reviewed parent-flow disposition. Android resources/navigation/hardware surfaces are likewise separated from actual device capabilities.",
+        "",
+        "A live b10 read-only cloud test successfully authenticated and matched the accessory, but the collections were unrecognized despite the user reporting no configured resources. Raw responses had intentionally not been retained. B11 recognizes explicit successful null collections according to the SDK/repository contract; omission, error replies and mismatched scope remain unknown. Completely unknown replies now produce a failed inspection and an explicit collection error. Safe fixed-field shape evidence contains only types/presence/result flags, never arbitrary keys, values or raw bodies, so a subsequent read can resolve remaining schema differences without sharing secrets. A failed attempt preserves the original time of older valid data. This is not a claim that the live empty reply has already been fully validated on b11.",
+        "",
+        "## Explicit CORE inspection", "",
+        "For a separately identified CORE with existing approved NHK credentials, close competing app sessions and use `python scripts/inspect_core_tables.py --host CORE_IP --credentials PRIVATE_JSON --output NEW_REPORT.json`. The private JSON fields are username, password_hex (or password), target_mac and optional source_id. No account login, pairing, credentials on the command line, HA entry creation or resource import occurs. The report is count-only and has no raw/sensitive export flag. Use the known local endpoint and the same local TLS/NHK compatibility constraints documented for the integration. No CORE hardware was available during this implementation, so this path is source/fixture tested and needs read-only hardware beta validation.",
+        "",
+        "An already loaded CORE entry can request the same reader from Configure. Non-CORE configured entries are rejected before any table query. The tool does not make CORE a supported generic gate/actuator profile. Missing versions, continuation, unknown layouts or changes during the read reject the snapshot instead of displaying incoherent or false-zero counts.",
+        "",
+        "## Compatibility and real-device limits", "",
+        "| Matrix case | Evidence level | Scope | Remaining limit |", "| --- | --- | --- | --- |",
+    ]
+    closure_lines.extend(f"| {case['key']} | {case['level']} | {case['scope']} | {case['limitation']} |" for case in validation_matrix()['cases'])
+    closure_lines += [
+        "",
+        "The matrix is machine-readable in [validation_matrix.json](../custom_components/nice_bidiwifi/validation_matrix.json); CI checks its regression references. Fixture/software success does not establish universal firmware compatibility. Installer mutations, full CORE/ProView control, missing native decoders and model-specific writes remain blocked with exact missing/completion records in the gap register. No live gate movement, relearning, reset, receiver enrollment, firmware write, cloud-resource change or HA-automation mutation was performed for closure.",
+        "",
+        "## Extending a verified binding or adapter", "",
+        "See [Contributor completion examples](completion_examples.md). Source reconciliation and a filled number alone are not authorization. A simple action/parameter addition belongs in its catalog/profile/codec and relevant factory derives its entities; it must retain advertised support, permission and dispatch checks. A complex procedure must provide every step, target/ownership prerequisite, bounded completion, cancellation boundary and recovery contract. Unknown slots, failed freshness or missing recovery must remain negative tests before activation.",
+        "",
+        "## Reproduce the closure", "",
+        "Run `python scripts/reconcile_parity.py --check` and `python scripts/render_capabilities.py --check` with the test dependencies installed. To re-verify the private supplied exports, pass `--welcome /path/to/welcome-1.3.1 --pro /path/to/pro-2.18` to the reconciliation script. Only relative provenance, hashes and bounded symbolic evidence are retained, not app code or research/account exports. Changing a source hash requires a deliberate new evidence review; it cannot silently activate a feature.",
+        "",
+        "B11 is the phase testing beta. It does not authorize a stable release. Collect ordinary-use feedback and the outstanding matrix evidence before a separate release-candidate/stable readiness decision.", "",
+    ]
     return {
         "docs/app_parity.md": "\n".join(lines) + "\n",
         "docs/protocol_gaps.md": "\n".join(gaps),
@@ -379,6 +432,7 @@ def documents() -> dict[str, str]:
         "docs/diagnostic_parity.md": "\n".join(diagnostic_lines),
         "docs/installer_lifecycle.md": "\n".join(installer_lines),
         "docs/ha_native_ecosystem.md": "\n".join(ecosystem_lines),
+        "docs/parity_closure.md": "\n".join(closure_lines),
     }
 
 

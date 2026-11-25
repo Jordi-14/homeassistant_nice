@@ -572,6 +572,17 @@
       "ecosystem_controller": {
         "title": "Controller-owned behavior",
         "description": "Values HA has already read from the controller. No new read or setting change is performed. Unknown does not mean disabled. These functions can operate without HA; review any equivalent HA automation before changing anything. No conflict has been established.\n\n{records}"
+      },
+      "ecosystem_core": {
+        "title": "CORE table snapshot",
+        "description": "Reads versions, rules and scene tables, then checks versions again. Only counts are retained. This does not prove execution or interpret schedules, and no table is written or executed.",
+        "data": {
+          "confirm": "Allow this read-only CORE snapshot"
+        }
+      },
+      "ecosystem_core_result": {
+        "title": "CORE tables read",
+        "description": "Captured: {captured_at}. Rules: {rules}. Scene inputs: {scene_inputs}. Scene outputs: {scene_outputs}. Table versions were consistent. These counts do not prove execution or the number of active scenes."
       }
     },
     "error": {
@@ -586,7 +597,8 @@
       "installer_recovery_failed": "Recovery could not be acknowledged. Check device health and the model-specific requirements; no write will be replayed.",
       "ecosystem_consent_required": "Confirm the read-only inspection before connecting.",
       "ecosystem_invalid_login": "Enter a valid account and password.",
-      "ecosystem_inspection_failed": "The inspection could not complete. Check the account’s access to this accessory. Any previous capture keeps its original timestamp; no resource or integration connection policy was changed."
+      "ecosystem_inspection_failed": "The inspection could not complete. Check the account’s access to this accessory. Any previous capture keeps its original timestamp; no resource or integration connection policy was changed.",
+      "ecosystem_core_failed": "A coherent CORE table snapshot could not be captured. Nothing was written or executed."
     },
     "abort": {
       "not_loaded": "Load the integration before managing module access.",
@@ -595,7 +607,8 @@
       "ownership_workflow_unverified": "Manage cloud ownership and sharing in the manufacturer app. Physical deletion of module pairing records still lacks a verified transaction and recovery path. Promoting another module user to administrator is a separate operation.",
       "invalid_installer_procedure": "Invalid installer procedure.",
       "installer_cancel_unavailable": "The current step cannot be safely cancelled. No abort request was sent.",
-      "ecosystem_core_unverified": "CORE table/version/runtime inspection has no verified adapter. Cloud copies can be stale and do not prove device execution. No transport was started and no credentials were collected."
+      "ecosystem_core_unverified": "CORE table/version/runtime inspection has no verified adapter. Cloud copies can be stale and do not prove device execution. No transport was started and no credentials were collected.",
+      "ecosystem_core_requires_core": "This configured endpoint is not CORE. Table inspection requires an explicitly identified CORE endpoint. A documented standalone reader supports existing CORE credentials; this gate is not probed."
     }
   }
 }

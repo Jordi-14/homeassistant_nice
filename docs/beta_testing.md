@@ -250,3 +250,32 @@ HA animation calibration does not perform controller position/force programming.
 Use native HA for new organization and automation. Review and, if you choose,
 disable original Nice behavior in the manufacturer app before adding an equivalent
 HA action. CORE runtime verification remains explicitly unavailable.
+
+## Phase 8: v0.9.0b11
+
+- Update/restart with existing entries and registry selections. No re-pairing,
+  recalibration, controller relearning or resource import is required. Compare
+  ordinary controls, position, configuration values, roles and connection health.
+- Repeat optional read-only cloud inspection, especially an account with no Nice
+  records. An explicit successful null/list collection may report zero. Missing,
+  rejected, malformed or out-of-scope data must stay unknown. A completely unknown
+  inspection must no longer claim partial success with no error.
+- Share only standard sanitized diagnostics. The new response-shape evidence
+  contains fixed field types/presence/result flags, not raw replies, private keys,
+  names, schedules, resource IDs or account details. No new credential retention
+  or resource mutation is introduced for troubleshooting.
+- The explicit CORE reader needs existing CORE credentials and a suitable local
+  CORE endpoint with other app sessions closed. It reads INFO and TABLE_READ only,
+  compares table versions and exports counts. It must reject a non-CORE endpoint,
+  changed/missing versions or unsupported rows before claiming a coherent snapshot.
+  It never executes, edits, binds, resets or programs a device. The tool has only
+  source/fixture validation so far; actual CORE execution/timezone remains unknown.
+- Review `docs/parity_closure.md`, `docs/protocol_gaps.md` and the validation matrix.
+  Their dispositions are not claims of universal app or hardware support. Blocked
+  commissioning, receiver, firmware and per-motor operations remain blocked.
+- Use native HA for organization, automation and notification execution. Keep
+  vendor ownership/sharing and management of original Nice resources in the app.
+
+Collect normal-use feedback before a separate release-candidate/stable decision.
+No physical safety intervention, unattended movement or installer mutation test is
+required to validate the ordinary integration upgrade.

@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
+from .parity import parity_summary, validation_matrix
 from .feature_catalog import GAPS
 from .diagnostic_profiles import diagnostic_profile
 from .const import (
@@ -380,6 +381,8 @@ async def async_get_config_entry_diagnostics(
             if capabilities is not None
             else None
         ),
+        "parity_closure": parity_summary(),
+        "validation_matrix": validation_matrix(),
         "ecosystem": coordinator.ecosystem.diagnostics() if hasattr(coordinator, "ecosystem") else {},
         "installer_lifecycle": coordinator.lifecycle.diagnostics() if hasattr(coordinator, "lifecycle") else {},
         "access": coordinator.access.diagnostics() if hasattr(coordinator, "access") else {},

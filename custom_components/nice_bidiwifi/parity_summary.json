@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "source_items": 3939,
+  "all_sources_dispositioned": true,
+  "index_used_for_dispatch": false,
+  "apps": {
+    "pro": 2234,
+    "welcome": 1705
+  },
+  "dispositions": {
+    "supported_subset": 843,
+    "blocked": 822,
+    "generated_reference": 2,
+    "supported_read_only": 111,
+    "implemented": 44,
+    "supported_read_blocked_write": 22,
+    "privacy_protected": 9,
+    "non_capability": 1,
+    "external_dependency": 394,
+    "ha_native": 458,
+    "supporting_evidence": 628,
+    "manufacturer_app": 543,
+    "implemented_read_only": 8,
+    "app_prototype": 54
+  },
+  "families": {
+    "firmware": 130,
+    "controller": 694,
+    "diagnostics": 62,
+    "receiver": 285,
+    "module_access": 173,
+    "shared_evidence": 630,
+    "commissioning": 140,
+    "reset": 16,
+    "device_categories": 75,
+    "wifi_provisioning": 115,
+    "host_adapter": 394,
+    "phone_presentation": 185,
+    "backup": 68,
+    "vendor_account": 252,
+    "app_catalog": 62,
+    "vendor_resources": 229,
+    "ha_automation": 248,
+    "core": 94,
+    "ha_organization": 25,
+    "cloud_inspection": 8,
+    "app_prototype": 54
+  },
+  "hardware_validation": "See validation_matrix.json; source closure does not assert all app methods or hardware variants work."
+}

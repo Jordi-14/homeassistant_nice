@@ -244,7 +244,7 @@ async def test_unverified_core_readback_stops_before_any_transport(hass):
     with pytest.raises(NiceUnsupportedError):
         await CoreAutomationInspectionAdapter().read("unresolved-target")
     result = await flow.async_step_ecosystem_core()
-    assert result["reason"] == "ecosystem_core_unverified"
+    assert result["reason"] == "ecosystem_core_requires_core"
 
 
 async def test_non_cover_metadata_suppresses_a_gate_entity_even_with_generic_action_advertisement(

@@ -39,6 +39,8 @@ jobs:
           python -m json.tool custom_components/nice_bidiwifi/strings.json > /dev/null
           python -m json.tool custom_components/nice_bidiwifi/translations/en.json > /dev/null
           python -m json.tool custom_components/nice_bidiwifi/translations/ca.json > /dev/null
+      - name: Check source closure and compatibility references
+        run: python scripts/reconcile_parity.py --check
       - name: Check capability documentation
         run: python scripts/render_capabilities.py --check
       - name: Run tests
