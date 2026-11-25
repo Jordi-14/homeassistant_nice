@@ -16,7 +16,7 @@ Additional configuration sensors are disabled by default. Enabling one requests 
 
 Indexed replies use exact target/index echoes and separate element entities. A generic element index is never labelled M1/M2 or converted to a combined gate percentage. Indexed writes stay blocked until the identity and write layout are verified. Arrays larger than the bounded element limit are not scanned.
 
-22 additional scalar/enum settings use the reviewed controller bindings, complete INFO and fresh menu evidence. Explicit Pro controls mode selects the installer columns, following the reviewed Pro app path. Fresh module-admin access, stationary/calibration guards, target/session identity, exact ranges/options, one-send and readback checks remain mandatory. Device rejection is never overridden. Additional controls are enabled and visible when their metadata and menu support are verified; no controller value is changed simply by enabling the mode.
+35 additional scalar/enum settings use the reviewed controller bindings, complete INFO and fresh menu evidence. Explicit Pro controls mode selects the installer columns, following the reviewed Pro app path. Fresh module-admin access, stationary/calibration guards, target/session identity, exact ranges/options, one-send and readback checks remain mandatory. Device rejection is never overridden. Additional controls are enabled and visible when their metadata and menu support are verified; no controller value is changed simply by enabling the mode.
 
 ## Pro controls and authorization
 
@@ -58,7 +58,7 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_AUTOMATION_TYPE` | `04/00` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_BALANCING` | `04/34` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_BLOCK` | `unresolved` | existing action | existing t4.lock |
-| `CTRL_BLOCK_AUTOMATISM` | `04/9A` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_BLOCK_AUTOMATISM` | `04/9A` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_BRAKE_MODE` | `04/36` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_BRAKING_LEVEL` | `04/35` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_BURGLARY_LOOP_DETECT` | `04/EC` | blocked | controller.parameter_format |
@@ -78,13 +78,13 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_COURTESY_LIGHT_SWITCH_OFF` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_COURTESY_LIGHT_SWITCH_ON` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_DECELERATION` | `04/5F` | selective INFO/GET | reviewed setter binding required |
-| `CTRL_DECELERATIONS` | `04/A2` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DECELERATIONS` | `04/A2` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_DECELERATION_FORCE` | `04/4C` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_DECELERATION_FORCE_CLOSING` | `04/4E` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_DECELERATION_FORCE_OPENING` | `04/4D` | selective INFO/GET | reviewed setter binding required |
-| `CTRL_DECELERATION_POSITION_CLOSING` | `04/25` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DECELERATION_POSITION_CLOSING` | `04/25` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_DECELERATION_POSITION_INTERMEDIATE` | `04/26` | selective INFO/GET | reviewed setter binding required |
-| `CTRL_DECELERATION_POSITION_OPENING` | `04/24` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_DECELERATION_POSITION_OPENING` | `04/24` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_DELETE_MAPS_IN_MEMORY` | `04/3F` | blocked | controller.parameter_format |
 | `CTRL_DELETE_PARAMETERS` | `04/0C` | blocked | controller.parameter_format |
 | `CTRL_DIAGNOSTICS_BLUEBUS_DEVICES` | `04/D0` | blocked | controller.parameter_format |
@@ -175,28 +175,28 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_MAN_PRESENT_STOP_MOTOR_2` | `unresolved` | blocked | controller.action_binding |
 | `CTRL_MINIMUM_FREQUENCY` | `04/AC` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MODE_COMMAND` | `04/60` | blocked | controller.parameter_format |
-| `CTRL_MODE_COMMAND_ALT_CLOSE` | `04/6C` | selective INFO/GET | reviewed setter binding required |
-| `CTRL_MODE_COMMAND_ALT_OPEN` | `04/6B` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_ALT_CLOSE` | `04/6C` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_MODE_COMMAND_ALT_OPEN` | `04/6B` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_MODE_COMMAND_ALT_PRECLOSING` | `04/6E` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MODE_COMMAND_CLOSE` | `04/64` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_MODE_COMMAND_EMERGENCY` | `04/6F` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MODE_COMMAND_OPEN` | `04/63` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_MODE_COMMAND_OPEN_PARTIAL` | `04/62` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_MODE_COMMAND_PHOTO_1` | `04/6D` | selective INFO/GET | reviewed setter binding required |
-| `CTRL_MODE_COMMAND_PHOTO_3` | `04/6A` | selective INFO/GET | reviewed setter binding required |
-| `CTRL_MODE_COMMAND_PHOTO_CLOSE` | `04/68` | selective INFO/GET | reviewed setter binding required |
-| `CTRL_MODE_COMMAND_PHOTO_OPEN` | `04/69` | selective INFO/GET | reviewed setter binding required |
-| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_CLOSE` | `04/79` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_PHOTO_3` | `04/6A` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_MODE_COMMAND_PHOTO_CLOSE` | `04/68` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_MODE_COMMAND_PHOTO_OPEN` | `04/69` | selective INFO/GET | Pro controls + current menu/INFO |
+| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_CLOSE` | `04/79` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_DURING_CLOSING` | `04/77` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_DURING_OPENING` | `04/76` | selective INFO/GET | reviewed setter binding required |
-| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_OPEN` | `04/78` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_COMMAND_REVERSE_OBSTACLE_OPEN` | `04/78` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_MODE_COMMAND_STEPSTEP` | `04/61` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_MODE_COMMAND_STOP` | `04/65` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_MODE_DELAY_INVERSION_FOTO` | `04/66` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MODE_DELAY_INVERSION_RIB` | `04/67` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MODE_INPUT_PAUSE_TIME` | `04/7B` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MODE_INPUT_RECLOSE_AFTER_PHOTO` | `04/7A` | selective INFO/GET | reviewed setter binding required |
-| `CTRL_MODE_SLAVE` | `04/98` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_MODE_SLAVE` | `04/98` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_MODE_TRAFFIC_LIGHT_BLUEBUS` | `04/5D` | selective INFO/GET | reviewed setter binding required |
 | `CTRL_MODULAR_BOARD_OPERATIONS` | `04/B7` | blocked | controller.parameter_format |
 | `CTRL_ON_OFF_COURTESY_LIGHT` | `unresolved` | existing action | existing t4.courtesy_light |
@@ -270,7 +270,7 @@ Bindings below are cross-checked evidence, not universal device support or write
 | `CTRL_STANDBY_ACTIVATION` | `04/8C` | selective INFO/GET | existing scalar setter |
 | `CTRL_STANDBY_ACTIVATION_MODE` | `04/8E` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_STANDBY_ACTIVATION_TIME` | `04/8D` | selective INFO/GET | Pro controls + current menu/INFO |
-| `CTRL_STARTING_TORQUE` | `04/90` | selective INFO/GET | reviewed setter binding required |
+| `CTRL_STARTING_TORQUE` | `04/90` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_STARTING_TORQUE_TIME` | `04/91` | selective INFO/GET | Pro controls + current menu/INFO |
 | `CTRL_STEP_STEP` | `unresolved` | existing action | existing t4.step_step |
 | `CTRL_STEP_STEP_CONDOMINIUM` | `unresolved` | existing action | existing t4.apartment_step_step |

@@ -63,6 +63,7 @@ class ControllerMenu:
             return
         self._owner.async_update_listeners()
         self.schedule()
+        self._owner.configuration.schedule_pro_metadata()
 
     def schedule(self):
         owner = self._owner
@@ -197,6 +198,7 @@ class ControllerMenu:
             self.received_at = datetime.now(UTC).isoformat()
             owner.configuration.sync_session()
             self.apply_profile()
+            owner.configuration.schedule_pro_metadata()
             self.last_error = None
             owner.async_update_listeners()
             return snapshot

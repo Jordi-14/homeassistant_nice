@@ -2433,15 +2433,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_block_automation"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -3069,15 +3067,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_closing_slowdown_position"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -3125,15 +3121,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_opening_slowdown_position"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -3153,15 +3147,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_slowdown_enabled"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -5679,15 +5671,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_alt_close_mode"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -5707,15 +5697,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_alt_open_mode"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -5897,15 +5885,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_photo_3_mode"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -5925,15 +5911,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_photo_close_mode"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -5953,15 +5937,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_photo_open_mode"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -5981,15 +5963,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_obstacle_close_mode"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -6065,15 +6045,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_obstacle_open_mode"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -6257,15 +6235,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_slave_mode"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,
@@ -8296,15 +8272,13 @@
       "sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
       "original_kind": "controller_command",
       "effective_role": "controller_command",
-      "disposition": "supported_read_only",
+      "disposition": "implemented",
       "family": "controller",
       "features": [
-        "controller.configuration"
+        "setting.config_starting_torque"
       ],
-      "blocking_gaps": [
-        "controller.parameter_format"
-      ],
-      "reason": "Read only when complete device INFO validates the scalar/indexed format; unknown formats remain blocked.",
+      "blocking_gaps": [],
+      "reason": "Reviewed scalar editor; Pro-only settings require explicit Pro mode, complete fresh menu/INFO, module admin and device acceptance.",
       "source_evidence": {
         "source_sha256": "a80a5806d68c27479973009c176b3c137a7e54a7cfb7e0b70c84d0b851306b10",
         "prototype_markers": false,

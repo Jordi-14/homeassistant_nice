@@ -15,12 +15,12 @@ No generic planned or review_required source disposition is accepted by the clos
 | external_dependency | 394 | A host/hardware/transport dependency remains unavailable |
 | generated_reference | 2 | Resource/build constant retained only for provenance |
 | ha_native | 458 | Use native HA/Companion UI or software; no duplicate engine |
-| implemented | 66 | Named reviewed action/setting path exists; device support/permissions remain separate |
+| implemented | 79 | Named reviewed action/setting path exists; device support/permissions remain separate |
 | implemented_read_only | 8 | Scoped inspection path; no resource execution |
 | manufacturer_app | 543 | Use the manufacturer app for vendor-only workflows/resources |
 | non_capability | 1 | Sentinel or undefined enum item |
 | privacy_protected | 9 | Secret/security material deliberately excluded from generic probe/export |
-| supported_read_only | 111 | Read only with complete validated metadata |
+| supported_read_only | 98 | Read only with complete validated metadata |
 | supported_subset | 843 | Named runtime family exists with explicit additional gaps |
 | supporting_evidence | 628 | Shared model/utility/container, not a standalone capability |
 
@@ -68,6 +68,7 @@ An already loaded CORE entry can request the same reader from Configure. Non-COR
 
 | Matrix case | Evidence level | Scope | Remaining limit |
 | --- | --- | --- | --- |
+| native_phase3_receiver | source_and_software_fixture | Audited receiver output/count GETs, signed protocol codec, private memory-record summaries, menu-targeted Pro metadata and scalar editor expansion | No remote programming, deletion, enrollment, reset, learning or firmware operation is executed by the passive inspector; signed capabilities need a scoped challenge exchange. |
 | native_phase2_menu | source_and_software_fixture | Bounded STD_MENU FIN/sequence paging; target/session/model fences; explicit Pro profile, fresh module admin and INFO write path; cold-cache export and stale snapshot fixes | The b16 role-token requirement is superseded by the reviewed Pro app path. Hardware/model comparison and unknown indexed/procedure bindings remain pending. |
 | native_phase1_readonly | static_native_and_software_fixture | 04/01 byte decoding, raw menu records without role grants, maneuver slot bounds, optional diagnostic observation ownership | No physical flag semantics, app-version association, live menu permissions, receiver operations or installer writes are established. |
 | upgrade_identity | software_fixture | Legacy/current entry migration, credential and entity-ID preservation, unload/reload fences | No registry migration is introduced by b11; fixtures do not establish every historical custom entity name. |

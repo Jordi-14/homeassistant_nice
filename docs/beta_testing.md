@@ -423,3 +423,18 @@ Healthy menu renewals retain the previous still-valid snapshot while the new
 one is read, preventing editor availability flicker. A failed/invalid replacement
 still revokes the grants, and an expired or wrong-session snapshot never becomes
 authority. Actual writes continue to await a fresh serialized menu/INFO check.
+
+## Final-phase inspection set: v0.9.0b19
+
+The enabled Pro mode discovers the additional supported scalar editors as their
+complete INFO becomes available. This includes slowdown positions and command
+reaction/mode fields from the controller's own menu. Unknown/indexed formats still
+do not become editors. Enabling Pro mode or discovering a control sends no SET.
+
+Optionally enable **Receiver diagnostics** for a passive read of the existing
+radio bus slot. It reports model/version, coding/type, channel flags/raw timers
+and aggregate transmitter counts where supported. It does not scan remote codes
+or credentials. Unsupported fields remain unknown/unsupported, not zero. These
+are captured diagnostic values with age, not a continuous physical relay monitor.
+Signed protocol capability bytes require a scoped challenge exchange and are not
+interpreted as plain flags in this first receiver inspection set.

@@ -38,6 +38,7 @@ class DiagnosticDefinition:
 
 
 DIAGNOSTICS = (
+    DiagnosticDefinition("receiver", "Receiver diagnostics", None, "receiver"),
     DiagnosticDefinition("controller_menu", "Controller menu permissions", (0, 0x10), "menu"),
     DiagnosticDefinition(
         "counters", "Controller counters and maintenance", (4, 0xB3), "counters"
@@ -203,7 +204,7 @@ class DiagnosticRuntime:
                 "Diagnostic access adapter is unresolved: transport."
                 + str(capabilities.family)
             )
-        if definition.decoder is None or definition.register is None:
+        if definition.decoder is None or definition.register is None and key != "receiver":
             raise NiceParameterError(
                 "Diagnostic binding is blocked: " + str(definition.gap)
             )
@@ -295,6 +296,10 @@ class DiagnosticRuntime:
             or owner.calibration_controller.calibration_state == "running"
         ):
             raise NiceReadPreemptedError("Diagnostic read waits until stationary")
+        if key == "receiver":
+            await owner.receiver.async_inspect(background=True)
+            self._attempts[key] = time.monotonic()
+            return
         if key == "controller_menu":
             await owner.controller_menu.async_refresh(background=True)
             self._samples.pop(key, None)
@@ -555,6 +560,8 @@ class DiagnosticRuntime:
                 "gap": definition.gap,
                 "reason": "Diagnostic binding is unresolved",
             }
+        if key == "receiver":
+            return self._owner.receiver.report()
         if key == "controller_menu":
             view = self._owner.controller_menu.report()
             if error := self._samples.get(key, {}).get("last_read_error"):

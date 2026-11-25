@@ -166,7 +166,7 @@ Indexed source dependencies: 0. Full references are in the source inventory.
 
 Receiver event layouts and redaction are incomplete.
 
-Missing: Native receiver payloads can contain remote identifiers, rolling codes or keys; their full scoped decoder is not established.
+Missing: Passive receiver output/count snapshots and a private offline eight/ten-byte memory codec are implemented. Receiver event framing and live authenticated memory-management completion remain separate contracts.
 
 To unblock: Recover the receiver-specific parser and fixture-backed redaction before retaining any payload. Known controller channel events remain numeric/labelled evidence only.
 

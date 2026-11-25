@@ -15,6 +15,7 @@ from .controller_catalog import ENUM_FUNCTIONS, PARAMETERS_BY_KEY, ControllerPar
 from .errors import NiceBidiError, NiceParameterError, NiceReadPreemptedError
 from .parameters import ParameterAddress, SupportState
 from .protocol.t4.info import DmpInfo, scaled_value
+from .protocol.t4.settings import ADDITIONAL_SETTINGS
 
 MAX_INDEXED_ELEMENTS = 16
 CONFIGURATION_REFRESH_SECONDS = 300
@@ -81,12 +82,59 @@ class ControllerConfiguration:
         self._last_attempt: dict[str, float] = {}
         self._generation = 0
         self._client_epoch = None
+        self._pro_metadata_task = None
+        self._pro_attempts = {}
 
     def sync_session(self):
         epoch = getattr(self._coordinator.client, "reconnect_count", None)
         if self._client_epoch is not None and epoch != self._client_epoch:
             self.invalidate()
         self._client_epoch = epoch
+
+    def schedule_pro_metadata(self):
+        owner = self._coordinator
+        if (not owner.controller_menu.enabled or owner.observations.closed or owner.reported_moving
+                or owner.calibration_controller.calibration_state == "running"
+                or self._pro_metadata_task is not None):
+            return
+        self._pro_metadata_task = owner.tasks.create(self._refresh_pro_metadata(), "nice-pro-metadata")
+
+    async def _refresh_pro_metadata(self):
+        owner = self._coordinator
+        generation = self._generation
+        try:
+            pending = []
+            for setting in ADDITIONAL_SETTINGS:
+                address = owner.parameters.address(setting.group, setting.parameter)
+                if owner.parameters.info_for(address) is not None or self._pro_attempts.get(address, 0) >= 3:
+                    continue
+                if owner.parameters.support_for(address, "info") is SupportState.UNSUPPORTED:
+                    continue
+                try:
+                    owner.controller_menu.require_permission(setting)
+                except NiceParameterError:
+                    continue
+                pending.append((setting, address))
+            for setting, address in pending[:2]:
+                if owner.reported_moving or generation != self._generation or owner.observations.closed:
+                    return
+                if owner.parameters.info_for(address) is not None:
+                    continue
+                self._pro_attempts[address] = self._pro_attempts.get(address, 0) + 1
+                try:
+                    info = await owner.hass.async_add_executor_job(partial(owner.client.read_dmp_info, setting.group, setting.parameter, preemptible=True))
+                except NiceReadPreemptedError:
+                    self._pro_attempts[address] -= 1
+                    return
+                except (NiceBidiError, OSError):
+                    continue
+                if generation != self._generation or owner.observations.closed:
+                    return
+                if info is not None:
+                    owner.parameters.record_info(address, info)
+        finally:
+            self._pro_metadata_task = None
+            owner.async_update_listeners()
 
     def definition(self, key: str) -> ControllerParameter:
         try:
@@ -233,6 +281,7 @@ class ControllerConfiguration:
         self._generation += 1
         self._coordinator.parameters.invalidate_menu_permissions()
         self._last_attempt.clear()
+        self._pro_attempts.clear()
 
     def view(self, key: str, *, index=None) -> ConfigurationView:
         self.sync_session()
@@ -293,6 +342,8 @@ class ControllerConfiguration:
         observation = repository.observation_for(address)
         raw = observation.raw_value if observation else None
         options = info.scalar_options or ()
+        if not options and info.function == 1 and info.size == 1 and info.minimum == 0 and info.maximum == 1 and info.step == 1 and not info.flags & 0x30:
+            options = (0, 1)
         names = (
             {0: "off", 1: "on"}
             if info.function == 1 and options == (0, 1)
@@ -386,7 +437,7 @@ class ControllerConfiguration:
             maximum,
             step,
             reason is None,
-            gap,
+            gap if reason is not None else None,
             index,
         )
 

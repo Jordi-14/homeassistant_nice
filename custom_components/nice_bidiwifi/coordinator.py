@@ -74,6 +74,7 @@ from .ecosystem import EcosystemRuntime
 from .ecosystem_catalog import blocks_gate_adapter, require_gate_adapter
 from .diagnostic_runtime import DiagnosticRuntime
 from .controller_menu import ControllerMenu
+from .receiver import ReceiverRuntime
 from .runtime_tasks import RuntimeTasks
 from .scheduler import OperationExpired
 from .parameters import ParameterRepository, SupportState
@@ -284,6 +285,7 @@ class NiceBidiDataUpdateCoordinator(
         self.features = FeatureRuntime(self)
         self.configuration = ControllerConfiguration(self)
         self.controller_menu = ControllerMenu(self)
+        self.receiver = ReceiverRuntime(self)
         self.incidents = IncidentTimeline(entry.data)
         self.diagnostic_runtime = DiagnosticRuntime(self)
         self.access = AccessManagement(self)
@@ -404,12 +406,17 @@ class NiceBidiDataUpdateCoordinator(
         targets = [
             (self.setting_info, setting.key, setting.group, setting.parameter)
             for setting in SETTINGS.values()
+            if not setting.requires_menu_permission or self.controller_menu.enabled
         ] + [
             (self.register_info, f"{group:02X}/{parameter:02X}", group, parameter)
             for group, parameter in SCALED_REGISTERS + DIAGNOSTIC_INFO_REGISTERS
         ]
         for store, key, group, parameter in targets:
             if key in store:
+                continue
+            cached = self.parameters.info_for(self.parameters.address(group, parameter))
+            if cached is not None:
+                store[key] = cached
                 continue
             try:
                 info = await self.hass.async_add_executor_job(
@@ -1189,6 +1196,7 @@ class NiceBidiDataUpdateCoordinator(
         self.observations.invalidate()
         self.configuration.invalidate()
         self.diagnostic_runtime.invalidate()
+        self.receiver.invalidate()
         self.access.invalidate()
         await self._async_cancel_background_tasks(calibration_reason="reconnect")
         self.event_controller.mark_reconnecting()
@@ -1205,6 +1213,7 @@ class NiceBidiDataUpdateCoordinator(
         await self.lifecycle.async_close()
         self.configuration.invalidate()
         self.diagnostic_runtime.invalidate()
+        self.receiver.invalidate()
         self.diagnostic_runtime.close()
         self.controller_menu.close()
         self.access.invalidate()

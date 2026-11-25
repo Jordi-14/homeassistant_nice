@@ -332,6 +332,54 @@ class NiceBidiClient:
         """Read static BiDi-WiFi and control-unit metadata."""
         return self._run_with_reconnect(self._read_info_locked)
 
+    def read_receiver_diagnostics(self, *, background: bool = True):
+        """Inspect the existing OXI slot, never scan keys or remote memory."""
+        return self._run_with_reconnect(self._read_receiver_diagnostics_locked, preemptible=True)
+
+    def _receiver_get_locked(self, group, parameter):
+        allowed = {(0,4),(0,9),(0,10),(0,11),(10,0),(10,0x41),(10,8),(10,0x70)}
+        if (group, parameter) not in allowed:
+            raise NiceParameterError("Receiver GET is outside the reviewed inspection scope")
+        if self._should_yield is not None and self._should_yield():
+            raise NiceReadPreemptedError("Receiver inspection yielded to queued work")
+        response, plains = self._t4_request_locked("DMP", build_dmp_read_frame(0, 10, group, parameter), 0, 10, self.t4_timeout_ms)
+        self._raise_response_error(response, "T4_REQUEST")
+        matches = [reply for plain in plains if (reply := checked_dmp_reply(plain, target=(0,10), group=group, parameter=parameter, operation=0x19)) is not None]
+        if len(matches) != 1:
+            raise NiceProtocolError("Receiver inspection requires one addressed reply")
+        return matches[0].value
+
+    def _read_receiver_diagnostics_locked(self):
+        from .protocol.t4.radio import decode_receiver_counts, decode_receiver_outputs, decode_coding_type
+        from .protocol.t4.enums import RADIO_RECEIVER_TYPES
+        scope = (self._route_name, self.session_state.generation)
+        profile = self._receiver_get_locked(0, 4)
+        if profile != b"\x0a":
+            raise NiceProtocolError("The inspected bus slot does not advertise a radio profile")
+        result = {"target":"00.0A", "profile":10, "session_scope":scope, "support":{}}
+        for key, parameter in (("product",9),("hardware",10),("firmware",11)):
+            raw = self._receiver_get_locked(0, parameter)
+            result[key] = raw.decode('ascii', errors='ignore').strip('\x00 ')[:64] if raw else None
+        for key, parameter, decode in (
+            ("receiver_type",0,lambda raw: {"code":int.from_bytes(raw,'big'),"name":RADIO_RECEIVER_TYPES.get(int.from_bytes(raw,'big'))} if len(raw)==1 else None),
+            ("coding",0x41,lambda raw: {"code":int.from_bytes(raw,'big'),"name":decode_coding_type(int.from_bytes(raw,'big'))} if len(raw)==1 else None),
+            ("outputs",8,decode_receiver_outputs),
+            ("transmitters",0x70,decode_receiver_counts),
+        ):
+            try:
+                raw = self._receiver_get_locked(10, parameter)
+            except NiceResponseError as error:
+                result['support'][key] = {'state':'unsupported' if error.unsupported else 'unavailable','code':error.code}
+                continue
+            value = decode(raw)
+            result[key] = value
+            result['support'][key] = {'state':'available' if value is not None else 'unavailable'}
+        if scope != (self._route_name, self.session_state.generation):
+            raise NiceProtocolError('Receiver session changed during inspection')
+        result['state'] = 'available' if all(v['state']=='available' for v in result['support'].values()) else 'partial'
+        result['protocol_masks'] = {'state':'not_inspected','reason':'Scoped radio challenge exchange required; encrypted bytes are not plain bitmaps'}
+        return result
+
     def read_controller_menu(self, *, preemptible: bool = True, background: bool = False):
         """Read a complete bounded STD_MENU without changing controller access."""
         return self._run_with_reconnect(self._read_controller_menu_locked, preemptible=preemptible)

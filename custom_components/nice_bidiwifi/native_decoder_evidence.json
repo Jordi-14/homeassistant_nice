@@ -65,6 +65,35 @@
       "decoder": "protocol/t4/menu.py",
       "tests": "tests/test_controller_menu.py",
       "runtime_access": "read_only_STD_MENU_group4"
+    },
+    {
+      "key": "receiver_outputs",
+      "symbol": "Java_it_buildingapp_appoview_libraryt4_t4_RadioOutputStatusResult_parseResponse",
+      "address": "0x15870",
+      "symbol_bytes": 1076,
+      "binding": "0A/08@00.0A",
+      "decoder": "protocol/t4/radio.py",
+      "tests": "tests/test_receiver_native.py",
+      "runtime_access": "passive_reported_flags_and_raw_timers"
+    },
+    {
+      "key": "receiver_counts",
+      "symbol": "Java_it_buildingapp_appoview_libraryt4_t4_RadioReceiverTransmittersCounters_parseResponse",
+      "address": "0x175b8",
+      "symbol_bytes": 204,
+      "binding": "0A/70@00.0A",
+      "decoder": "protocol/t4/radio.py",
+      "tests": "tests/test_receiver_native.py",
+      "runtime_access": "passive_aggregate_counts_no_remote_identifiers"
+    },
+    {
+      "key": "receiver_protocol_wrapper",
+      "symbol": "Java_it_buildingapp_appoview_libraryt4_t4_RadioEncodedProtocolsAbilitation_parseResponse",
+      "address": "0x174fc",
+      "symbol_bytes": 188,
+      "decoder": "protocol/t4/radio.py",
+      "tests": "tests/test_receiver_native.py",
+      "runtime_access": "offline_integrity_codec_scoped_context_required"
     }
   ]
 }

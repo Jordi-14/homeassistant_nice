@@ -84,7 +84,7 @@ GAPS = (
     EvidenceGap(
         "diagnostics.receiver_layouts",
         "Receiver event layouts and redaction are incomplete",
-        "Native receiver payloads can contain remote identifiers, rolling codes or keys; their full scoped decoder is not established.",
+        "Passive receiver output/count snapshots and a private offline eight/ten-byte memory codec are implemented. Receiver event framing and live authenticated memory-management completion remain separate contracts.",
         "Recover the receiver-specific parser and fixture-backed redaction before retaining any payload. Known controller channel events remain numeric/labelled evidence only.",
     ),
     EvidenceGap(

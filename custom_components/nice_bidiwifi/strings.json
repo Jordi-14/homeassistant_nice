@@ -489,6 +489,19 @@
           "controls_disabled": "Pro controls disabled",
           "admin_required": "Verified administrator access required"
         }
+      },
+      "diagnostic_receiver": {
+        "name": "Receiver diagnostics",
+        "state": {
+          "available": "Available",
+          "not_read": "Not read or no value",
+          "unsupported": "Unsupported operation",
+          "blocked": "Unverified format",
+          "stale": "Stale history",
+          "all_zero_unverified": "All-zero history, validity unknown",
+          "reported_slots": "Reported history slots",
+          "partial": "Some fields unavailable"
+        }
       }
     }
   },

@@ -393,6 +393,7 @@ async def async_get_config_entry_diagnostics(
         "diagnostic_screens": coordinator.diagnostic_runtime.report() if hasattr(coordinator, "diagnostic_runtime") else {},
         "incident_timeline": coordinator.incidents.export() if hasattr(coordinator, "incidents") else {},
         "controller_configuration": coordinator.configuration.report() if hasattr(coordinator, "configuration") else {},
+        "receiver": coordinator.receiver.report() if hasattr(coordinator, "receiver") else {},
         "controller_menu": coordinator.controller_menu.report(include_records=True) if hasattr(coordinator, "controller_menu") else {},
         "feature_report": getattr(coordinator, "capability_report", {}),
         "evidence_gaps": [asdict(gap) for gap in GAPS],

@@ -103,3 +103,42 @@ rejections are surfaced and never bypassed or automatically replayed.
 Actual password/authorization exchanges for other device paths, unknown parameters,
 indexed motor identities and installer/receiver procedures still need their own
 verified contracts. Pro controls does not invent those missing bindings.
+
+## Phase 3 receiver audit, first coherent set
+
+The earlier research map extractor mishandled destination/source register numbers
+in ADD/OR instructions. Correcting those static dataflow operations recovers the
+radio output-status binding 0A/08 and transmitter-counter binding 0A/70, matching
+the Java RadioOutputStatusResult and RadioReceiverTransmittersCounters consumers.
+It also identifies 0A/6F challenge, 0A/71 supported and 0A/72 enabled-protocol fields.
+These corrections do not automatically activate every recovered map entry.
+
+RadioOutputStatusResult_parseResponse at 0x15870 reads five Java shorts holding
+five wire bytes: flags, two big-endian timer words. They are reported channel
+flags, not proof of physical relay state; timer units are not guessed.
+RadioReceiverTransmittersCounters_parseResponse at 0x175b8 copies bounded data;
+Java consumes a big-endian total followed by protocol/u16-count triples. The
+integration rejects incomplete or duplicate triples, all-FF filler and excess
+length rather than converting invalid input to zero. Protocol totals are not
+assumed to sum to the overall total.
+
+The protocol wrapper at 0x174fc accepts 12 bytes. The Java consumer unscrambles
+and XORs eight bitmap bytes using a RadioAuthentication context, then checks the
+little-endian additive signature. This is the manufacturer's checksum scheme,
+not a modern MAC/HMAC. A pure codec implements the recovered nibble transform,
+context XOR and command-specific signature. Independent vectors cover context
+mismatch and tampering. Encrypted bytes are never presented as plain capabilities.
+The passive inspector does not start a challenge SET or claim that those masks
+were inspected. The scoped challenge exchange is the next runtime contract.
+
+The eight/ten-byte remote-record codec follows the Java record constructor.
+Remote identity codes and rolling counters are private fields and absent from
+its public summary. It is not an authorization to scan or export receiver memory.
+Live memory queries, paging, credentials and mutation completion/recovery remain
+separate parts of the final phase.
+
+The passive reader verifies radio profile 0A at the existing 00.0A bus slot before
+reading model/version, type/coding, outputs and counts. It never reads a PIN, key,
+certificate or memory-code register. Unsupported optional fields remain explicit;
+missing data is not a count of zero. Model identity is not serial identity and
+these observations never grant mutation authority.

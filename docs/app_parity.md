@@ -120,6 +120,19 @@ Implementation, device support, permissions and current availability are separat
 | `setting.partial_open_2_position` | implemented | 1 | setting | none |
 | `setting.partial_open_3_position` | implemented | 1 | setting | none |
 | `setting.maintenance_threshold` | implemented | 1 | setting | none |
+| `setting.config_opening_slowdown_position` | implemented | 3 | setting | none |
+| `setting.config_closing_slowdown_position` | implemented | 3 | setting | none |
+| `setting.config_starting_torque` | implemented | 3 | setting | none |
+| `setting.config_slowdown_enabled` | implemented | 3 | setting | none |
+| `setting.config_slave_mode` | implemented | 3 | setting | none |
+| `setting.config_block_automation` | implemented | 3 | setting | none |
+| `setting.config_photo_close_mode` | implemented | 3 | setting | none |
+| `setting.config_photo_open_mode` | implemented | 3 | setting | none |
+| `setting.config_photo_3_mode` | implemented | 3 | setting | none |
+| `setting.config_alt_open_mode` | implemented | 3 | setting | none |
+| `setting.config_alt_close_mode` | implemented | 3 | setting | none |
+| `setting.config_obstacle_open_mode` | implemented | 3 | setting | none |
+| `setting.config_obstacle_close_mode` | implemented | 3 | setting | none |
 | `setting.config_opening_slowdown_speed` | implemented | 3 | setting | none |
 | `setting.config_closing_slowdown_speed` | implemented | 3 | setting | none |
 | `setting.config_electric_lock_time` | implemented | 3 | setting | none |
@@ -159,6 +172,7 @@ Implementation, device support, permissions and current availability are separat
 | `transport.core` | blocked | 5 | None | transport.core |
 | `transport.proview` | blocked | 5 | None | transport.proview |
 | `diagnostics.incident_timeline` | implemented | 4 | snapshot | none |
+| `diagnostics.screen.receiver` | implemented | 4 | diagnostic | none |
 | `diagnostics.screen.controller_menu` | implemented | 4 | diagnostic | none |
 | `diagnostics.screen.counters` | implemented | 4 | diagnostic | none |
 | `diagnostics.screen.bluebus` | implemented | 4 | diagnostic | none |

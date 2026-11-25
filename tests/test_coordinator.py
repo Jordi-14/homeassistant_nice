@@ -147,6 +147,7 @@ async def test_controller_configuration_is_not_stored_in_part(hass: HomeAssistan
 async def test_configuration_retry_keeps_loaded_setting_and_time_metadata(hass: HomeAssistant) -> None:
     """Both metadata consumers survive a missing configuration element after rebasing."""
     instance = _coordinator(hass)
+    hass.config_entries.async_update_entry(instance.config_entry, options={"pro_controls": True})
     client = FakeClient()
     plain = decode_dmp_info(bytes.fromhex("01000a01006401"))
     scaled = decode_dmp_info(bytes.fromhex("01001111016401000a"))

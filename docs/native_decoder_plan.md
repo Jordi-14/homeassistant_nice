@@ -101,3 +101,17 @@ Hardware/model comparison and genuinely unknown layouts remain beta evidence lim
 
 Phase 3 remains unimplemented. The original ownership boundary and prohibition on
 automatic installer actions continue to apply.
+
+## Phase 3 progress: v0.9.0b19 inspection set
+
+Implemented in this set: passive receiver identity/type/coding, reported output
+flags/raw timers and aggregate transmitter counts; strict signed-protocol codecs
+requiring an explicit context; and an offline private remote-record decoder.
+It also fills the 13 additional named scalar settings advertised by the live
+controller menu. Pro metadata is discovered in small targeted batches, not by a
+broad automatic scan for users who have not enabled Pro controls.
+
+Still to complete in the final phase: the scoped radio challenge runtime and
+capability readback; live memory-query/paging and credential/mutation contracts;
+individual installer/reset/learning and firmware/restore audits. No first-step
+inspection result should be described as completion of those operations.
