@@ -111,15 +111,21 @@ class ConfigurationSelect(ConfigurationEntity, SelectEntity):
 
     @property
     def options(self):
+        if self.definition.setting.requires_menu_permission:
+            return [label for label, _ in self.view.options]
         return [f"code_{code}" for _, code in self.view.options]
 
     @property
     def current_option(self):
+        if self.definition.setting.requires_menu_permission:
+            return next((label for label, code in self.view.options if code == self.view.raw_value), None)
         value = f"code_{self.view.raw_value}"
         return value if value in self.options else None
 
     async def async_select_option(self, option):
         choices = {f"code_{code}": label for label, code in self.view.options}
+        if self.definition.setting.requires_menu_permission:
+            choices.update({label: label for label, _ in self.view.options})
         if option not in choices:
             raise HomeAssistantError("Option is not advertised by this controller")
         await self.coordinator.configuration.async_write(

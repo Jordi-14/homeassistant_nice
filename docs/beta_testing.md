@@ -411,3 +411,15 @@ not an established requirement of the reviewed normal Pro SET path. B17 removes
 that blocker without claiming a controller authentication role or bypassing device
 authorization. The app-local PIN comparison and installer menu selection are
 documented in the native audit.
+
+## Pro editor usability: v0.9.0b18
+
+Pro dropdowns now show the decoded option names with their numeric codes, such
+as `5: Flashing light`. Existing legacy selects keep their translated `code_*`
+states, and Pro select services continue to accept advertised `code_*` aliases.
+Unknown meanings retain an explicit numeric fallback.
+
+Healthy menu renewals retain the previous still-valid snapshot while the new
+one is read, preventing editor availability flicker. A failed/invalid replacement
+still revokes the grants, and an expired or wrong-session snapshot never becomes
+authority. Actual writes continue to await a fresh serialized menu/INFO check.

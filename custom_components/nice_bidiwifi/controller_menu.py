@@ -151,7 +151,10 @@ class ControllerMenu:
         self._last_attempt = time.monotonic()
         generation = owner.observations.generation
         identity = self.device_identity()
-        self.invalidate()  # partial/failed replacement never retains old grants
+        # Keep a still-valid snapshot visible while its replacement is read.
+        # Public writes await this serialized refresh; failures still revoke it.
+        if not self.valid():
+            self.invalidate()
         try:
             snapshot = await owner.hass.async_add_executor_job(
                 partial(owner.client.read_controller_menu, preemptible=True, background=background)

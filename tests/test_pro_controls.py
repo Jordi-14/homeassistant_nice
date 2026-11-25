@@ -112,3 +112,46 @@ def test_explicit_inspection_runs_before_queued_periodic_status(method):
     second.join(2)
     assert order == ['inspection', 'status']
     router.close()
+
+
+async def test_pro_dropdowns_have_readable_names_and_accept_legacy_code_alias(hass):
+    from unittest.mock import AsyncMock
+
+    from custom_components.nice_bidiwifi.entities.configuration import (
+        ConfigurationSelect,
+    )
+    flow, owner = await pro_flow(hass)
+    await flow.async_step_pro_controls({CONF_PRO_CONTROLS: True})
+    definition = PARAMETERS_BY_KEY['ctrl_output_1']
+    # Include the binding in the actual controller menu evidence.
+    install_menu_fixture(owner, bytes.fromhex('70 51'))
+    await owner.controller_menu.async_refresh()
+    info = decode_dmp_info(bytes.fromhex('01 00 f4 61 03 00 05 06'))
+    owner.parameters.record_info(owner.parameters.address(4, 0x51), info)
+    owner.parameters.observe(owner.parameters.address(4, 0x51), b'\x05')
+    select = ConfigurationSelect(owner, owner.config_entry, definition)
+    assert select.options == ['0: None', '5: Flashing light', '6: Courtesy light']
+    assert select.current_option == '5: Flashing light'
+    owner.configuration.async_write = AsyncMock()
+    await select.async_select_option('6: Courtesy light')
+    owner.configuration.async_write.assert_awaited_with(definition.key, '6: Courtesy light', option=True)
+    await select.async_select_option('code_5')
+    owner.configuration.async_write.assert_awaited_with(definition.key, '5: Flashing light', option=True)
+    assert owner.client.dmp_writes == []
+    await owner.async_shutdown()
+
+
+async def test_healthy_menu_refresh_keeps_valid_editors_visible(hass):
+    flow, owner = await pro_flow(hass)
+    await flow.async_step_pro_controls({CONF_PRO_CONTROLS: True})
+    previous = owner.controller_menu.snapshot
+    setting = PARAMETERS_BY_KEY['ctrl_time_electric_lock'].setting
+    def read(**kwargs):
+        assert owner.controller_menu.snapshot is previous
+        owner.controller_menu.require_permission(setting)
+        return previous
+    owner.client.read_controller_menu = read
+    await owner.controller_menu.async_refresh()
+    owner.controller_menu.require_permission(setting)
+    assert owner.client.dmp_writes == []
+    await owner.async_shutdown()
