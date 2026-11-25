@@ -301,7 +301,7 @@ class DiagnosticRuntime:
             self._attempts[key] = time.monotonic()
             return
         if key == "controller_menu":
-            await owner.controller_menu.async_refresh(background=True)
+            await owner.controller_menu.async_inspection_refresh()
             self._samples.pop(key, None)
             self._attempts[key] = time.monotonic()
             return

@@ -380,3 +380,72 @@ async def test_permission_renewal_starts_with_margin_and_above_background_sweeps
     refresh.assert_awaited_once_with(background=False)
     assert menu.valid()
     await owner.async_shutdown()
+
+
+async def test_preempted_menu_renewal_retains_valid_grant_without_extending_expiry(
+    hass,
+):
+    owner = await instance(hass)
+    install_menu_fixture(owner)
+    await owner.controller_menu.async_refresh()
+    menu = owner.controller_menu
+    snapshot = menu.snapshot
+    captured = menu.captured
+    owner.client.read_controller_menu = Mock(
+        side_effect=NiceReadPreemptedError("higher priority work")
+    )
+    with pytest.raises(NiceReadPreemptedError):
+        await menu.async_refresh()
+    assert menu.snapshot is snapshot and menu.captured == captured and menu.valid()
+    menu.require_permission(PARAMETERS_BY_KEY["ctrl_time_electric_lock"].setting)
+    assert owner.client.dmp_writes == []
+    await owner.async_shutdown()
+
+
+@pytest.mark.parametrize("change", ["expiry", "generation"])
+async def test_preempted_menu_cannot_keep_expired_or_reset_grants(hass, change):
+    owner = await instance(hass)
+    install_menu_fixture(owner)
+    await owner.controller_menu.async_refresh()
+    menu = owner.controller_menu
+
+    def preempt(**kwargs):
+        if change == "expiry":
+            menu.captured -= 31
+        else:
+            owner.observations.generation += 1
+        raise NiceReadPreemptedError("higher priority work")
+
+    owner.client.read_controller_menu = preempt
+    with pytest.raises(NiceReadPreemptedError):
+        await menu.async_refresh()
+    assert menu.snapshot is None and not owner.parameters._menu_permissions
+    await owner.async_shutdown()
+
+
+async def test_diagnostic_inspection_reuses_fresh_pro_menu_without_second_poll(hass):
+    owner = await instance(hass)
+    install_menu_fixture(owner)
+    await owner.controller_menu.async_refresh()
+    menu = owner.controller_menu
+    captured = menu.captured
+    owner.client.read_controller_menu = Mock(
+        side_effect=AssertionError("duplicate poll")
+    )
+    result = await menu.async_inspection_refresh()
+    assert result is menu.snapshot and menu.captured == captured
+    owner.client.read_controller_menu.assert_not_called()
+    await owner.async_shutdown()
+
+
+async def test_menu_diagnostic_uses_the_existing_pro_snapshot(hass):
+    owner = await instance(hass)
+    install_menu_fixture(owner)
+    await owner.controller_menu.async_refresh()
+    owner.client.read_controller_menu = Mock(
+        side_effect=AssertionError("competing diagnostic poll")
+    )
+    await owner.diagnostic_runtime.async_read("controller_menu")
+    owner.client.read_controller_menu.assert_not_called()
+    assert owner.controller_menu.valid()
+    await owner.async_shutdown()

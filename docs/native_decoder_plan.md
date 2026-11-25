@@ -163,3 +163,12 @@ B23 also handles the OXIBD BK00E FIN-only reply for the specific 0A/25 position
 query. All framing/status/position checks and private-code suppression remain.
 Seven independently audited radio bindings are recorded by the generator without
 enabling generic configuration access to structured or private fields.
+
+### Consistent permission renewal: v0.9.0b24
+
+The menu diagnostic shares the Pro renewal owner and avoids a competing refresh.
+Preempted reads retain still-valid evidence without extending its original expiry;
+rejections, changed scope, expired data and invalid replacement still revoke it.
+This addresses a transient unavailable-editor window encountered while checking
+an unchanged courtesy-light setting. The HA service skipped that attempt, so it
+was not counted as a confirmed hardware write.

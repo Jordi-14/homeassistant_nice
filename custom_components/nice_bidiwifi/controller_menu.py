@@ -17,7 +17,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from .controller_catalog import PARAMETERS_BY_REGISTER
 from homeassistant.exceptions import HomeAssistantError
 
-from .errors import NiceBidiError, NiceParameterError
+from .errors import NiceBidiError, NiceParameterError, NiceReadPreemptedError
 from .protocol.t4.menu import MenuEntry, MenuPermission, MenuRole
 
 MENU_MAX_AGE = 30
@@ -143,6 +143,18 @@ class ControllerMenu:
             return MenuRole.UNKNOWN
         return MenuRole.INSTALLER
 
+    async def async_inspection_refresh(self):
+        """Share the Pro renewal owner instead of competing diagnostic polls."""
+        if self.enabled:
+            if self.valid():
+                return self.snapshot
+            if self._task is not None:
+                await asyncio.shield(self._task)
+                if self.valid():
+                    return self.snapshot
+                raise NiceParameterError("The pending controller menu inspection did not complete")
+        return await self.async_refresh(background=not self.enabled)
+
     async def async_refresh(self, *, background=False):
         async with self._lock:
             return await self._async_refresh_locked(background=background)
@@ -210,9 +222,19 @@ class ControllerMenu:
             self.last_error = None
             owner.async_update_listeners()
             return snapshot
+        except NiceReadPreemptedError as error:
+            # Yielding does not contradict a complete, still-fresh snapshot.
+            # Keep its original timestamp; expiry, session/model changes and
+            # real rejections still revoke it. Actual writes always refresh.
+            if generation != owner.observations.generation or not self.valid():
+                self.invalidate()
+            self.last_error = type(error).__name__
+            owner.async_update_listeners()
+            raise
         except Exception as error:
             self.invalidate()
             self.last_error = type(error).__name__
+            owner.async_update_listeners()
             raise
 
     def apply_profile(self):

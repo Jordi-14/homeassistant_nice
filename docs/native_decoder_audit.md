@@ -279,3 +279,17 @@ audit. Real slot decoding is a separate subsequent hardware check.
 The corrected built-in capability inspection on SLIGHTR10 reports FD at 04/C1.
 That is an explicit unsupported command. It stops before any nonce SET and keeps
 the existing local connection and controller settings available.
+
+## Pro permission renewal ownership and preemption
+
+Pro mode's timer owns periodic menu renewal. The optional menu diagnostic now
+reuses its valid snapshot or joins its pending task, rather than competing with
+another low-priority refresh. Fresh metadata and a new menu are still required
+inside every actual setting write.
+
+A read yielding to higher-priority work does not contradict an already complete,
+unexpired menu. Such a preemption retains the original snapshot timestamp only
+while generation, identity, session and expiry remain valid. It does not extend
+permission lifetime. Explicit rejections, invalid replacements, expiry or resets
+still revoke grants. Tests cover retained fresh grants, expiry and reset during
+preemption, and diagnostics avoiding a duplicate menu poll.
